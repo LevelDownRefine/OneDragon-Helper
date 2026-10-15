@@ -2,6 +2,7 @@
 
 import logging
 import os
+import sys
 from collections.abc import Callable
 from copy import deepcopy
 from functools import cache
@@ -38,6 +39,9 @@ class ScriptConfig:
     """内部标识：script_path basename 去后缀，_CONFIGS 注册表索引。"""
     display_name: str = ""
     """GUI 展示名（如 鸣潮）。"""
+
+    game_launch_arguments: str | None = None
+    """自动定位启动器时使用的参数；None 表示沿用用户游戏参数。"""
 
     resources: ScriptResources | None = None
     """静态资源来自 script_resources.yml；基类 None 表示未适配。"""
@@ -179,6 +183,43 @@ class ScriptConfig:
             return None
         return weekly.read_task()
 
+    def _get_installed_launcher(self, uninstall_id: str) -> str | None:
+        """从 Windows 卸载记录定位声明的启动器；记录或文件缺失返回 None。"""
+        if sys.platform != "win32":
+            return None
+        import winreg
+
+        assert self.resources is not None and "game" in self.resources
+        game = self.resources["game"]
+        assert "launcher" in game
+        key_path = (
+            rf"Software\Microsoft\Windows\CurrentVersion\Uninstall\{uninstall_id}"
+        )
+        for root in (winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE):
+            for view in (winreg.KEY_WOW64_64KEY, winreg.KEY_WOW64_32KEY):
+                try:
+                    with winreg.OpenKey(
+                        root, key_path, 0, winreg.KEY_READ | view
+                    ) as key:
+                        folder, _ = winreg.QueryValueEx(key, "InstallLocation")
+                except OSError as error:
+                    logger.debug(
+                        "[%s] 读取启动器安装记录失败 (%s): %s",
+                        self._script_name,
+                        type(error).__name__,
+                        error,
+                    )
+                    continue
+                if not isinstance(folder, str) or not os.path.isabs(folder):
+                    logger.warning(
+                        "[%s] 启动器安装目录无效: %r", self._script_name, folder
+                    )
+                    continue
+                launcher = os.path.join(folder, game["launcher"])
+                if os.path.isfile(launcher):
+                    return os.path.abspath(launcher)
+        return None
+
     def get_game_exe_path(self) -> str | None:
         """读取本脚本配置中的游戏 exe 路径。
 
@@ -253,6 +294,11 @@ class GenshinConfig(ScriptConfig):
 class EndfieldConfig(ScriptConfig):
     _script_name = "ok-ef"
     display_name = "终末地"
+    game_launch_arguments = "--game=Endfield --reason=4"
+
+    def get_game_exe_path(self) -> str | None:
+        """返回注册表中的鹰角启动器路径；未安装时返回 None。"""
+        return self._get_installed_launcher("33a0a6296a20400d503c59ac0fd6341e")
 
 
 # ---- 绝区零 Zenless Zone Zero ----
@@ -276,11 +322,14 @@ class NTEConfig(ScriptConfig):
     display_name = "异环"
 
     def get_game_exe_path(self) -> str | None:
-        """重写：从游戏本体路径向上查找异环启动器。
+        """优先从注册表定位异环启动器，缺失时从游戏本体路径向上查找。
 
         Returns:
-            启动器绝对路径；本体缺失或找不到启动器时返回 None。
+            启动器绝对路径；注册表及游戏目录均找不到时返回 None。
         """
+        installed = self._get_installed_launcher("YH")
+        if installed:
+            return installed
         assert self.resources is not None and "game" in self.resources
         game = self.resources["game"]
         assert "launcher" in game, "异环必须声明 game.launcher"
@@ -529,8 +578,7 @@ def iter_backup_paths() -> dict[str, tuple[str, ...]]:
 def get_game_exe_path(script_name: str) -> str | None:
     """读游戏 exe 路径（供 GUI 打开游戏、取游戏图标）。
 
-    config.yml 条目里手填的 ``game_path`` 优先 —— 它是用户显式指定的；未填时才回退到脚本
-    原生配置里的路径（脚本自管，异环那类可能指向启动器，不自启游戏的 MaaEnd 则没有）。
+    config.yml 手填的 ``game_path`` 优先；未填时由适配器读取原生配置或定位启动器。
 
     Returns:
         exe 绝对路径；两处都没有时返回 None。
@@ -541,6 +589,13 @@ def get_game_exe_path(script_name: str) -> str | None:
     if script_name in _CONFIGS:
         return _CONFIGS[script_name]().get_game_exe_path()
     return None
+
+
+def get_game_launch_arguments(script_name: str) -> str | None:
+    """自动定位启动器时使用适配器参数；手填路径仍沿用用户参数。"""
+    if script_name not in _CONFIGS or get_script_game_path(script_name):
+        return None
+    return _CONFIGS[script_name]().game_launch_arguments
 
 
 def is_adapted(script_name: str) -> bool:

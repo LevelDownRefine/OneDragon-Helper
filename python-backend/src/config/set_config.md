@@ -20,6 +20,14 @@
 | `prepare_weekly_start_days` | 运行期按周几起准备开关 |
 | `weekly_names/supports_weekly` | 只读声明，不初始化原生配置 |
 
+## 游戏启动入口
+
+`EndfieldConfig` 和 `NTEConfig` 共用 Windows 卸载记录查询，检查 HKCU/HKLM 的
+32/64 位视图，读取 `InstallLocation` 并确认声明的启动器文件存在。
+终末地使用卸载项 `33a0a6296a20400d503c59ac0fd6341e`，附带参数
+`--game=Endfield --reason=4`；异环使用 `YH`，注册表定位失败时仍从游戏本体目录向上查找。
+`link` 只消费适配器给出的路径和参数。手填 `game_path` 及其 `game_arguments` 仍优先。
+
 ## 任务声明
 
 日常在 `config/daily_task_list.yml`，周常在 `config/weekly_task_list.yml`，按脚本分组。共同规则：

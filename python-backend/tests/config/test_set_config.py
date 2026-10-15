@@ -7,6 +7,7 @@ import unittest
 from copy import deepcopy
 from functools import cache
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from src.config import set_config
@@ -359,6 +360,11 @@ class TestScriptConfigBase(unittest.TestCase):
 class TestGetGameExePath(unittest.TestCase):
     """测试 ScriptConfig.get_game_exe_path：从各脚本游戏配置中提取游戏路径。"""
 
+    def setUp(self):
+        self.enterContext(
+            patch.object(ScriptConfig, "_get_installed_launcher", return_value=None)
+        )
+
     def test_unadapted_base_returns_none(self):
         """基类未适配（无资源声明）→ None，不触发任何读取"""
         with patch("src.config.set_config.get_daily_configs", return_value=[]):
@@ -368,12 +374,12 @@ class TestGetGameExePath(unittest.TestCase):
         self.assertIsNone(got)
         mock_load.assert_not_called()
 
-    def test_ok_series_pc_full_path(self):
-        """OK 系（ok-ww/ok-ef）读取 devices.json 的 pc_full_path。
+    def test_wuthering_waves_pc_full_path(self):
+        """鸣潮（ok-ww）读取 devices.json 的 pc_full_path。
 
-        异环（ok-nte）已重写 get_game_exe_path 返回启动器路径，不在此列（见专项测试）。
+        终末地（ok-ef）及异环（ok-nte）已重写 get_game_exe_path 返回启动器路径，不在此列（见专项测试）。
         """
-        for script_name in ("ok-ww", "ok-ef"):
+        for script_name in ("ok-ww",):
             with patch(
                 "src.config.set_config.load_game_config",
                 return_value={
@@ -481,6 +487,84 @@ class TestGetGameExePath(unittest.TestCase):
         ):
             got = set_config._CONFIGS["MAA"]().get_game_exe_path()
         self.assertEqual(got, "C:\\MuMu\\#0 MuMu安卓设备.lnk")
+
+
+class TestInstalledLauncher(unittest.TestCase):
+    def setUp(self):
+        self.root = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        self.registry = SimpleNamespace(
+            HKEY_CURRENT_USER=1,
+            HKEY_LOCAL_MACHINE=2,
+            KEY_WOW64_64KEY=256,
+            KEY_WOW64_32KEY=512,
+            KEY_READ=1,
+            OpenKey=MagicMock(),
+            QueryValueEx=MagicMock(return_value=(str(self.root), 1)),
+        )
+        self.enterContext(patch.dict("sys.modules", {"winreg": self.registry}))
+        self.enterContext(patch.object(set_config.sys, "platform", "win32"))
+        self.load = self.enterContext(
+            patch.object(set_config, "load_game_config", return_value=None)
+        )
+
+    def test_both_launchers_resolve_from_each_registry_location(self):
+        for adapter, uninstall_id, filename in (
+            (
+                set_config.EndfieldConfig,
+                "33a0a6296a20400d503c59ac0fd6341e",
+                "Launcher.exe",
+            ),
+            (set_config.NTEConfig, "YH", "NTELauncher.exe"),
+        ):
+            launcher = self.root / filename
+            launcher.touch()
+            for index, (root, view) in enumerate(
+                ((1, 256), (1, 512), (2, 256), (2, 512))
+            ):
+                with self.subTest(adapter=adapter.__name__, root=root, view=view):
+                    self.registry.OpenKey.reset_mock()
+                    self.registry.OpenKey.side_effect = [
+                        *[FileNotFoundError("not installed")] * index,
+                        MagicMock(),
+                    ]
+                    self.assertEqual(adapter().get_game_exe_path(), str(launcher))
+                    self.registry.OpenKey.assert_called_with(
+                        root,
+                        rf"Software\Microsoft\Windows\CurrentVersion\Uninstall\{uninstall_id}",
+                        0,
+                        1 | view,
+                    )
+                    self.assertEqual(self.registry.OpenKey.call_count, index + 1)
+            self.load.assert_not_called()
+
+    def test_missing_or_denied_install_records_do_not_return_game_executable(self):
+        self.load.return_value = {"pc_full_path": str(self.root / "game.exe")}
+        for adapter in (set_config.EndfieldConfig, set_config.NTEConfig):
+            for error in (FileNotFoundError("missing"), PermissionError("denied")):
+                with self.subTest(adapter=adapter.__name__, error=type(error).__name__):
+                    self.registry.OpenKey.side_effect = error
+                    self.assertIsNone(adapter().get_game_exe_path())
+
+    def test_invalid_install_location_or_absent_file_is_ignored(self):
+        for folder in (None, 1, "", "relative", str(self.root)):
+            with self.subTest(folder=folder):
+                self.registry.QueryValueEx.return_value = (folder, 1)
+                self.assertIsNone(set_config.EndfieldConfig().get_game_exe_path())
+        self.load.assert_not_called()
+
+    def test_nte_stale_record_falls_back_to_game_parent_directory(self):
+        launcher = self.root / "NTELauncher.exe"
+        launcher.touch()
+        self.registry.QueryValueEx.return_value = (str(self.root / "old"), 1)
+        self.load.return_value = {
+            "pc_full_path": str(self.root / "Client" / "Binaries" / "game.exe")
+        }
+        self.assertEqual(set_config.NTEConfig().get_game_exe_path(), str(launcher))
+
+    def test_non_windows_does_not_read_registry(self):
+        with patch.object(set_config.sys, "platform", "linux"):
+            self.assertIsNone(set_config.EndfieldConfig().get_game_exe_path())
+        self.registry.OpenKey.assert_not_called()
 
 
 class TestGetGameExePathAdapter(unittest.TestCase):

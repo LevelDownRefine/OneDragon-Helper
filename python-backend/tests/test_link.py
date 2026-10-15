@@ -11,6 +11,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from src import link
+from src.config import set_config
 
 
 class TestLinkDispatch(unittest.TestCase):
@@ -260,6 +261,80 @@ class LaunchTargetTests(unittest.TestCase):
                     {"kind": "association", "path": str(game)},
                 )
             build.assert_not_called()
+
+
+class LauncherTargetTests(unittest.TestCase):
+    def test_launch_and_icon_use_adapter_path_and_arguments(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            launcher = Path(temporary) / "launcher.exe"
+            launcher.touch()
+            for name, arguments in (
+                ("ok-ef", "--game=Endfield --reason=4"),
+                ("ok-nte", "--user-option"),
+            ):
+                with (
+                    self.subTest(script=name),
+                    patch.object(
+                        link,
+                        "get_script",
+                        return_value={
+                            "script_path": str(launcher),
+                            "game_arguments": "--user-option",
+                        },
+                    ),
+                    patch.object(set_config, "get_script_game_path", return_value=""),
+                    patch.object(
+                        set_config.ScriptConfig,
+                        "_get_installed_launcher",
+                        return_value=str(launcher),
+                    ),
+                ):
+                    self.assertEqual(
+                        link.resolve_launch_target(name, "game"),
+                        {
+                            "kind": "association",
+                            "path": str(launcher),
+                            "arguments": arguments,
+                        },
+                    )
+                    self.assertEqual(
+                        link.resolve_launch_target(name, "script"),
+                        {"kind": "association", "path": str(launcher)},
+                    )
+                    self.assertEqual(
+                        link.game_icon_path(name),
+                        {"script_name": name, "path": str(launcher)},
+                    )
+
+    def test_manual_endfield_path_keeps_user_arguments(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            executable = Path(temporary) / "custom.exe"
+            executable.touch()
+            with (
+                patch.object(
+                    link,
+                    "get_script",
+                    return_value={
+                        "script_path": "script.exe",
+                        "game_arguments": "--custom",
+                    },
+                ),
+                patch.object(
+                    set_config, "get_script_game_path", return_value=str(executable)
+                ),
+                patch.object(
+                    set_config.ScriptConfig, "_get_installed_launcher"
+                ) as find,
+            ):
+                self.assertEqual(
+                    link.resolve_launch_target("ok-ef", "game"),
+                    {
+                        "kind": "association",
+                        "path": str(executable),
+                        "arguments": "--custom",
+                    },
+                )
+                find.assert_not_called()
 
 
 if __name__ == "__main__":
