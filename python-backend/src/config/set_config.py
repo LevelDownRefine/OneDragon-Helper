@@ -40,9 +40,6 @@ class ScriptConfig:
     display_name: str = ""
     """GUI 展示名（如 鸣潮）。"""
 
-    game_launch_arguments: str | None = None
-    """自动定位启动器时使用的参数；None 表示沿用用户游戏参数。"""
-
     resources: ScriptResources | None = None
     """静态资源来自 script_resources.yml；基类 None 表示未适配。"""
 
@@ -291,7 +288,6 @@ class GenshinConfig(ScriptConfig):
 class EndfieldConfig(ScriptConfig):
     _script_name = "ok-ef"
     display_name = "终末地"
-    game_launch_arguments = "--game=Endfield --reason=4"
 
     def get_game_exe_path(self) -> str | None:
         """返回注册表中的鹰角启动器路径；未安装时返回 None。"""
@@ -586,13 +582,6 @@ def get_game_exe_path(script_name: str) -> str | None:
     if script_name in _CONFIGS:
         return _CONFIGS[script_name]().get_game_exe_path()
     return None
-
-
-def get_game_launch_arguments(script_name: str) -> str | None:
-    """自动定位启动器时使用适配器参数；手填路径仍沿用用户参数。"""
-    if script_name not in _CONFIGS or get_script_game_path(script_name):
-        return None
-    return _CONFIGS[script_name]().game_launch_arguments
 
 
 def is_adapted(script_name: str) -> bool:

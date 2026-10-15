@@ -3,7 +3,7 @@
 import os
 
 from src.config.script_resources import get_script_resources
-from src.config.set_config import get_game_exe_path, get_game_launch_arguments
+from src.config.set_config import get_game_exe_path
 from src.log import get_log_dir
 from src.utils.utils_config import config_file_path, get_script
 from src.utils.utils_runner import build_script_command
@@ -95,12 +95,8 @@ def resolve_launch_target(script_name: str, target: str) -> dict:
     script_type = script["script_type"] if "script_type" in script else "external"  # noqa: SIM401
     if target == "game" or script_type != "python":
         result = {"kind": "association", "path": os.path.abspath(resolved)}
-        if target == "game":
-            arguments = get_game_launch_arguments(script_name)
-            if arguments is None:
-                arguments = (
-                    script["game_arguments"] if "game_arguments" in script else ""  # noqa: SIM401
-                )
+        if target == "game" and "game_arguments" in script:
+            arguments = script["game_arguments"]
             if not isinstance(arguments, str):
                 return _unavailable("游戏启动参数无效")
             if arguments:

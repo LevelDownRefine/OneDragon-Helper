@@ -264,7 +264,7 @@ class LaunchTargetTests(unittest.TestCase):
 
 
 class LauncherTargetTests(unittest.TestCase):
-    def test_launch_and_icon_use_adapter_path_and_arguments(self):
+    def test_launch_and_icon_use_adapter_path_and_user_arguments(self):
         with tempfile.TemporaryDirectory() as temporary:
             launcher = Path(temporary) / "launcher.exe"
             launcher.touch()
@@ -279,7 +279,7 @@ class LauncherTargetTests(unittest.TestCase):
                         "get_script",
                         return_value={
                             "script_path": str(launcher),
-                            "game_arguments": "--user-option",
+                            "game_arguments": arguments,
                         },
                     ),
                     patch.object(set_config, "get_script_game_path", return_value=""),

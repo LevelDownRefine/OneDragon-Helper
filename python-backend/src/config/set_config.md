@@ -24,9 +24,10 @@
 
 `EndfieldConfig` 和 `NTEConfig` 共用 Windows 卸载记录查询，检查 HKCU/HKLM 的
 32/64 位视图，读取 `InstallLocation`，拼接适配器指定的文件名并确认文件存在。
-终末地使用卸载项 `33a0a6296a20400d503c59ac0fd6341e`，附带参数
-`--game=Endfield --reason=4`；异环使用 `YH`，注册表定位失败时仍从游戏本体目录向上查找。
-`link` 只消费适配器给出的路径和参数。手填 `game_path` 及其 `game_arguments` 仍优先。
+终末地使用卸载项 `33a0a6296a20400d503c59ac0fd6341e`；异环使用 `YH`，
+注册表定位失败时仍从游戏本体目录向上查找。手填 `game_path` 仍优先。
+`link` 使用适配器返回的路径及用户设置的 `game_arguments`，不注入游戏专用参数。
+如需传入终末地启动器参数，可在「游戏参数」中填写 `--game=Endfield --reason=4`。
 
 ## 任务声明
 
