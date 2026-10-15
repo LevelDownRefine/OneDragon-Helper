@@ -539,7 +539,22 @@ with patch('src.utils.get_root_dir', return_value=root), patch('src.service.chai
             ],
         )
         self.assertEqual(command["env"], {})
-        self.assertEqual(responses[2]["result"], responses[0]["result"])
+        self.assertEqual(
+            responses[2]["result"],
+            {
+                "kind": "command",
+                "program": sys.executable,
+                "args": [
+                    "-m",
+                    "src.headless",
+                    "--launch-game",
+                    str(self.root / "scripts/ok-ww.exe"),
+                    "--game-arguments=",
+                ],
+                "cwd": str(self.root / "python-backend"),
+                "env": {},
+            },
+        )
         self.assertEqual(responses[3]["result"]["kind"], "unavailable")
         self.assertFalse(responses[4]["error"]["data"]["refresh_required"])
 

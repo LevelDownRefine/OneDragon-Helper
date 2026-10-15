@@ -1,4 +1,4 @@
-"""Windows 游戏启动辅助：校验官方启动器并设置游戏的父进程。"""
+"""统一启动游戏；需要官方启动器的游戏先准备并验证父进程。"""
 
 import ctypes
 import json
@@ -12,6 +12,8 @@ from ctypes import wintypes
 from dataclasses import dataclass
 
 import psutil
+
+from src.utils import open_in_explorer
 
 logger = logging.getLogger(__name__)
 
@@ -256,35 +258,6 @@ def _verified_parent(kernel, name: str, trusted_signers: Collection[str]) -> int
     return None
 
 
-def _prepare_parent(kernel, launcher: Launcher) -> int:
-    parent = _verified_parent(kernel, launcher.process_name, launcher.trusted_signers)
-    if parent:
-        return parent
-    launcher_path = get_installed_launcher(
-        launcher.process_name, launcher.uninstall_id, launcher.filename
-    )
-    if not launcher_path:
-        raise FileNotFoundError(f"未找到官方启动器：{launcher.filename}")
-    _verify_official_launcher(launcher_path, launcher.trusted_signers)
-    subprocess.Popen(
-        [launcher_path, *launcher.arguments],
-        cwd=os.path.dirname(launcher_path),
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
-    )
-    deadline = time.monotonic() + 30
-    while time.monotonic() < deadline:
-        parent = _verified_parent(
-            kernel, launcher.process_name, launcher.trusted_signers
-        )
-        if parent:
-            return parent
-        time.sleep(0.25)
-    raise TimeoutError("官方启动器在 30 秒内未就绪")
-
-
 def _create_game_process(kernel, game_path: str, arguments: str, parent: int) -> int:
     size = ctypes.c_size_t()
     kernel.InitializeProcThreadAttributeList(None, 1, 0, ctypes.byref(size))
@@ -345,26 +318,57 @@ def launch_game(
     game_arguments: str = "",
     launcher: Launcher | None = None,
 ) -> int | None:
-    """Launch a game with its arguments under a verified official launcher process."""
-    if sys.platform != "win32":
-        raise OSError("通过父进程启动游戏仅支持 Windows")
+    """启动游戏目标；有启动器声明时，先启动并等待其进程，再创建游戏。"""
     if not os.path.isfile(game_path):
         raise FileNotFoundError(f"未找到游戏程序：{game_path}")
     if not isinstance(game_arguments, str):
         raise ValueError("游戏启动参数无效")
     game_path = os.path.abspath(game_path)
     game_process_name = os.path.basename(game_path)
-    if launcher is None:
-        key = game_process_name.casefold()
-        if key not in LAUNCHERS:
-            raise ValueError(f"未配置游戏的官方启动器：{game_process_name}")
+    key = game_process_name.casefold()
+    if launcher is None and key in LAUNCHERS:
         launcher = LAUNCHERS[key]
+    if launcher is None:
+        # 没有声明的游戏沿用系统关联打开，包括快捷方式。
+        open_in_explorer(game_path, game_arguments)
+        logger.info("已打开游戏启动目标：%s", game_path)
+        return None
+
+    if sys.platform != "win32":
+        raise OSError("通过父进程启动游戏仅支持 Windows")
     if _running_pids(game_process_name):
         logger.info("%s 已经运行，跳过重复启动", game_process_name)
         return None
 
     kernel = _kernel32()
-    parent = _prepare_parent(kernel, launcher)
+    parent = _verified_parent(kernel, launcher.process_name, launcher.trusted_signers)
+    if not parent:
+        launcher_path = get_installed_launcher(
+            launcher.process_name, launcher.uninstall_id, launcher.filename
+        )
+        if not launcher_path:
+            raise FileNotFoundError(f"未找到官方启动器：{launcher.filename}")
+        _verify_official_launcher(launcher_path, launcher.trusted_signers)
+        subprocess.Popen(
+            [launcher_path, *launcher.arguments],
+            cwd=os.path.dirname(launcher_path),
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=subprocess.DETACHED_PROCESS
+            | subprocess.CREATE_NEW_PROCESS_GROUP,
+        )
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline:
+            parent = _verified_parent(
+                kernel, launcher.process_name, launcher.trusted_signers
+            )
+            if parent:
+                break
+            time.sleep(0.25)
+        if not parent:
+            raise TimeoutError("官方启动器在 30 秒内未就绪")
+
     try:
         if _running_pids(game_process_name):
             logger.info("%s 已在启动器就绪期间启动，跳过重复启动", game_process_name)

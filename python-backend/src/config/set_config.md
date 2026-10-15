@@ -22,10 +22,14 @@
 
 ## 游戏启动入口
 
+所有游戏通过独立 CLI 调用 `utils_launcher.launch_game`，`link` 只解析路径和参数，
+界面不判断是否需要启动器。`launch_game` 内集中处理完整流程：普通游戏沿用系统关联
+打开（包括快捷方式）；有启动器声明时，复用或启动官方启动器、等待进程就绪，再创建游戏。
+等待在后台执行，避免阻塞界面；底层 Windows 进程创建与签名检查保留为工具函数。
+
 终末地沿用原生配置中的游戏本体路径，手填 `game_path` 优先；`game_arguments`
-只传给游戏本体，游戏进程仍为 `Endfield.exe`。`link` 将已解析的路径和参数交给
-独立 CLI，CLI 直接调用 `utils_launcher.launch_game`，避免等待启动器时阻塞界面。
-启动模块独立负责复用或定位官方启动器、校验签名、等待 `Games.exe`，再创建游戏。
+只传给游戏本体，游戏进程仍为 `Endfield.exe`。启动器就绪条件为 `Games.exe` 存在、
+能取得所需进程句柄且签名通过，不检查窗口激活、登录或更新状态。
 终末地启动器声明集中在 `EndfieldConfig.launcher`，其中 `arguments` 固定为
 `("--game=Endfield", "--reason=4")`，无需填入游戏参数。现有 `register()`
 按游戏 EXE 文件名将声明装配到 `utils_launcher.LAUNCHERS`；`utils_launcher`

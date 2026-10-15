@@ -175,4 +175,6 @@ def open_in_explorer(path: str, arguments: str = "") -> None:
     if arguments:
         raise OSError("带参数的游戏启动仅支持 Windows")
     opener = "open" if sys.platform == "darwin" else "xdg-open"
-    subprocess.run([opener, path], check=False)
+    result = subprocess.run([opener, path], check=False)
+    if result.returncode != 0:
+        raise OSError(f"系统关联程序退出异常（{result.returncode}）：{path}")

@@ -1,4 +1,4 @@
-"""官方启动器的参数路由、进程复用和拒绝原因。"""
+"""统一游戏启动入口的参数、启动器等待和失败处理。"""
 
 import os
 import tempfile
@@ -13,6 +13,10 @@ from src.utils import utils_launcher
 class LauncherTests(unittest.TestCase):
     def setUp(self):
         self.launcher = EndfieldConfig.launcher
+        self.root = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        self.game = self.root / "Endfield.exe"
+        self.game.touch()
+        self.enterContext(patch.object(utils_launcher.sys, "platform", "win32"))
         self.enterContext(
             patch.dict(
                 utils_launcher.LAUNCHERS,
@@ -33,8 +37,10 @@ class LauncherTests(unittest.TestCase):
                         patch.object(utils_launcher, "_running_pids", return_value=[]),
                         patch.object(utils_launcher, "_kernel32", return_value=kernel),
                         patch.object(
-                            utils_launcher, "_prepare_parent", return_value=42
+                            utils_launcher, "_verified_parent", return_value=42
                         ) as prepare,
+                        patch.object(utils_launcher, "get_installed_launcher") as find,
+                        patch.object(utils_launcher.subprocess, "Popen") as start,
                         patch.object(
                             utils_launcher,
                             "_create_game_process",
@@ -50,42 +56,71 @@ class LauncherTests(unittest.TestCase):
                         else:
                             with self.assertRaises(OSError):
                                 utils_launcher.launch_game(str(game), arguments)
-                    prepare.assert_called_once_with(kernel, self.launcher)
+                    prepare.assert_called_once_with(
+                        kernel,
+                        self.launcher.process_name,
+                        self.launcher.trusted_signers,
+                    )
                     create.assert_called_once_with(kernel, str(game), arguments, 42)
                     kernel.CloseHandle.assert_called_once_with(42)
+                    find.assert_not_called()
+                    start.assert_not_called()
 
-    def test_running_launcher_does_not_require_registry_entry(self):
-        with (
-            patch.object(utils_launcher, "_verified_parent", return_value=42),
-            patch.object(utils_launcher, "get_installed_launcher") as find,
-            patch.object(utils_launcher.subprocess, "Popen") as start,
+    def test_plain_games_and_shortcuts_use_system_association(self):
+        for name, platform in (
+            ("游戏.exe", "win32"),
+            ("游戏.lnk", "win32"),
+            ("game", "linux"),
         ):
-            self.assertEqual(
-                utils_launcher._prepare_parent(MagicMock(), self.launcher),
-                42,
+            game = self.root / name
+            game.touch()
+            arguments = (
+                '--profile "中文 空格" --literal "a&b"' if platform == "win32" else ""
             )
-        find.assert_not_called()
-        start.assert_not_called()
+            with (
+                self.subTest(name=name, platform=platform),
+                patch.object(utils_launcher.sys, "platform", platform),
+                patch.object(utils_launcher, "open_in_explorer") as open_game,
+                patch.object(utils_launcher, "_kernel32") as kernel,
+                patch.object(utils_launcher, "get_installed_launcher") as find,
+                patch.object(utils_launcher, "_running_pids") as processes,
+            ):
+                self.assertIsNone(utils_launcher.launch_game(str(game), arguments))
+                open_game.assert_called_once_with(str(game), arguments)
+                kernel.assert_not_called()
+                find.assert_not_called()
+                processes.assert_not_called()
 
-    def test_cold_start_uses_launcher_arguments(self):
+    def test_cold_start_waits_before_creating_game_with_separate_arguments(self):
         launcher = self.launcher
         path = os.path.abspath(os.path.join("Launcher Folder", "Launcher.exe"))
+        kernel = MagicMock()
         with (
-            patch.object(utils_launcher, "_verified_parent", side_effect=[None, 42]),
+            patch.object(utils_launcher, "_kernel32", return_value=kernel),
+            patch.object(utils_launcher, "_running_pids", return_value=[]),
+            patch.object(
+                utils_launcher, "_verified_parent", side_effect=[None, None, 42]
+            ),
             patch.object(
                 utils_launcher, "get_installed_launcher", return_value=path
             ) as find,
             patch.object(utils_launcher, "_verify_official_launcher") as verify,
             patch.object(utils_launcher.subprocess, "Popen") as start,
+            patch.object(
+                utils_launcher, "_create_game_process", return_value=314
+            ) as create,
             patch.multiple(
                 utils_launcher.subprocess,
                 DETACHED_PROCESS=8,
                 CREATE_NEW_PROCESS_GROUP=512,
                 create=True,
             ),
-            patch.object(utils_launcher.time, "monotonic", side_effect=[0, 1]),
+            patch.object(utils_launcher.time, "monotonic", side_effect=[0, 1, 2]),
+            patch.object(utils_launcher.time, "sleep") as sleep,
         ):
-            self.assertEqual(utils_launcher._prepare_parent(MagicMock(), launcher), 42)
+            self.assertEqual(
+                utils_launcher.launch_game(str(self.game), "--game-only"), 314
+            )
         find.assert_called_once_with(
             launcher.process_name, launcher.uninstall_id, launcher.filename
         )
@@ -93,9 +128,57 @@ class LauncherTests(unittest.TestCase):
         self.assertEqual(
             start.call_args.args[0], [path, "--game=Endfield", "--reason=4"]
         )
+        sleep.assert_called_once_with(0.25)
+        create.assert_called_once_with(kernel, str(self.game), "--game-only", 42)
+        kernel.CloseHandle.assert_called_once_with(42)
+
+    def test_launcher_timeout_does_not_start_game(self):
+        kernel = MagicMock()
+        with (
+            patch.object(utils_launcher, "_kernel32", return_value=kernel),
+            patch.object(utils_launcher, "_running_pids", return_value=[]),
+            patch.object(utils_launcher, "_verified_parent", return_value=None),
+            patch.object(
+                utils_launcher,
+                "get_installed_launcher",
+                return_value=str(self.root / "Launcher.exe"),
+            ),
+            patch.object(utils_launcher, "_verify_official_launcher"),
+            patch.object(utils_launcher.subprocess, "Popen"),
+            patch.multiple(
+                utils_launcher.subprocess,
+                DETACHED_PROCESS=8,
+                CREATE_NEW_PROCESS_GROUP=512,
+                create=True,
+            ),
+            patch.object(utils_launcher, "_create_game_process") as create,
+            patch.object(utils_launcher.time, "monotonic", side_effect=[0, 1, 31]),
+            patch.object(utils_launcher.time, "sleep"),
+            self.assertRaises(TimeoutError),
+        ):
+            utils_launcher.launch_game(str(self.game))
+        create.assert_not_called()
+        kernel.CloseHandle.assert_not_called()
+
+    def test_existing_game_is_not_started_twice(self):
+        for running in (([123],), ([], [123])):
+            with (
+                self.subTest(running=running),
+                patch.object(utils_launcher, "_running_pids", side_effect=running),
+                patch.object(utils_launcher, "_kernel32") as kernel,
+                patch.object(utils_launcher, "_verified_parent", return_value=42),
+                patch.object(utils_launcher, "_create_game_process") as create,
+                patch.object(utils_launcher.subprocess, "Popen") as start,
+            ):
+                self.assertIsNone(utils_launcher.launch_game(str(self.game)))
+                create.assert_not_called()
+                start.assert_not_called()
+                if len(running) == 1:
+                    kernel.assert_not_called()
+                else:
+                    kernel.return_value.CloseHandle.assert_called_once_with(42)
 
     def test_rejected_parent_preserves_reason_without_restarting_launcher(self):
-        launcher = self.launcher
         for failure in (PermissionError("拒绝访问"), RuntimeError("签名无效")):
             with self.subTest(failure=failure):
                 kernel = MagicMock()
@@ -109,7 +192,10 @@ class LauncherTests(unittest.TestCase):
 
                 kernel.QueryFullProcessImageNameW.side_effect = query_path
                 with (
-                    patch.object(utils_launcher, "_running_pids", return_value=[123]),
+                    patch.object(utils_launcher, "_kernel32", return_value=kernel),
+                    patch.object(
+                        utils_launcher, "_running_pids", side_effect=[[], [123]]
+                    ),
                     patch.object(
                         utils_launcher, "_verify_official_launcher", side_effect=failure
                     ),
@@ -118,7 +204,7 @@ class LauncherTests(unittest.TestCase):
                     self.assertLogs(utils_launcher.logger, level="WARNING"),
                     self.assertRaises(RuntimeError) as raised,
                 ):
-                    utils_launcher._prepare_parent(kernel, launcher)
+                    utils_launcher.launch_game(str(self.game))
                 self.assertIs(raised.exception.__cause__, failure)
                 self.assertIn(str(failure), str(raised.exception))
                 find.assert_not_called()

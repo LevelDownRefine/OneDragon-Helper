@@ -49,7 +49,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     action = parser.add_mutually_exclusive_group()
     action.add_argument(
-        "--launch-game", metavar="PATH", help="准备官方启动器后启动指定游戏"
+        "--launch-game", metavar="PATH", help="启动指定游戏，按需准备官方启动器"
     )
     parser.add_argument("--game-arguments", default="", help="传给游戏本体的启动参数")
     action.add_argument(
