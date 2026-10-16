@@ -10,7 +10,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from src import link
+from src import cli, link
 
 
 class TestLinkDispatch(unittest.TestCase):
@@ -207,9 +207,9 @@ class LaunchTargetTests(unittest.TestCase):
             self.assertEqual(result["cwd"], temporary)
             build.assert_called_once_with(["--script", str(file)])
 
-    def test_game_arguments_preserve_quotes_and_do_not_reach_script(self):
+    def test_external_and_game_use_separate_targets_and_arguments(self):
         with tempfile.TemporaryDirectory() as temporary:
-            file = Path(temporary) / "game.exe"
+            file = Path(temporary) / "demo.exe"
             file.touch()
             arguments = '--profile "中文 空格" --literal "a&b"'
             with (
@@ -222,44 +222,74 @@ class LaunchTargetTests(unittest.TestCase):
                         "script_arguments": "--script-only",
                     },
                 ),
-                patch.object(link, "get_game_exe_path", return_value=str(file)),
-            ):
-                self.assertEqual(
-                    link.resolve_launch_target("demo", "game"),
-                    {
-                        "kind": "association",
-                        "path": str(file),
-                        "arguments": arguments,
-                    },
-                )
-                self.assertNotIn(
-                    "arguments", link.resolve_launch_target("demo", "script")
-                )
-
-    def test_external_and_game_use_separate_targets(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            file = Path(temporary) / "demo.exe"
-            game = Path(temporary) / "game.exe"
-            file.touch()
-            game.touch()
-            with (
-                patch.object(
-                    link,
-                    "get_script",
-                    return_value={"script_path": str(file)},
-                ),
-                patch.object(link, "get_game_exe_path", return_value=str(game)),
+                patch.object(link, "get_game_exe_path") as game_path,
                 patch.object(link, "build_script_command") as build,
             ):
                 self.assertEqual(
                     link.resolve_launch_target("demo", "script"),
                     {"kind": "association", "path": str(file)},
                 )
+                target = link.resolve_launch_target("demo", "game")
+                self.assertEqual(target["kind"], "command")
                 self.assertEqual(
-                    link.resolve_launch_target("demo", "game"),
-                    {"kind": "association", "path": str(game)},
+                    target["args"][-2:],
+                    ["--launch-game=demo", f"--game-arguments={arguments}"],
                 )
             build.assert_not_called()
+            game_path.assert_not_called()
+
+
+class LauncherTargetTests(unittest.TestCase):
+    def test_all_game_commands_preserve_script_identity_and_arguments_through_cli(self):
+        arguments = '--profile "中文 空格" --literal "a&b"'
+        with (
+            patch.object(
+                link,
+                "get_script",
+                return_value={"script_path": "", "game_arguments": arguments},
+            ),
+            patch.object(link, "get_game_exe_path") as game_path,
+            patch.object(link, "resolve_script_path") as resolve,
+            patch.object(cli, "launch_game") as launch,
+            patch.object(cli, "AppService") as service,
+        ):
+            for script_name in ("ok-ef", "ok-nte", "custom", "中文 脚本", "-custom"):
+                for frozen in (False, True):
+                    with (
+                        self.subTest(script=script_name, frozen=frozen),
+                        patch.object(link.sys, "frozen", frozen, create=True),
+                    ):
+                        target = link.resolve_launch_target(script_name, "game")
+                        self.assertEqual(target["kind"], "command")
+                        self.assertEqual(target["program"], link.sys.executable)
+                        self.assertEqual(
+                            target["cwd"],
+                            link.get_root_dir()
+                            if frozen
+                            else os.path.join(link.get_root_dir(), "python-backend"),
+                        )
+                        command = target["args"]
+                        if not frozen:
+                            self.assertEqual(command[:2], ["-m", "src.headless"])
+                            command = command[2:]
+                        parsed = cli.build_parser().parse_args(command)
+                        self.assertEqual(cli.run_cli(parsed), 0)
+                        launch.assert_called_with(script_name, arguments)
+            game_path.assert_not_called()
+            resolve.assert_not_called()
+            service.assert_not_called()
+
+    def test_cli_reports_launcher_failure(self):
+        parsed = cli.build_parser().parse_args(["--launch-game=ok-ef"])
+        with (
+            patch.object(
+                cli, "launch_game", side_effect=PermissionError("需要管理员权限")
+            ),
+            patch.object(cli, "_emit_cli") as emit,
+            self.assertLogs(cli.logger, level="ERROR"),
+        ):
+            self.assertEqual(cli.run_cli(parsed), 1)
+        emit.assert_called_once_with("launch_game", "启动游戏失败: 需要管理员权限")
 
 
 if __name__ == "__main__":

@@ -26,7 +26,6 @@ scripts:
 | `scripts` 键 | 全链路 `script_name` |
 | `backup_paths` | 必填、非空、不重复的相对文件或目录列表 |
 | `game.config/keys` | 可省略整个 game；声明时须同时提供配置文件与键路径 |
-| `game.launcher` | 启动器相对路径；异环机制据此向上查找 |
 | `background` | 可选默认背景相对路径 |
 | `links` | 必含 homepage、bilibili、github 三个 HTTP(S) URL，不含凭据 |
 
@@ -35,6 +34,8 @@ scripts:
 ## 使用
 
 `get_script_resources(script_name)` 返回共享只读字典，未声明脚本返回 `None`；已注册适配器必须有声明。可选字段不补默认值，特殊机制仍由 Python 实现。
+
+游戏统一使用 `launch_game()` 接口：`ScriptConfig` 基类直接打开游戏；终末地和异环在各自适配器中覆盖该方法，共用启动器定位流程。终末地传入父进程和签名证书以创建游戏；异环仅通过注册表定位启动器并传 `/autoplay`，不读取游戏路径。用户 `game_path` 指向游戏本体，`game_arguments` 用于游戏本体；异环暂不支持传递自定义游戏参数，填写时会记录警告。
 
 声明按文件位置缓存，修改后重启；不支持用户覆盖或热加载。源码经 `get_root_dir()` 定位，发布包从 EXE 同级 `config/` 读取。新增声明必须提交到 Git 才会被打包，缺失或损坏不回退硬编码。
 

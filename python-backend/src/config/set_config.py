@@ -1,4 +1,4 @@
-"""副本配置适配器：统一 set_config 适配接口，按各脚本格式封装 config 读写。"""
+"""脚本适配器：封装原生配置读写、游戏路径和启动方式。"""
 
 import logging
 import os
@@ -14,10 +14,12 @@ from src.config.task.task_declarations import (
     load_weekly_map,
 )
 from src.config.task.weekly import Weekly, build_weeklies
+from src.utils import open_in_explorer, utils_launcher
 from src.utils.utils_dict import get_field
 from src.utils.utils_sub_config import (
     get_script_game_path,
     load_game_config,
+    resolve_script_path,
 )
 from src.utils.utils_sub_config import (
     get_sub_config_path as _get_config_path_impl,
@@ -32,7 +34,7 @@ logger = logging.getLogger(__name__)
 
 
 class ScriptConfig:
-    """单个自动化脚本的 config 操作基类"""
+    """单个自动化脚本的配置与游戏启动接口。"""
 
     _script_name: str = ""
     """内部标识：script_path basename 去后缀，_CONFIGS 注册表索引。"""
@@ -208,6 +210,19 @@ class ScriptConfig:
             return None
         return node
 
+    def launch_game(self, game_arguments: str = "") -> int | None:
+        """通过系统关联直接打开游戏，支持可执行文件和快捷方式。"""
+        if not isinstance(game_arguments, str):
+            raise ValueError("游戏启动参数无效")
+        game_path = get_game_exe_path(self._script_name)
+        if game_path:
+            game_path = os.path.abspath(resolve_script_path(game_path))
+        if not game_path or not os.path.isfile(game_path):
+            raise FileNotFoundError(f"未找到游戏程序：{game_path}")
+        open_in_explorer(game_path, game_arguments)
+        logger.info("已打开游戏启动目标：%s", game_path)
+        return None
+
 
 # ============================================================
 # 注册表
@@ -254,6 +269,26 @@ class EndfieldConfig(ScriptConfig):
     _script_name = "ok-ef"
     display_name = "终末地"
 
+    def launch_game(self, game_arguments: str = "") -> int | None:
+        """准备官方启动器，等待其进程就绪后创建游戏。"""
+        game_path = get_game_exe_path(self._script_name)
+        if game_path:
+            game_path = os.path.abspath(resolve_script_path(game_path))
+        return utils_launcher.launch_with_launcher(
+            game_path,
+            game_arguments,
+            uninstall_id="33a0a6296a20400d503c59ac0fd6341e",
+            filename="Launcher.exe",
+            arguments=("--game=Endfield", "--reason=4"),
+            process_name="Games.exe",
+            trusted_signers=frozenset(
+                {
+                    "2B366F397E64A9494A553B70004E8CA1AAE02B9D",
+                    "FF4AF264C36A27F0C805936708EF8EC67B396225",
+                }
+            ),
+        )
+
 
 # ---- 绝区零 Zenless Zone Zero ----
 @register
@@ -275,32 +310,17 @@ class NTEConfig(ScriptConfig):
     _script_name = "ok-nte"
     display_name = "异环"
 
-    def get_game_exe_path(self) -> str | None:
-        """重写：从游戏本体路径向上查找异环启动器。
-
-        Returns:
-            启动器绝对路径；本体缺失或找不到启动器时返回 None。
-        """
-        assert self.resources is not None and "game" in self.resources
-        game = self.resources["game"]
-        assert "launcher" in game, "异环必须声明 game.launcher"
-        launcher = game["launcher"]
-        game_exe = super().get_game_exe_path()
-        if not game_exe:
-            return None
-        directory = os.path.dirname(game_exe)
-        while True:
-            candidate = os.path.join(directory, launcher)
-            if os.path.isfile(candidate):
-                return candidate
-            parent = os.path.dirname(directory)
-            if parent == directory:
-                break
-            directory = parent
-        logger.warning(
-            f"[get_game_exe_path][{self._script_name}] 未找到启动器 {launcher}"
+    def launch_game(self, game_arguments: str = "") -> int | None:
+        """从注册表定位官方启动器，通过 /autoplay 自动启动游戏。"""
+        if isinstance(game_arguments, str) and game_arguments.strip():
+            logger.warning("异环通过官方启动器启动，暂不支持传递自定义游戏参数")
+        return utils_launcher.launch_with_launcher(
+            None,
+            game_arguments,
+            uninstall_id="YH",
+            filename="NTELauncher.exe",
+            arguments=("/autoplay",),
         )
-        return None
 
 
 # ---- 明日方舟 Arknights（粥）----
@@ -312,6 +332,8 @@ class ArknightsConfig(ScriptConfig):
     def __init__(self) -> None:
         """装配日常与周常对象，并初始化 MAA 原生任务队列。"""
         super().__init__()
+        # 首次构造会整理并按需写入原生任务队列，读取游戏路径或打开模拟器也会触发。
+        # 实例仅在当前进程内缓存，后台启动游戏的新进程会重新初始化。
         self._init_config()
 
     def _init_config(self) -> None:
@@ -529,8 +551,7 @@ def iter_backup_paths() -> dict[str, tuple[str, ...]]:
 def get_game_exe_path(script_name: str) -> str | None:
     """读游戏 exe 路径（供 GUI 打开游戏、取游戏图标）。
 
-    config.yml 条目里手填的 ``game_path`` 优先 —— 它是用户显式指定的；未填时才回退到脚本
-    原生配置里的路径（脚本自管，异环那类可能指向启动器，不自启游戏的 MaaEnd 则没有）。
+    config.yml 手填的 ``game_path`` 优先；未填时由适配器读取原生配置。
 
     Returns:
         exe 绝对路径；两处都没有时返回 None。
@@ -540,6 +561,22 @@ def get_game_exe_path(script_name: str) -> str | None:
         return path
     if script_name in _CONFIGS:
         return _CONFIGS[script_name]().get_game_exe_path()
+    return None
+
+
+def launch_game(script_name: str, game_arguments: str = "") -> int | None:
+    """按脚本适配器启动游戏；路径和启动方式均在后台解析。"""
+    if script_name in _CONFIGS:
+        return _CONFIGS[script_name]().launch_game(game_arguments)
+    game_path = get_game_exe_path(script_name)
+    if game_path:
+        game_path = os.path.abspath(resolve_script_path(game_path))
+    if not isinstance(game_arguments, str):
+        raise ValueError("游戏启动参数无效")
+    if not game_path or not os.path.isfile(game_path):
+        raise FileNotFoundError(f"未找到游戏程序：{game_path}")
+    open_in_explorer(game_path, game_arguments)
+    logger.info("已打开游戏启动目标：%s", game_path)
     return None
 
 

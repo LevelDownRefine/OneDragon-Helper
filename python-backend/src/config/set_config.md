@@ -1,6 +1,6 @@
 # 配置适配器
 
-`set_config.py` 将外部脚本的配置格式、路径和字段适配为统一接口；业务编排归 [AppService](../service/README.md)。
+`set_config.py` 将外部脚本的配置格式、路径、字段和游戏启动方式适配为统一接口；任务调度编排归 [AppService](../service/README.md)。
 
 `script_name` 是全链路标识：EXE 使用文件名去后缀，Python/BAT 使用展示名。注册表和各声明以它为键，加载主配置时检查唯一性。
 
@@ -19,6 +19,35 @@
 | `set_weekly_start_day` | 编辑期同步字面起始日等字段 |
 | `prepare_weekly_start_days` | 运行期按周几起准备开关 |
 | `weekly_names/supports_weekly` | 只读声明，不初始化原生配置 |
+| `get_game_exe_path/launch_game` | 读取游戏本体路径，按脚本适配器启动游戏 |
+
+## 游戏启动入口
+
+所有游戏通过后台 CLI `--launch-game SCRIPT_NAME` 调用模块入口；已适配游戏分派给
+对应适配器的 `launch_game(game_arguments)` 实例方法，需要游戏本体路径时由方法自行调用
+`get_game_exe_path()` 读取并解析；外层不预先读取或传入游戏路径。未适配游戏直接打开用户配置的路径。
+`link` 仅传脚本标识和游戏参数，路径在后台解析；已适配游戏使用缓存的适配器实例。
+MAA 保留构造时初始化原生任务队列的行为，首次读取路径或打开模拟器也会触发；
+缓存仅在当前进程内有效，后台启动游戏的新进程会重新初始化。
+基类 `launch_game()` 只通过系统关联直接打开游戏，支持快捷方式，不声明或判断启动器字段。
+
+终末地和异环各自覆盖 `launch_game()`，在方法内直接将启动器参数传给
+`utils_launcher.launch_with_launcher`。
+该流程共用 Windows 卸载记录的 HKCU/HKLM、32/64 位视图和 `InstallLocation`；
+未找到且提供了游戏路径时，从游戏目录向上查找启动器。无需额外的启动器类或按 EXE 文件名注册的表。
+
+终末地在 `EndfieldConfig.launch_game()` 传入卸载项 `33a0a6296a20400d503c59ac0fd6341e`、
+`Launcher.exe` 及固定参数 `("--game=Endfield", "--reason=4")`，以及
+`process_name="Games.exe"` 和允许的签名证书。通用流程复用或启动启动器，
+等待进程存在、可取得所需句柄且签名通过，再创建游戏并释放句柄；不检查窗口激活、
+登录或更新状态。等待在后台执行。
+
+异环在 `NTEConfig.launch_game()` 传入 `YH`、`NTELauncher.exe` 和 `("/autoplay",)`，
+仅从注册表定位官方启动器并由其自动启动游戏，已实机验证；该启动入口不读取游戏路径或原生配置。
+该入口暂不支持传递自定义 `game_arguments`，填写时记录警告并继续启动。
+
+读取游戏路径时，手填的 `game_path` 始终优先，指向游戏本体；未填时读取原生配置。
+`game_arguments` 用于游戏本体，异环官方自动启动入口除外；启动器参数写在上述启动方法中。
 
 ## 任务声明
 

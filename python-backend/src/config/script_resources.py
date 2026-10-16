@@ -12,7 +12,6 @@ from src.utils.utils_io import load_data
 class GamePath(TypedDict):
     config: str
     keys: list[str]
-    launcher: NotRequired[str]
 
 
 class ScriptResources(TypedDict):
@@ -74,15 +73,14 @@ def _validate_script(value: dict, name: str) -> None:
     )
     if "game" in value:
         node = value["game"]
-        _fields(node, {"config", "keys"}, {"launcher"}, f"{name}/game")
+        _fields(node, {"config", "keys"}, set(), f"{name}/game")
         assert "config" in node and "keys" in node
         keys = node["keys"]
         assert isinstance(keys, list) and keys, f"{name}/game/keys 必须为非空键列表"
         _relative_path(node["config"], f"{name}/game/config")
         for key in keys:
             _text(key, f"{name}/game/keys")
-        if "launcher" in node:
-            _relative_path(node["launcher"], f"{name}/game/launcher")
+
     if "background" in value:
         _relative_path(value["background"], f"{name}/background")
     links = value["links"]

@@ -1,5 +1,6 @@
 """轻量入口的异步边界：真实模型、过期响应、失败写入与共享会话恢复。"""
 
+import subprocess
 from copy import deepcopy
 from dataclasses import asdict
 from pathlib import Path
@@ -256,6 +257,42 @@ class ControllerTests(TestCase):
             )
         opened.assert_called_once_with("game.exe", "")
 
+    def test_game_launch_reports_background_exit_and_spawn_failures(
+        self,
+    ):
+        self.load("A")
+        links = CliLinksController(self.games, self.session, self.messages.append)
+        target = {
+            "kind": "command",
+            "program": "/absolute/python",
+            "args": ["--launch-game=A", "--game-arguments="],
+            "cwd": "/absolute/helper",
+            "env": {},
+        }
+        links.launchGame()
+        with patch("gui.controllers.links.subprocess.Popen") as spawn:
+            spawn.return_value.poll.return_value = None
+            self.transport.succeeded.emit(2, target)
+        self.assertEqual(spawn.call_args.args[0], [target["program"], *target["args"]])
+        self.assertEqual(spawn.call_args.kwargs["cwd"], target["cwd"])
+        for stream in ("stdin", "stdout", "stderr"):
+            self.assertEqual(spawn.call_args.kwargs[stream], subprocess.DEVNULL)
+        self.assertIn("正在启动", self.messages[-1])
+        links._game_launch_timer.setInterval(0)
+        get_app().processEvents()
+        self.assertIn("正在启动", self.messages[-1])
+        spawn.return_value.wait.assert_not_called()
+        spawn.return_value.poll.return_value = 1
+        get_app().processEvents()
+        self.assertIn("游戏启动失败（退出码 1）", self.messages[-1])
+        self.assertFalse(links._game_launch_timer.isActive())
+        links.launchGame()
+        with patch(
+            "gui.controllers.links.subprocess.Popen", side_effect=OSError("denied")
+        ):
+            self.transport.succeeded.emit(3, target)
+        self.assertIn("无法启动游戏", self.messages[-1])
+
     def test_wallpaper_stale_and_changed_target_uses_cli(self):
         self.load("A", "B")
         background = CliBackgroundController(
@@ -304,13 +341,16 @@ class ControllerTests(TestCase):
             "cwd": "/tmp",
             "env": {"ODH_TEST": "override"},
         }
-        with patch("gui.controllers.cli_links.subprocess.Popen") as popen:
+        with patch("gui.controllers.links.subprocess.Popen") as popen:
             self.transport.succeeded.emit(2, command)
         self.assertEqual(popen.call_args.args[0], ["runner", "--script", "a.py"])
         self.assertEqual(popen.call_args.kwargs["env"]["ODH_TEST"], "override")
+        for key in ("stdin", "stdout", "stderr", "creationflags"):
+            self.assertNotIn(key, popen.call_args.kwargs)
+        self.assertFalse(links._game_launch_timer.isActive())
         links.launchScript()
         command["args"] = "not an array"
-        with patch("gui.controllers.cli_links.subprocess.Popen") as popen:
+        with patch("gui.controllers.links.subprocess.Popen") as popen:
             self.transport.succeeded.emit(3, command)
         popen.assert_not_called()
         self.assertIn("无效", self.messages[-1])

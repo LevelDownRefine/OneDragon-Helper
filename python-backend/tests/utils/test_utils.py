@@ -12,6 +12,29 @@ from src.utils.utils_logger import install_crash_hooks
 
 
 class TestUtils(unittest.TestCase):
+    def test_system_opener_exit_status_is_reported(self):
+        for platform, opener, code in (
+            ("linux", "xdg-open", 0),
+            ("linux", "xdg-open", 3),
+            ("darwin", "open", 0),
+            ("darwin", "open", 1),
+        ):
+            with (
+                self.subTest(platform=platform, code=code),
+                patch("src.utils.sys.platform", platform),
+                patch(
+                    "src.utils.subprocess.run",
+                    return_value=SimpleNamespace(returncode=code),
+                ) as run,
+            ):
+                path = "/games/中文 game.exe"
+                if code:
+                    with self.assertRaisesRegex(OSError, rf"异常（{code}）"):
+                        utils.open_in_explorer(path)
+                else:
+                    self.assertIsNone(utils.open_in_explorer(path))
+                run.assert_called_once_with([opener, path], check=False)
+
     def test_get_root_dir(self):
         root_dir = utils.get_root_dir()
         self.assertTrue(os.path.isabs(root_dir))

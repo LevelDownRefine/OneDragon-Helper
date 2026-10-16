@@ -7,6 +7,7 @@ import unittest
 from copy import deepcopy
 from functools import cache
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from src.config import set_config
@@ -15,7 +16,7 @@ from src.config.task import daily as daily_mod
 from src.config.task import weekly as weekly_mod
 from src.config.task.daily import Daily
 from src.config.task.task_declarations import get_daily_configs
-from src.utils import utils_sub_config
+from src.utils import utils_launcher, utils_sub_config
 
 
 class TestConfigRelPaths(unittest.TestCase):
@@ -80,6 +81,16 @@ class TestConfigRelPaths(unittest.TestCase):
 
     def test_unknown_script_cache_invalidation_is_noop(self):
         set_config.invalidate_config("custom")
+
+    def test_registration_is_repeatable_without_constructing_adapter(self):
+        with patch.object(set_config.EndfieldConfig, "__init__") as initialize:
+            for _ in range(2):
+                set_config.register(set_config.EndfieldConfig)
+                self.assertIs(
+                    set_config._CONFIGS["ok-ef"].__wrapped__,
+                    set_config.EndfieldConfig,
+                )
+            initialize.assert_not_called()
 
     def test_script_resources_do_not_declare_initialization_templates(self):
         """脚本级初始化模板已移除，日常模板由 Daily 自持。"""
@@ -361,71 +372,31 @@ class TestGetGameExePath(unittest.TestCase):
 
     def test_unadapted_base_returns_none(self):
         """基类未适配（无资源声明）→ None，不触发任何读取"""
-        with patch("src.config.set_config.get_daily_configs", return_value=[]):
-            cfg = ScriptConfig()
-        with patch("src.config.set_config.load_game_config") as mock_load:
-            got = cfg.get_game_exe_path()
+        with (
+            patch("src.config.set_config.get_daily_configs", return_value=[]),
+            patch("src.config.set_config.load_game_config") as mock_load,
+        ):
+            got = ScriptConfig().get_game_exe_path()
         self.assertIsNone(got)
         mock_load.assert_not_called()
 
     def test_ok_series_pc_full_path(self):
-        """OK 系（ok-ww/ok-ef）读取 devices.json 的 pc_full_path。
-
-        异环（ok-nte）已重写 get_game_exe_path 返回启动器路径，不在此列（见专项测试）。
-        """
-        for script_name in ("ok-ww", "ok-ef"):
-            with patch(
-                "src.config.set_config.load_game_config",
-                return_value={
-                    "preferred": "pc_1",
-                    "pc_full_path": "D:\\Game\\game.exe",
-                },
+        """游戏路径始终是本体，读取图标路径不查询启动器注册表。"""
+        for script_name in ("ok-ww", "ok-ef", "ok-nte"):
+            with (
+                self.subTest(script=script_name),
+                patch(
+                    "src.config.set_config.load_game_config",
+                    return_value={
+                        "preferred": "pc_1",
+                        "pc_full_path": "D:\\Game\\game.exe",
+                    },
+                ),
+                patch.object(utils_launcher, "get_installed_launcher") as registry,
             ):
                 got = set_config._CONFIGS[script_name]().get_game_exe_path()
             self.assertEqual(got, "D:\\Game\\game.exe")
-
-    def test_nte_launcher_found_upward(self):
-        """异环启动器在游戏安装根目录（从游戏本体逐级上溯）→ 返回 NTELauncher.exe 路径"""
-        game_exe = os.path.join(
-            "D:/Neverness To Everness",
-            "Client",
-            "WindowsNoEditor",
-            "HT",
-            "Binaries",
-            "Win64",
-            "HTGame.exe",
-        )
-        launcher = os.path.join("D:/Neverness To Everness", "NTELauncher.exe")
-        with (
-            patch(
-                "src.config.set_config.load_game_config",
-                return_value={"pc_full_path": game_exe},
-            ),
-            patch("os.path.isfile", side_effect=lambda p: p == launcher),
-        ):
-            got = set_config._CONFIGS["ok-nte"]().get_game_exe_path()
-        self.assertEqual(got, launcher)
-
-    def test_nte_launcher_missing_returns_none(self):
-        """异环启动器不存在（上溯到盘符根也找不到）→ None，GUI 提示「未找到游戏路径」"""
-        game_exe = os.path.join(
-            "D:/Neverness To Everness",
-            "Client",
-            "WindowsNoEditor",
-            "HT",
-            "Binaries",
-            "Win64",
-            "HTGame.exe",
-        )
-        with (
-            patch(
-                "src.config.set_config.load_game_config",
-                return_value={"pc_full_path": game_exe},
-            ),
-            patch("os.path.isfile", return_value=False),
-        ):
-            got = set_config._CONFIGS["ok-nte"]().get_game_exe_path()
-        self.assertIsNone(got)
+            registry.assert_not_called()
 
     def test_unconfigured_game_path_returns_none(self):
         for script, config in (
@@ -450,7 +421,7 @@ class TestGetGameExePath(unittest.TestCase):
                 }
             },
         ):
-            got = set_config._CONFIGS["BetterGI"]().get_game_exe_path()
+            got = set_config.GenshinConfig().get_game_exe_path()
         self.assertEqual(got, "D:\\Genshin\\YuanShen.exe")
 
     def test_game_path_top_level(self):
@@ -465,22 +436,105 @@ class TestGetGameExePath(unittest.TestCase):
 
     def test_arknights_nested_emulator_path(self):
         """粥（MAA）读取 gui.new.json 的 Configurations.Default.Gui.StartUpSettings.EmulatorPath（多级嵌套）"""
-        with patch(
-            "src.config.set_config.load_game_config",
-            return_value={
-                "Configurations": {
-                    "Default": {
-                        "Gui": {
-                            "StartUpSettings": {
-                                "EmulatorPath": "C:\\MuMu\\#0 MuMu安卓设备.lnk",
+        with (
+            patch(
+                "src.config.set_config.load_game_config",
+                return_value={
+                    "Configurations": {
+                        "Default": {
+                            "Gui": {
+                                "StartUpSettings": {
+                                    "EmulatorPath": "C:\\MuMu\\#0 MuMu安卓设备.lnk",
+                                }
                             }
                         }
                     }
-                }
-            },
+                },
+            ),
+            patch.object(set_config.ArknightsConfig, "_init_config"),
         ):
-            got = set_config._CONFIGS["MAA"]().get_game_exe_path()
+            got = set_config.ArknightsConfig().get_game_exe_path()
         self.assertEqual(got, "C:\\MuMu\\#0 MuMu安卓设备.lnk")
+
+
+class TestInstalledLauncher(unittest.TestCase):
+    def setUp(self):
+        self.root = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        self.registry = SimpleNamespace(
+            HKEY_CURRENT_USER=1,
+            HKEY_LOCAL_MACHINE=2,
+            KEY_WOW64_64KEY=256,
+            KEY_WOW64_32KEY=512,
+            KEY_READ=1,
+            OpenKey=MagicMock(),
+            QueryValueEx=MagicMock(return_value=(str(self.root), 1)),
+        )
+        self.enterContext(patch.dict("sys.modules", {"winreg": self.registry}))
+        self.enterContext(patch.object(utils_launcher.sys, "platform", "win32"))
+        self.load = self.enterContext(
+            patch.object(set_config, "load_game_config", return_value=None)
+        )
+
+    def test_both_launchers_resolve_from_each_registry_location(self):
+        for script_name, uninstall_id, filename in (
+            (
+                "ok-ef",
+                "33a0a6296a20400d503c59ac0fd6341e",
+                "Launcher.exe",
+            ),
+            ("ok-nte", "YH", "NTELauncher.exe"),
+        ):
+            launcher = self.root / filename
+            launcher.touch()
+            for index, (root, view) in enumerate(
+                ((1, 256), (1, 512), (2, 256), (2, 512))
+            ):
+                with self.subTest(script=script_name, root=root, view=view):
+                    self.registry.OpenKey.reset_mock()
+                    self.registry.OpenKey.side_effect = [
+                        *[FileNotFoundError("not installed")] * index,
+                        MagicMock(),
+                    ]
+                    self.assertEqual(
+                        utils_launcher.get_installed_launcher(
+                            script_name, uninstall_id, filename
+                        ),
+                        str(launcher),
+                    )
+                    self.registry.OpenKey.assert_called_with(
+                        root,
+                        rf"Software\Microsoft\Windows\CurrentVersion\Uninstall\{uninstall_id}",
+                        0,
+                        1 | view,
+                    )
+                    self.assertEqual(self.registry.OpenKey.call_count, index + 1)
+            self.load.assert_not_called()
+
+    def test_missing_or_denied_install_records_return_none(self):
+        for error in (FileNotFoundError("missing"), PermissionError("denied")):
+            with self.subTest(error=type(error).__name__):
+                self.registry.OpenKey.side_effect = error
+                self.assertIsNone(
+                    utils_launcher.get_installed_launcher(
+                        "ok-nte", "YH", "NTELauncher.exe"
+                    )
+                )
+
+    def test_invalid_install_location_or_absent_file_is_ignored(self):
+        for folder in (None, 1, "", "relative", str(self.root)):
+            with self.subTest(folder=folder):
+                self.registry.QueryValueEx.return_value = (folder, 1)
+                self.assertIsNone(
+                    utils_launcher.get_installed_launcher("game", "id", "Launcher.exe")
+                )
+        self.load.assert_not_called()
+
+    def test_non_windows_does_not_read_registry(self):
+        with patch.object(utils_launcher.sys, "platform", "linux"):
+            self.assertIsNone(
+                utils_launcher.get_installed_launcher("game", "id", "Launcher.exe")
+            )
+        self.registry.OpenKey.assert_not_called()
 
 
 class TestGetGameExePathAdapter(unittest.TestCase):
@@ -518,6 +572,205 @@ class TestGetGameExePathAdapter(unittest.TestCase):
                 patch.object(set_config, "get_script_game_path", return_value=entry),
             ):
                 self.assertEqual(set_config.get_game_exe_path("ok-ww"), expected)
+
+
+class TestLaunchGame(unittest.TestCase):
+    def setUp(self):
+        self.root = Path(self.enterContext(tempfile.TemporaryDirectory()))
+
+    def test_registered_game_dispatch_does_not_read_path(self):
+        factory = MagicMock()
+        factory.return_value.launch_game.return_value = 42
+        with (
+            patch.dict(set_config._CONFIGS, {"ok-ww": factory}, clear=True),
+            patch.object(set_config, "get_game_exe_path") as read_path,
+            patch.object(set_config, "resolve_script_path") as resolve,
+        ):
+            self.assertEqual(set_config.launch_game("ok-ww", "--profile 1"), 42)
+        factory.assert_called_once_with()
+        factory.return_value.launch_game.assert_called_once_with("--profile 1")
+        read_path.assert_not_called()
+        resolve.assert_not_called()
+
+    def test_standard_and_custom_games_preserve_arguments_and_resolve_paths(self):
+        arguments = '--profile "中文 空格" --literal "a&b"'
+        for script_name, filename in (
+            ("ok-ww", "game.exe"),
+            ("custom", "中文 快捷方式.lnk"),
+        ):
+            game = self.root / filename
+            game.touch()
+            with (
+                self.subTest(script=script_name),
+                patch.object(set_config, "get_script_game_path", return_value=filename),
+                patch.object(
+                    set_config,
+                    "resolve_script_path",
+                    return_value=os.path.relpath(game),
+                ) as resolve,
+                patch.object(set_config, "open_in_explorer") as open_game,
+                patch.object(utils_launcher, "launch_with_launcher") as launcher,
+            ):
+                self.assertIsNone(set_config.launch_game(script_name, arguments))
+                resolve.assert_called_once_with(filename)
+                open_game.assert_called_once_with(os.path.abspath(game), arguments)
+                launcher.assert_not_called()
+
+    def test_maa_launch_initializes_once_per_cached_instance(self):
+        game = self.root / "#0 MuMu安卓设备.lnk"
+        game.touch()
+        native_config = {
+            "Configurations": {
+                "Default": {"Gui": {"StartUpSettings": {"EmulatorPath": str(game)}}}
+            }
+        }
+        for entry_path in ("", str(game)):
+            events = []
+            with (
+                self.subTest(entry_path=entry_path),
+                patch.dict(
+                    set_config._CONFIGS, {"MAA": cache(set_config.ArknightsConfig)}
+                ),
+                patch.object(
+                    set_config, "get_script_game_path", return_value=entry_path
+                ),
+                patch.object(
+                    set_config, "load_game_config", return_value=native_config
+                ),
+                patch.object(
+                    set_config.ArknightsConfig,
+                    "_init_config",
+                    side_effect=lambda events=events: events.append("initialize"),
+                ) as initialize,
+                patch.object(
+                    set_config,
+                    "open_in_explorer",
+                    side_effect=lambda *_args, events=events: events.append("open"),
+                ) as open_game,
+            ):
+                for _ in range(2):
+                    self.assertIsNone(set_config.launch_game("MAA", "--instance 0"))
+                    open_game.assert_called_with(str(game), "--instance 0")
+                self.assertEqual(set_config.get_game_exe_path("MAA"), str(game))
+                initialize.assert_called_once_with()
+                self.assertEqual(events, ["initialize", "open", "open"])
+
+    def test_launcher_parameters_select_shared_flow_by_script(self):
+        arguments = '--profile "中文 游戏"'
+        game = self.root / "renamed-game.exe"
+        game.touch()
+        for script_name, game_path, declaration in (
+            (
+                "ok-ef",
+                str(game),
+                {
+                    "uninstall_id": "33a0a6296a20400d503c59ac0fd6341e",
+                    "filename": "Launcher.exe",
+                    "arguments": ("--game=Endfield", "--reason=4"),
+                    "process_name": "Games.exe",
+                    "trusted_signers": frozenset(
+                        {
+                            "2B366F397E64A9494A553B70004E8CA1AAE02B9D",
+                            "FF4AF264C36A27F0C805936708EF8EC67B396225",
+                        }
+                    ),
+                },
+            ),
+            (
+                "ok-nte",
+                None,
+                {
+                    "uninstall_id": "YH",
+                    "filename": "NTELauncher.exe",
+                    "arguments": ("/autoplay",),
+                },
+            ),
+        ):
+            with (
+                self.subTest(script=script_name),
+                patch.object(
+                    set_config, "get_script_game_path", return_value=str(game)
+                ),
+                patch.object(
+                    utils_launcher, "launch_with_launcher", return_value=42
+                ) as launch,
+                patch.object(set_config, "open_in_explorer") as open_game,
+            ):
+                self.assertEqual(set_config.launch_game(script_name, arguments), 42)
+                launch.assert_called_once_with(game_path, arguments, **declaration)
+                open_game.assert_not_called()
+
+    def test_nte_autoplay_uses_launcher_without_game_process_handling(self):
+        launcher_path = self.root / "NTELauncher.exe"
+        launcher_path.touch()
+        for arguments in ("", '--profile "中文 游戏"'):
+            with (
+                self.subTest(arguments=arguments),
+                patch.object(set_config, "get_game_exe_path") as game_path,
+                patch.object(set_config, "get_script_game_path") as configured_path,
+                patch.object(set_config, "load_game_config") as native_config,
+                patch.object(set_config, "resolve_script_path") as resolve,
+                patch.object(
+                    utils_launcher,
+                    "get_installed_launcher",
+                    return_value=str(launcher_path),
+                ) as find,
+                patch.object(utils_launcher, "open_in_explorer") as open_launcher,
+                patch.object(utils_launcher, "_kernel32") as kernel,
+            ):
+                if not arguments:
+                    set_config.launch_game("ok-nte", arguments)
+                else:
+                    with self.assertLogs(set_config.logger, level="WARNING") as logs:
+                        set_config.launch_game("ok-nte", arguments)
+                    self.assertIn("暂不支持传递自定义游戏参数", logs.output[0])
+                find.assert_called_once_with("NTELauncher.exe", "YH", "NTELauncher.exe")
+                open_launcher.assert_called_once_with(str(launcher_path), "/autoplay")
+                kernel.assert_not_called()
+                game_path.assert_not_called()
+                configured_path.assert_not_called()
+                native_config.assert_not_called()
+                resolve.assert_not_called()
+
+    def test_unrecoverable_game_path_read_failures_propagate(self):
+        for script_name, source in (
+            ("ok-ww", "load_game_config"),
+            ("ok-ef", "load_game_config"),
+        ):
+            for error in (
+                PermissionError("配置无访问权限"),
+                json.JSONDecodeError("配置损坏", "{", 1),
+            ):
+                with (
+                    self.subTest(script=script_name, source=source, error=error),
+                    patch.object(set_config, "get_script_game_path", return_value=""),
+                    patch.object(set_config, source, side_effect=error),
+                    patch.object(set_config, "open_in_explorer") as open_game,
+                    patch.object(utils_launcher, "launch_with_launcher") as launcher,
+                    self.assertRaises(type(error)),
+                ):
+                    set_config.launch_game(script_name)
+                open_game.assert_not_called()
+                launcher.assert_not_called()
+
+    def test_invalid_direct_game_inputs_do_not_open_any_target(self):
+        game = self.root / "game.exe"
+        game.touch()
+        for script in ("ok-ww", "custom"):
+            for path, arguments, error in (
+                (None, "", FileNotFoundError),
+                (str(self.root / "missing.exe"), "", FileNotFoundError),
+                (str(self.root), "", FileNotFoundError),
+                (str(game), None, ValueError),
+            ):
+                with (
+                    self.subTest(script=script, path=path, arguments=arguments),
+                    patch.object(set_config, "get_game_exe_path", return_value=path),
+                    patch.object(set_config, "open_in_explorer") as open_game,
+                    self.assertRaises(error),
+                ):
+                    set_config.launch_game(script, arguments)
+                open_game.assert_not_called()
 
 
 class TestSetConfigAdapter(unittest.TestCase):
