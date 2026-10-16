@@ -659,9 +659,10 @@ class TestLaunchGame(unittest.TestCase):
         arguments = '--profile "中文 游戏"'
         game = self.root / "renamed-game.exe"
         game.touch()
-        for script_name, declaration in (
+        for script_name, game_path, declaration in (
             (
                 "ok-ef",
+                str(game),
                 {
                     "uninstall_id": "33a0a6296a20400d503c59ac0fd6341e",
                     "filename": "Launcher.exe",
@@ -677,6 +678,7 @@ class TestLaunchGame(unittest.TestCase):
             ),
             (
                 "ok-nte",
+                None,
                 {
                     "uninstall_id": "YH",
                     "filename": "NTELauncher.exe",
@@ -695,28 +697,19 @@ class TestLaunchGame(unittest.TestCase):
                 patch.object(set_config, "open_in_explorer") as open_game,
             ):
                 self.assertEqual(set_config.launch_game(script_name, arguments), 42)
-                launch.assert_called_once_with(str(game), arguments, **declaration)
+                launch.assert_called_once_with(game_path, arguments, **declaration)
                 open_game.assert_not_called()
 
     def test_nte_autoplay_uses_launcher_without_game_process_handling(self):
         launcher_path = self.root / "NTELauncher.exe"
         launcher_path.touch()
-        game_path = str(self.root / "HTGame.exe")
-        for path, error, arguments in (
-            (game_path, None, '--profile "中文 游戏"'),
-            ("", None, ""),
-            ("", PermissionError("配置无访问权限"), ""),
-            ("", json.JSONDecodeError("配置损坏", "{", 1), ""),
-        ):
+        for arguments in ("", '--profile "中文 游戏"'):
             with (
-                self.subTest(path=path, error=error, arguments=arguments),
-                patch.object(set_config, "get_script_game_path", return_value=path),
-                patch.object(
-                    set_config, "load_game_config", return_value=None, side_effect=error
-                ),
-                patch.object(
-                    set_config, "resolve_script_path", return_value=path
-                ) as resolve,
+                self.subTest(arguments=arguments),
+                patch.object(set_config, "get_game_exe_path") as game_path,
+                patch.object(set_config, "get_script_game_path") as configured_path,
+                patch.object(set_config, "load_game_config") as native_config,
+                patch.object(set_config, "resolve_script_path") as resolve,
                 patch.object(
                     utils_launcher,
                     "get_installed_launcher",
@@ -725,26 +718,24 @@ class TestLaunchGame(unittest.TestCase):
                 patch.object(utils_launcher, "open_in_explorer") as open_launcher,
                 patch.object(utils_launcher, "_kernel32") as kernel,
             ):
-                if error is None and not arguments:
+                if not arguments:
                     set_config.launch_game("ok-nte", arguments)
                 else:
                     with self.assertLogs(set_config.logger, level="WARNING") as logs:
                         set_config.launch_game("ok-nte", arguments)
-                    if arguments:
-                        self.assertIn("暂不支持传递自定义游戏参数", logs.output[0])
+                    self.assertIn("暂不支持传递自定义游戏参数", logs.output[0])
                 find.assert_called_once_with("NTELauncher.exe", "YH", "NTELauncher.exe")
                 open_launcher.assert_called_once_with(str(launcher_path), "/autoplay")
                 kernel.assert_not_called()
-                if path:
-                    resolve.assert_called_once_with(path)
-                else:
-                    resolve.assert_not_called()
+                game_path.assert_not_called()
+                configured_path.assert_not_called()
+                native_config.assert_not_called()
+                resolve.assert_not_called()
 
     def test_unrecoverable_game_path_read_failures_propagate(self):
         for script_name, source in (
             ("ok-ww", "load_game_config"),
             ("ok-ef", "load_game_config"),
-            ("ok-nte", "get_script_game_path"),
         ):
             for error in (
                 PermissionError("配置无访问权限"),

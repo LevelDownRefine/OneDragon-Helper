@@ -310,28 +310,12 @@ class NTEConfig(ScriptConfig):
     _script_name = "ok-nte"
     display_name = "异环"
 
-    def get_game_exe_path(self) -> str | None:
-        """读取游戏本体路径；原生配置不可读时仍允许从注册表定位启动器。"""
-        try:
-            return super().get_game_exe_path()
-        except (OSError, ValueError) as error:
-            logger.warning(
-                "[%s] 读取原生游戏路径失败 (%s): %s",
-                self._script_name,
-                type(error).__name__,
-                error,
-            )
-            return None
-
     def launch_game(self, game_arguments: str = "") -> int | None:
-        """通过官方启动器的 /autoplay 参数自动启动游戏。"""
+        """从注册表定位官方启动器，通过 /autoplay 自动启动游戏。"""
         if isinstance(game_arguments, str) and game_arguments.strip():
             logger.warning("异环通过官方启动器启动，暂不支持传递自定义游戏参数")
-        game_path = get_game_exe_path(self._script_name)
-        if game_path:
-            game_path = os.path.abspath(resolve_script_path(game_path))
         return utils_launcher.launch_with_launcher(
-            game_path,
+            None,
             game_arguments,
             uninstall_id="YH",
             filename="NTELauncher.exe",
