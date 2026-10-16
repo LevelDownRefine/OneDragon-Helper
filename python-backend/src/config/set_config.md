@@ -26,10 +26,11 @@
 所有游戏通过后台 CLI `--launch-game SCRIPT_NAME` 调用模块入口，再分派给
 对应适配器的 `ScriptConfig.launch_game(game_path, game_arguments)` 类方法。
 `link` 仅传脚本标识和游戏参数，游戏路径在后台解析；查路径和启动均不构造适配器，
-避免触发 MAA 原生任务队列初始化。普通和未适配游戏沿用系统关联打开，支持快捷方式。
+避免触发 MAA 原生任务队列初始化。基类 `launch_game()` 只通过系统关联直接打开游戏，
+支持快捷方式，不声明或判断启动器字段。
 
-有启动器的游戏在自己的 `ScriptConfig` 子类声明 `launcher_uninstall_id`、
-`launcher_filename` 和 `launcher_arguments`，统一调用 `utils_launcher.launch_with_launcher`。
+终末地和异环各自覆盖 `launch_game()`，并在自己的子类中保存所需启动器配置，
+共同调用 `utils_launcher.launch_with_launcher`。
 该流程共用 Windows 卸载记录的 HKCU/HKLM、32/64 位视图和 `InstallLocation`；
 未找到时从游戏目录向上查找启动器。无需额外的启动器类或按 EXE 文件名注册的表。
 
@@ -40,7 +41,8 @@
 登录或更新状态。等待在后台执行。
 
 异环在 `NTEConfig` 声明 `YH` 和 `NTELauncher.exe`，暂时只打开启动器；
-即使游戏路径未配置，仍可通过注册表找到启动器。它使用自己的启动器参数，
+即使游戏路径未配置，仍可通过注册表找到启动器；原生配置读取失败由它自己的
+`get_game_exe_path()` 记录日志并返回空路径。它使用自己的启动器参数，
 不再将 `game_arguments` 传给启动器。自动启动异环游戏尚未验证。
 
 各游戏手填的 `game_path` 始终优先，指向游戏本体；未填时读取原生配置。

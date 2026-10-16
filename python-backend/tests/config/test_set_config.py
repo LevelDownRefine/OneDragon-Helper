@@ -652,9 +652,6 @@ class TestLaunchGame(unittest.TestCase):
                 {
                     "uninstall_id": "YH",
                     "filename": "NTELauncher.exe",
-                    "arguments": (),
-                    "process_name": "",
-                    "trusted_signers": frozenset(),
                 },
             ),
         ):
@@ -697,22 +694,23 @@ class TestLaunchGame(unittest.TestCase):
                     "",
                     uninstall_id="YH",
                     filename="NTELauncher.exe",
-                    arguments=(),
-                    process_name="",
-                    trusted_signers=frozenset(),
                 )
                 resolve.assert_not_called()
 
-    def test_game_path_read_failures_propagate_when_game_path_is_required(self):
-        for script_name in ("ok-ww", "ok-ef"):
+    def test_unrecoverable_game_path_read_failures_propagate(self):
+        for script_name, source in (
+            ("ok-ww", "load_game_config"),
+            ("ok-ef", "load_game_config"),
+            ("ok-nte", "get_script_game_path"),
+        ):
             for error in (
                 PermissionError("配置无访问权限"),
                 json.JSONDecodeError("配置损坏", "{", 1),
             ):
                 with (
-                    self.subTest(script=script_name, error=error),
+                    self.subTest(script=script_name, source=source, error=error),
                     patch.object(set_config, "get_script_game_path", return_value=""),
-                    patch.object(set_config, "load_game_config", side_effect=error),
+                    patch.object(set_config, source, side_effect=error),
                     patch.object(set_config, "open_in_explorer") as open_game,
                     patch.object(utils_launcher, "launch_with_launcher") as launcher,
                     self.assertRaises(type(error)),

@@ -44,13 +44,6 @@ class ScriptConfig:
     resources: ScriptResources | None = None
     """静态资源来自 script_resources.yml；基类 None 表示未适配。"""
 
-    # 文件名为空时直接启动游戏；进程名非空时等待并以该启动器为父进程创建游戏。
-    launcher_uninstall_id: str = ""
-    launcher_filename: str = ""
-    launcher_arguments: tuple[str, ...] = ()
-    launcher_process_name: str = ""
-    launcher_trusted_signers: frozenset[str] = frozenset()
-
     def __init__(self) -> None:
         """按声明装配日常与周常对象，不读写原生配置。"""
         self._dailies: list[Daily] = build_dailies(
@@ -220,19 +213,9 @@ class ScriptConfig:
 
     @classmethod
     def launch_game(cls, game_path: str | None, game_arguments: str = "") -> int | None:
-        """统一启动游戏；有启动器声明时先通过通用流程准备启动器。"""
+        """通过系统关联直接打开游戏，支持可执行文件和快捷方式。"""
         if not isinstance(game_arguments, str):
             raise ValueError("游戏启动参数无效")
-        if cls.launcher_filename:
-            return utils_launcher.launch_with_launcher(
-                game_path,
-                game_arguments,
-                uninstall_id=cls.launcher_uninstall_id,
-                filename=cls.launcher_filename,
-                arguments=cls.launcher_arguments,
-                process_name=cls.launcher_process_name,
-                trusted_signers=cls.launcher_trusted_signers,
-            )
         if not game_path or not os.path.isfile(game_path):
             raise FileNotFoundError(f"未找到游戏程序：{game_path}")
         game_path = os.path.abspath(game_path)
@@ -296,6 +279,19 @@ class EndfieldConfig(ScriptConfig):
         }
     )
 
+    @classmethod
+    def launch_game(cls, game_path: str | None, game_arguments: str = "") -> int | None:
+        """准备官方启动器，等待其进程就绪后创建游戏。"""
+        return utils_launcher.launch_with_launcher(
+            game_path,
+            game_arguments,
+            uninstall_id=cls.launcher_uninstall_id,
+            filename=cls.launcher_filename,
+            arguments=cls.launcher_arguments,
+            process_name=cls.launcher_process_name,
+            trusted_signers=cls.launcher_trusted_signers,
+        )
+
 
 # ---- 绝区零 Zenless Zone Zero ----
 @register
@@ -318,6 +314,30 @@ class NTEConfig(ScriptConfig):
     display_name = "异环"
     launcher_uninstall_id = "YH"
     launcher_filename = "NTELauncher.exe"
+
+    @classmethod
+    def get_game_exe_path(cls) -> str | None:
+        """读取游戏本体路径；原生配置不可读时仍允许从注册表定位启动器。"""
+        try:
+            return super().get_game_exe_path()
+        except (OSError, ValueError) as error:
+            logger.warning(
+                "[%s] 读取原生游戏路径失败 (%s): %s",
+                cls._script_name,
+                type(error).__name__,
+                error,
+            )
+            return None
+
+    @classmethod
+    def launch_game(cls, game_path: str | None, game_arguments: str = "") -> int | None:
+        """共用启动器定位流程，暂时只打开异环启动器。"""
+        return utils_launcher.launch_with_launcher(
+            game_path,
+            game_arguments,
+            uninstall_id=cls.launcher_uninstall_id,
+            filename=cls.launcher_filename,
+        )
 
 
 # ---- 明日方舟 Arknights（粥）----
@@ -565,18 +585,7 @@ def launch_game(script_name: str, game_arguments: str = "") -> int | None:
     if script_name in _CONFIGS:
         # cache(cls) 的原始类；启动游戏不构造日常任务或初始化原生配置。
         cls = _CONFIGS[script_name].__wrapped__
-    try:
-        game_path = get_game_exe_path(script_name)
-    except (OSError, ValueError) as error:
-        if not cls.launcher_filename or cls.launcher_process_name:
-            raise
-        logger.warning(
-            "[%s] 读取游戏路径失败 (%s): %s；尝试通过注册表打开启动器",
-            script_name,
-            type(error).__name__,
-            error,
-        )
-        game_path = None
+    game_path = get_game_exe_path(script_name)
     if game_path:
         game_path = os.path.abspath(resolve_script_path(game_path))
     return cls.launch_game(game_path, game_arguments)
