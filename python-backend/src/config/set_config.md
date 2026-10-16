@@ -24,10 +24,11 @@
 ## 游戏启动入口
 
 所有游戏通过后台 CLI `--launch-game SCRIPT_NAME` 调用模块入口，再分派给
-对应适配器的 `ScriptConfig.launch_game(game_path, game_arguments)` 类方法。
-`link` 仅传脚本标识和游戏参数，游戏路径在后台解析；查路径和启动均不构造适配器，
-避免触发 MAA 原生任务队列初始化。基类 `launch_game()` 只通过系统关联直接打开游戏，
-支持快捷方式，不声明或判断启动器字段。
+对应适配器的 `launch_game(game_path, game_arguments)` 实例方法。
+`link` 仅传脚本标识和游戏参数，游戏路径在后台解析；查路径和启动均使用缓存的适配器实例。
+MAA 保留构造时初始化原生任务队列的行为，首次读取路径或打开模拟器也会触发；
+缓存仅在当前进程内有效，后台启动游戏的新进程会重新初始化。
+基类 `launch_game()` 只通过系统关联直接打开游戏，支持快捷方式，不声明或判断启动器字段。
 
 终末地和异环各自覆盖 `launch_game()`，并在自己的子类中保存所需启动器配置，
 共同调用 `utils_launcher.launch_with_launcher`。

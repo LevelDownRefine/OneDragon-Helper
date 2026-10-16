@@ -373,7 +373,7 @@ class TestGetGameExePath(unittest.TestCase):
     def test_unadapted_base_returns_none(self):
         """基类未适配（无资源声明）→ None，不触发任何读取"""
         with patch("src.config.set_config.load_game_config") as mock_load:
-            got = ScriptConfig.get_game_exe_path()
+            got = ScriptConfig().get_game_exe_path()
         self.assertIsNone(got)
         mock_load.assert_not_called()
 
@@ -391,7 +391,7 @@ class TestGetGameExePath(unittest.TestCase):
                 ),
                 patch.object(utils_launcher, "get_installed_launcher") as registry,
             ):
-                got = set_config._CONFIGS[script_name].__wrapped__.get_game_exe_path()
+                got = set_config._CONFIGS[script_name]().get_game_exe_path()
             self.assertEqual(got, "D:\\Game\\game.exe")
             registry.assert_not_called()
 
@@ -406,9 +406,7 @@ class TestGetGameExePath(unittest.TestCase):
                 self.subTest(script=script, config=config),
                 patch("src.config.set_config.load_game_config", return_value=config),
             ):
-                self.assertIsNone(
-                    set_config._CONFIGS[script].__wrapped__.get_game_exe_path()
-                )
+                self.assertIsNone(set_config._CONFIGS[script]().get_game_exe_path())
 
     def test_genshin_nested_install_path(self):
         """原神（BetterGI）读取 config.json 的 genshinStartConfig.installPath（嵌套）"""
@@ -420,7 +418,7 @@ class TestGetGameExePath(unittest.TestCase):
                 }
             },
         ):
-            got = set_config.GenshinConfig.get_game_exe_path()
+            got = set_config.GenshinConfig().get_game_exe_path()
         self.assertEqual(got, "D:\\Genshin\\YuanShen.exe")
 
     def test_game_path_top_level(self):
@@ -430,26 +428,29 @@ class TestGetGameExePath(unittest.TestCase):
                 "src.config.set_config.load_game_config",
                 return_value={"game_path": "D:\\Game\\game.exe"},
             ):
-                got = set_config._CONFIGS[script_name].__wrapped__.get_game_exe_path()
+                got = set_config._CONFIGS[script_name]().get_game_exe_path()
             self.assertEqual(got, "D:\\Game\\game.exe")
 
     def test_arknights_nested_emulator_path(self):
         """粥（MAA）读取 gui.new.json 的 Configurations.Default.Gui.StartUpSettings.EmulatorPath（多级嵌套）"""
-        with patch(
-            "src.config.set_config.load_game_config",
-            return_value={
-                "Configurations": {
-                    "Default": {
-                        "Gui": {
-                            "StartUpSettings": {
-                                "EmulatorPath": "C:\\MuMu\\#0 MuMu安卓设备.lnk",
+        with (
+            patch(
+                "src.config.set_config.load_game_config",
+                return_value={
+                    "Configurations": {
+                        "Default": {
+                            "Gui": {
+                                "StartUpSettings": {
+                                    "EmulatorPath": "C:\\MuMu\\#0 MuMu安卓设备.lnk",
+                                }
                             }
                         }
                     }
-                }
-            },
+                },
+            ),
+            patch.object(set_config.ArknightsConfig, "_init_config"),
         ):
-            got = set_config.ArknightsConfig.get_game_exe_path()
+            got = set_config.ArknightsConfig().get_game_exe_path()
         self.assertEqual(got, "C:\\MuMu\\#0 MuMu安卓设备.lnk")
 
 
@@ -543,21 +544,19 @@ class TestGetGameExePathAdapter(unittest.TestCase):
 
     def test_known_process_dispatches(self):
         factory = MagicMock()
-        factory.__wrapped__ = MagicMock()
-        factory.__wrapped__.get_game_exe_path.return_value = "D:/Game/game.exe"
+        factory.return_value.get_game_exe_path.return_value = "D:/Game/game.exe"
         with (
             patch.dict(set_config._CONFIGS, {"ok-ww": factory}, clear=True),
             patch.object(set_config, "get_script_game_path", return_value=""),
         ):
             self.assertEqual(set_config.get_game_exe_path("ok-ww"), "D:/Game/game.exe")
-        factory.assert_not_called()
-        factory.__wrapped__.get_game_exe_path.assert_called_once_with()
+        factory.assert_called_once_with()
+        factory.return_value.get_game_exe_path.assert_called_once_with()
 
     def test_entry_game_path_then_native(self):
         """config.yml 手填的 game_path 优先（用户显式指定），未填才用脚本原生配置。"""
         native = MagicMock()
-        native.__wrapped__ = MagicMock()
-        native.__wrapped__.get_game_exe_path.return_value = "D:/native.exe"
+        native.return_value.get_game_exe_path.return_value = "D:/native.exe"
         cases = (
             ("手填优先", {"ok-ww": native}, "D:/entry.exe", "D:/entry.exe"),
             ("回退原生", {"ok-ww": native}, "", "D:/native.exe"),
@@ -600,7 +599,7 @@ class TestLaunchGame(unittest.TestCase):
                 open_game.assert_called_once_with(os.path.abspath(game), arguments)
                 launcher.assert_not_called()
 
-    def test_native_game_path_uses_adapter_without_initializing_maa(self):
+    def test_maa_launch_initializes_once_per_cached_instance(self):
         game = self.root / "#0 MuMu安卓设备.lnk"
         game.touch()
         native_config = {
@@ -608,24 +607,36 @@ class TestLaunchGame(unittest.TestCase):
                 "Default": {"Gui": {"StartUpSettings": {"EmulatorPath": str(game)}}}
             }
         }
-        with (
-            patch.dict(set_config._CONFIGS, {"MAA": cache(set_config.ArknightsConfig)}),
-            patch.object(set_config, "get_script_game_path", return_value=""),
-            patch.object(set_config, "load_game_config", return_value=native_config),
-            patch.object(
-                set_config.ArknightsConfig,
-                "_init_config",
-                side_effect=AssertionError("读取路径和启动模拟器不得初始化原生任务"),
-            ) as initialize,
-            patch.object(set_config, "open_in_explorer") as open_game,
-            patch.object(daily_mod, "save_script_config") as save,
-        ):
-            self.assertEqual(set_config.get_game_exe_path("MAA"), str(game))
-            self.assertIsNone(set_config.launch_game("MAA", "--instance 0"))
-            open_game.assert_called_once_with(str(game), "--instance 0")
-            initialize.assert_not_called()
-            save.assert_not_called()
-            self.assertEqual(set_config._CONFIGS["MAA"].cache_info().currsize, 0)
+        for entry_path in ("", str(game)):
+            events = []
+            with (
+                self.subTest(entry_path=entry_path),
+                patch.dict(
+                    set_config._CONFIGS, {"MAA": cache(set_config.ArknightsConfig)}
+                ),
+                patch.object(
+                    set_config, "get_script_game_path", return_value=entry_path
+                ),
+                patch.object(
+                    set_config, "load_game_config", return_value=native_config
+                ),
+                patch.object(
+                    set_config.ArknightsConfig,
+                    "_init_config",
+                    side_effect=lambda events=events: events.append("initialize"),
+                ) as initialize,
+                patch.object(
+                    set_config,
+                    "open_in_explorer",
+                    side_effect=lambda *_args, events=events: events.append("open"),
+                ) as open_game,
+            ):
+                for _ in range(2):
+                    self.assertIsNone(set_config.launch_game("MAA", "--instance 0"))
+                    open_game.assert_called_with(str(game), "--instance 0")
+                self.assertEqual(set_config.get_game_exe_path("MAA"), str(game))
+                initialize.assert_called_once_with()
+                self.assertEqual(events, ["initialize", "open", "open"])
 
     def test_launcher_declarations_select_shared_flow_by_script(self):
         arguments = '--profile "中文 游戏"'
@@ -732,7 +743,7 @@ class TestLaunchGame(unittest.TestCase):
                 patch.object(set_config, "open_in_explorer") as open_game,
                 self.assertRaises(error),
             ):
-                ScriptConfig.launch_game(path, arguments)
+                ScriptConfig().launch_game(path, arguments)
             open_game.assert_not_called()
 
 

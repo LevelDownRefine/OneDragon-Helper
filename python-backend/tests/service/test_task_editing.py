@@ -121,12 +121,16 @@ class TaskEditingTests(unittest.TestCase):
         no_switch = deepcopy(declaration)
         no_switch.update(display_name="无开关日常", config="no-switch.json")
         del no_switch["enable_key"]
+
+        class TestConfig(config_mod.ScriptConfig):
+            _script_name = "脚本"
+
         with patch.object(
             config_mod,
             "get_daily_configs",
             return_value=[declaration, dynamic, no_switch],
         ):
-            config = config_mod.ScriptConfig()
+            config = TestConfig()
         self.config = config
         self.enterContext(
             patch.dict(config_mod._CONFIGS, {"脚本": lambda: config}, clear=True)

@@ -46,12 +46,14 @@ class ScriptConfig:
 
     def __init__(self) -> None:
         """按声明装配日常与周常对象，不读写原生配置。"""
-        self._dailies: list[Daily] = build_dailies(
+        self._dailies: list[Daily] = []
+        self._weeklies: list[Weekly] = []
+        if not self._script_name:
+            return
+        self._dailies = build_dailies(
             self._script_name, self.display_name, get_daily_configs(self._script_name)
         )
-        self._weeklies: list[Weekly] = build_weeklies(
-            self._script_name, self.display_name
-        )
+        self._weeklies = build_weeklies(self._script_name, self.display_name)
 
     def _daily_config_rel_path(self) -> str:
         """脚本 config 文件路径（取首个日常声明的 ``config``）。
@@ -181,38 +183,38 @@ class ScriptConfig:
             return None
         return weekly.read_task()
 
-    @classmethod
-    def get_game_exe_path(cls) -> str | None:
+    def get_game_exe_path(self) -> str | None:
         """读取本脚本配置中的游戏 exe 路径。
 
         Returns:
             exe 绝对路径；未适配、缺失或为空时返回 None。
         """
-        if cls.resources is None or "game" not in cls.resources:
+        if self.resources is None or "game" not in self.resources:
             return None
-        game = cls.resources["game"]
+        game = self.resources["game"]
         assert "config" in game and "keys" in game
-        game_config = load_game_config(cls._script_name, game["config"])
+        game_config = load_game_config(self._script_name, game["config"])
         if game_config is None:
             return None
         node = game_config
         for key in game["keys"]:
             if not isinstance(node, dict) or key not in node:
                 logger.warning(
-                    f"[get_game_exe_path][{cls._script_name}] 配置缺少字段: "
+                    f"[get_game_exe_path][{self._script_name}] 配置缺少字段: "
                     f"{game['keys']}"
                 )
                 return None
             node = node[key]
         if not isinstance(node, str) or not node:
             logger.warning(
-                f"[get_game_exe_path][{cls._script_name}] 游戏路径字段非字符串或为空"
+                f"[get_game_exe_path][{self._script_name}] 游戏路径字段非字符串或为空"
             )
             return None
         return node
 
-    @classmethod
-    def launch_game(cls, game_path: str | None, game_arguments: str = "") -> int | None:
+    def launch_game(
+        self, game_path: str | None, game_arguments: str = ""
+    ) -> int | None:
         """通过系统关联直接打开游戏，支持可执行文件和快捷方式。"""
         if not isinstance(game_arguments, str):
             raise ValueError("游戏启动参数无效")
@@ -279,17 +281,18 @@ class EndfieldConfig(ScriptConfig):
         }
     )
 
-    @classmethod
-    def launch_game(cls, game_path: str | None, game_arguments: str = "") -> int | None:
+    def launch_game(
+        self, game_path: str | None, game_arguments: str = ""
+    ) -> int | None:
         """准备官方启动器，等待其进程就绪后创建游戏。"""
         return utils_launcher.launch_with_launcher(
             game_path,
             game_arguments,
-            uninstall_id=cls.launcher_uninstall_id,
-            filename=cls.launcher_filename,
-            arguments=cls.launcher_arguments,
-            process_name=cls.launcher_process_name,
-            trusted_signers=cls.launcher_trusted_signers,
+            uninstall_id=self.launcher_uninstall_id,
+            filename=self.launcher_filename,
+            arguments=self.launcher_arguments,
+            process_name=self.launcher_process_name,
+            trusted_signers=self.launcher_trusted_signers,
         )
 
 
@@ -315,28 +318,28 @@ class NTEConfig(ScriptConfig):
     launcher_uninstall_id = "YH"
     launcher_filename = "NTELauncher.exe"
 
-    @classmethod
-    def get_game_exe_path(cls) -> str | None:
+    def get_game_exe_path(self) -> str | None:
         """读取游戏本体路径；原生配置不可读时仍允许从注册表定位启动器。"""
         try:
             return super().get_game_exe_path()
         except (OSError, ValueError) as error:
             logger.warning(
                 "[%s] 读取原生游戏路径失败 (%s): %s",
-                cls._script_name,
+                self._script_name,
                 type(error).__name__,
                 error,
             )
             return None
 
-    @classmethod
-    def launch_game(cls, game_path: str | None, game_arguments: str = "") -> int | None:
+    def launch_game(
+        self, game_path: str | None, game_arguments: str = ""
+    ) -> int | None:
         """共用启动器定位流程，暂时只打开异环启动器。"""
         return utils_launcher.launch_with_launcher(
             game_path,
             game_arguments,
-            uninstall_id=cls.launcher_uninstall_id,
-            filename=cls.launcher_filename,
+            uninstall_id=self.launcher_uninstall_id,
+            filename=self.launcher_filename,
         )
 
 
@@ -349,6 +352,8 @@ class ArknightsConfig(ScriptConfig):
     def __init__(self) -> None:
         """装配日常与周常对象，并初始化 MAA 原生任务队列。"""
         super().__init__()
+        # 首次构造会整理并按需写入原生任务队列，读取游戏路径或打开模拟器也会触发。
+        # 实例仅在当前进程内缓存，后台启动游戏的新进程会重新初始化。
         self._init_config()
 
     def _init_config(self) -> None:
@@ -575,20 +580,17 @@ def get_game_exe_path(script_name: str) -> str | None:
     if path:
         return path
     if script_name in _CONFIGS:
-        return _CONFIGS[script_name].__wrapped__.get_game_exe_path()
+        return _CONFIGS[script_name]().get_game_exe_path()
     return None
 
 
 def launch_game(script_name: str, game_arguments: str = "") -> int | None:
     """按脚本适配器启动游戏；路径和启动方式均在后台解析。"""
-    cls = ScriptConfig
-    if script_name in _CONFIGS:
-        # cache(cls) 的原始类；启动游戏不构造日常任务或初始化原生配置。
-        cls = _CONFIGS[script_name].__wrapped__
+    config = _CONFIGS[script_name]() if script_name in _CONFIGS else ScriptConfig()
     game_path = get_game_exe_path(script_name)
     if game_path:
         game_path = os.path.abspath(resolve_script_path(game_path))
-    return cls.launch_game(game_path, game_arguments)
+    return config.launch_game(game_path, game_arguments)
 
 
 def is_adapted(script_name: str) -> bool:
