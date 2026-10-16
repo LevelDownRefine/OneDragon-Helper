@@ -578,6 +578,20 @@ class TestLaunchGame(unittest.TestCase):
     def setUp(self):
         self.root = Path(self.enterContext(tempfile.TemporaryDirectory()))
 
+    def test_registered_game_dispatch_does_not_read_path(self):
+        factory = MagicMock()
+        factory.return_value.launch_game.return_value = 42
+        with (
+            patch.dict(set_config._CONFIGS, {"ok-ww": factory}, clear=True),
+            patch.object(set_config, "get_game_exe_path") as read_path,
+            patch.object(set_config, "resolve_script_path") as resolve,
+        ):
+            self.assertEqual(set_config.launch_game("ok-ww", "--profile 1"), 42)
+        factory.assert_called_once_with()
+        factory.return_value.launch_game.assert_called_once_with("--profile 1")
+        read_path.assert_not_called()
+        resolve.assert_not_called()
+
     def test_standard_and_custom_games_preserve_arguments_and_resolve_paths(self):
         arguments = '--profile "中文 空格" --literal "a&b"'
         for script_name, filename in (

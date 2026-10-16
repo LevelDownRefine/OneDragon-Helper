@@ -210,15 +210,15 @@ class ScriptConfig:
             return None
         return node
 
-    def launch_game(
-        self, game_path: str | None, game_arguments: str = ""
-    ) -> int | None:
+    def launch_game(self, game_arguments: str = "") -> int | None:
         """通过系统关联直接打开游戏，支持可执行文件和快捷方式。"""
         if not isinstance(game_arguments, str):
             raise ValueError("游戏启动参数无效")
+        game_path = get_game_exe_path(self._script_name)
+        if game_path:
+            game_path = os.path.abspath(resolve_script_path(game_path))
         if not game_path or not os.path.isfile(game_path):
             raise FileNotFoundError(f"未找到游戏程序：{game_path}")
-        game_path = os.path.abspath(game_path)
         open_in_explorer(game_path, game_arguments)
         logger.info("已打开游戏启动目标：%s", game_path)
         return None
@@ -269,10 +269,11 @@ class EndfieldConfig(ScriptConfig):
     _script_name = "ok-ef"
     display_name = "终末地"
 
-    def launch_game(
-        self, game_path: str | None, game_arguments: str = ""
-    ) -> int | None:
+    def launch_game(self, game_arguments: str = "") -> int | None:
         """准备官方启动器，等待其进程就绪后创建游戏。"""
+        game_path = get_game_exe_path(self._script_name)
+        if game_path:
+            game_path = os.path.abspath(resolve_script_path(game_path))
         return utils_launcher.launch_with_launcher(
             game_path,
             game_arguments,
@@ -322,10 +323,11 @@ class NTEConfig(ScriptConfig):
             )
             return None
 
-    def launch_game(
-        self, game_path: str | None, game_arguments: str = ""
-    ) -> int | None:
+    def launch_game(self, game_arguments: str = "") -> int | None:
         """共用启动器定位流程，暂时只打开异环启动器。"""
+        game_path = get_game_exe_path(self._script_name)
+        if game_path:
+            game_path = os.path.abspath(resolve_script_path(game_path))
         return utils_launcher.launch_with_launcher(
             game_path,
             game_arguments,
@@ -577,11 +579,11 @@ def get_game_exe_path(script_name: str) -> str | None:
 
 def launch_game(script_name: str, game_arguments: str = "") -> int | None:
     """按脚本适配器启动游戏；路径和启动方式均在后台解析。"""
+    if script_name in _CONFIGS:
+        return _CONFIGS[script_name]().launch_game(game_arguments)
     game_path = get_game_exe_path(script_name)
     if game_path:
         game_path = os.path.abspath(resolve_script_path(game_path))
-    if script_name in _CONFIGS:
-        return _CONFIGS[script_name]().launch_game(game_path, game_arguments)
     if not isinstance(game_arguments, str):
         raise ValueError("游戏启动参数无效")
     if not game_path or not os.path.isfile(game_path):
