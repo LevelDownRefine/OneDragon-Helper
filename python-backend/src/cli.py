@@ -17,11 +17,10 @@ import tempfile
 import tomllib
 import warnings
 
-from src.config.set_config import supports_weekly
+from src.config.set_config import launch_game, supports_weekly
 from src.service.app_service import AppService
 from src.utils import get_root_dir
 from src.utils.utils_config import get_script
-from src.utils.utils_launcher import launch_game
 from src.utils.utils_shutdown import shutdown_sys
 from src.utils.utils_sub_config import get_script_name
 
@@ -49,7 +48,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     action = parser.add_mutually_exclusive_group()
     action.add_argument(
-        "--launch-game", metavar="PATH", help="启动指定游戏，按需准备官方启动器"
+        "--launch-game",
+        metavar="SCRIPT_NAME",
+        help="启动脚本对应的游戏，按需准备启动器",
     )
     parser.add_argument("--game-arguments", default="", help="传给游戏本体的启动参数")
     action.add_argument(

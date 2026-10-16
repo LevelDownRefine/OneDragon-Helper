@@ -1,4 +1,4 @@
-"""启动器类的生命周期和统一游戏入口的分派。"""
+"""启动器定位、参数隔离和父进程启动生命周期。"""
 
 import os
 import tempfile
@@ -6,23 +6,26 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from src.config.set_config import EndfieldConfig
 from src.utils import utils_launcher
 
 
 class LauncherTests(unittest.TestCase):
     def setUp(self):
-        self.launcher = EndfieldConfig.launcher
+        self.settings = {
+            "uninstall_id": "test-game-installation",
+            "filename": "Launcher.exe",
+            "arguments": ("--game=Example", "--reason=4"),
+            "process_name": "Games.exe",
+            "trusted_signers": frozenset({"TEST-SIGNER"}),
+        }
         self.root = Path(self.enterContext(tempfile.TemporaryDirectory()))
-        self.game = self.root / "Endfield.exe"
+        self.game = self.root / "Example.exe"
         self.game.touch()
         self.enterContext(patch.object(utils_launcher.sys, "platform", "win32"))
-        self.enterContext(
-            patch.dict(
-                utils_launcher.LAUNCHERS,
-                {self.launcher.game_exe.casefold(): self.launcher},
-                clear=True,
-            )
+
+    def _launch(self, game_path, game_arguments=""):
+        return utils_launcher.launch_with_launcher(
+            game_path, game_arguments, **self.settings
         )
 
     def test_game_arguments_reach_game_and_parent_handle_is_released(self):
@@ -37,7 +40,7 @@ class LauncherTests(unittest.TestCase):
                         patch.object(utils_launcher, "_running_pids", return_value=[]),
                         patch.object(utils_launcher, "_kernel32", return_value=kernel),
                         patch.object(
-                            utils_launcher.Launcher, "_verified_parent", return_value=42
+                            utils_launcher, "_verified_parent", return_value=42
                         ) as prepare,
                         patch.object(utils_launcher, "get_installed_launcher") as find,
                         patch.object(utils_launcher.subprocess, "Popen") as start,
@@ -50,84 +53,141 @@ class LauncherTests(unittest.TestCase):
                     ):
                         arguments = '-screen-width 1920 -logFile "game log.txt"'
                         if failure is None:
-                            self.assertEqual(
-                                self.launcher.launch(str(game), arguments), 314
-                            )
+                            self.assertEqual(self._launch(str(game), arguments), 314)
                         else:
                             with self.assertRaises(OSError):
-                                self.launcher.launch(str(game), arguments)
-                    prepare.assert_called_once_with(kernel)
+                                self._launch(str(game), arguments)
+                    prepare.assert_called_once_with(
+                        kernel, "Games.exe", self.settings["trusted_signers"]
+                    )
                     create.assert_called_once_with(kernel, str(game), arguments, 42)
                     kernel.CloseHandle.assert_called_once_with(42)
                     find.assert_not_called()
                     start.assert_not_called()
 
-    def test_registered_launcher_dispatch_preserves_game_arguments(self):
-        game = self.root / "ENDFIELD.exe"
-        game.touch()
-        arguments = '--profile "中文 空格" --literal "a&b"'
-        with patch.object(
-            utils_launcher.Launcher, "launch", return_value=314
-        ) as launch:
-            self.assertEqual(utils_launcher.launch_game(str(game), arguments), 314)
-        launch.assert_called_once_with(str(game), arguments)
-
-    def test_launcher_validates_input_before_starting_processes(self):
-        for game, arguments, error in (
-            (self.root / "missing.exe", "", FileNotFoundError),
-            (self.game, None, ValueError),
+    def test_parent_mode_validates_input_before_starting_processes(self):
+        for game, arguments, platform, error in (
+            (None, "", "win32", FileNotFoundError),
+            (str(self.root / "missing.exe"), "", "win32", FileNotFoundError),
+            (str(self.game), None, "win32", ValueError),
+            (str(self.game), "", "linux", OSError),
         ):
             with (
-                self.subTest(game=game, arguments=arguments),
+                self.subTest(game=game, arguments=arguments, platform=platform),
+                patch.object(utils_launcher.sys, "platform", platform),
                 patch.object(utils_launcher, "_kernel32") as kernel,
+                patch.object(utils_launcher, "get_installed_launcher") as find,
                 patch.object(utils_launcher.subprocess, "Popen") as start,
                 self.assertRaises(error),
             ):
-                self.launcher.launch(str(game), arguments)
+                self._launch(game, arguments)
             kernel.assert_not_called()
+            find.assert_not_called()
             start.assert_not_called()
 
-    def test_plain_games_and_shortcuts_use_system_association(self):
-        for name, platform in (
-            ("游戏.exe", "win32"),
-            ("游戏.lnk", "win32"),
-            ("game", "linux"),
+    def test_launcher_only_uses_registry_without_game_path_or_game_arguments(self):
+        path = str(self.root / "NTELauncher.exe")
+        with (
+            patch.object(
+                utils_launcher, "get_installed_launcher", return_value=path
+            ) as find,
+            patch.object(utils_launcher, "open_in_explorer") as open_launcher,
+            patch.object(utils_launcher, "_kernel32") as kernel,
+            patch.object(utils_launcher, "_running_pids") as processes,
         ):
-            game = self.root / name
-            game.touch()
-            arguments = (
-                '--profile "中文 空格" --literal "a&b"' if platform == "win32" else ""
+            result = utils_launcher.launch_with_launcher(
+                None,
+                "--game-only",
+                "YH",
+                "NTELauncher.exe",
+                ("--profile", "中文 空格"),
             )
-            with (
-                self.subTest(name=name, platform=platform),
-                patch.object(utils_launcher.sys, "platform", platform),
-                patch.object(utils_launcher, "open_in_explorer") as open_game,
-                patch.object(utils_launcher, "_kernel32") as kernel,
-                patch.object(utils_launcher, "get_installed_launcher") as find,
-                patch.object(utils_launcher, "_running_pids") as processes,
-            ):
-                self.assertIsNone(utils_launcher.launch_game(str(game), arguments))
-                open_game.assert_called_once_with(str(game), arguments)
-                kernel.assert_not_called()
-                find.assert_not_called()
-                processes.assert_not_called()
+        self.assertIsNone(result)
+        find.assert_called_once_with("NTELauncher.exe", "YH", "NTELauncher.exe")
+        open_launcher.assert_called_once_with(path, '--profile "中文 空格"')
+        kernel.assert_not_called()
+        processes.assert_not_called()
+
+    def test_registry_miss_falls_back_to_game_ancestor_for_both_modes(self):
+        game = self.root / "Game" / "Binaries" / "Example.exe"
+        game.parent.mkdir(parents=True)
+        game.touch()
+        launcher = self.root / "Launcher.exe"
+        launcher.touch()
+        for parent_mode in (False, True):
+            with self.subTest(parent_mode=parent_mode):
+                kernel = MagicMock()
+                with (
+                    patch.object(
+                        utils_launcher, "get_installed_launcher", return_value=None
+                    ) as find,
+                    patch.object(utils_launcher, "open_in_explorer") as open_launcher,
+                    patch.object(utils_launcher, "_kernel32", return_value=kernel),
+                    patch.object(utils_launcher, "_running_pids", return_value=[]),
+                    patch.object(
+                        utils_launcher, "_verified_parent", side_effect=[None, 42]
+                    ),
+                    patch.object(utils_launcher, "_verify_signature") as verify,
+                    patch.object(utils_launcher.subprocess, "Popen") as start,
+                    patch.object(
+                        utils_launcher, "_create_game_process", return_value=314
+                    ) as create,
+                    patch.multiple(
+                        utils_launcher.subprocess,
+                        DETACHED_PROCESS=8,
+                        CREATE_NEW_PROCESS_GROUP=512,
+                        create=True,
+                    ),
+                ):
+                    settings = dict(self.settings)
+                    if not parent_mode:
+                        settings["process_name"] = ""
+                    result = utils_launcher.launch_with_launcher(
+                        str(game), "--game-only", **settings
+                    )
+                find.assert_called_once_with(
+                    "Launcher.exe", self.settings["uninstall_id"], "Launcher.exe"
+                )
+                if parent_mode:
+                    self.assertEqual(result, 314)
+                    verify.assert_called_once_with(
+                        str(launcher), self.settings["trusted_signers"]
+                    )
+                    self.assertEqual(start.call_args.args[0][0], str(launcher))
+                    create.assert_called_once_with(kernel, str(game), "--game-only", 42)
+                    open_launcher.assert_not_called()
+                else:
+                    self.assertIsNone(result)
+                    open_launcher.assert_called_once_with(
+                        str(launcher), "--game=Example --reason=4"
+                    )
+                    start.assert_not_called()
+                    create.assert_not_called()
+
+    def test_missing_launcher_reports_failure_without_opening_game(self):
+        with (
+            patch.object(utils_launcher, "get_installed_launcher", return_value=None),
+            patch.object(utils_launcher, "open_in_explorer") as open_launcher,
+            self.assertRaisesRegex(FileNotFoundError, "NTELauncher.exe"),
+        ):
+            utils_launcher.launch_with_launcher(None, "", "YH", "NTELauncher.exe")
+        open_launcher.assert_not_called()
 
     def test_cold_start_waits_before_creating_game_with_separate_arguments(self):
-        launcher = self.launcher
         path = os.path.abspath(os.path.join("Launcher Folder", "Launcher.exe"))
         kernel = MagicMock()
         with (
             patch.object(utils_launcher, "_kernel32", return_value=kernel),
             patch.object(utils_launcher, "_running_pids", return_value=[]),
             patch.object(
-                utils_launcher.Launcher,
+                utils_launcher,
                 "_verified_parent",
                 side_effect=[None, None, 42],
             ),
             patch.object(
                 utils_launcher, "get_installed_launcher", return_value=path
             ) as find,
-            patch.object(utils_launcher.Launcher, "_verify_signature") as verify,
+            patch.object(utils_launcher, "_verify_signature") as verify,
             patch.object(utils_launcher.subprocess, "Popen") as start,
             patch.object(
                 utils_launcher, "_create_game_process", return_value=314
@@ -141,13 +201,13 @@ class LauncherTests(unittest.TestCase):
             patch.object(utils_launcher.time, "monotonic", side_effect=[0, 1, 2]),
             patch.object(utils_launcher.time, "sleep") as sleep,
         ):
-            self.assertEqual(self.launcher.launch(str(self.game), "--game-only"), 314)
+            self.assertEqual(self._launch(str(self.game), "--game-only"), 314)
         find.assert_called_once_with(
-            launcher.process_name, launcher.uninstall_id, launcher.filename
+            "Launcher.exe", self.settings["uninstall_id"], "Launcher.exe"
         )
-        verify.assert_called_once_with(path)
+        verify.assert_called_once_with(path, self.settings["trusted_signers"])
         self.assertEqual(
-            start.call_args.args[0], [path, "--game=Endfield", "--reason=4"]
+            start.call_args.args[0], [path, "--game=Example", "--reason=4"]
         )
         sleep.assert_called_once_with(0.25)
         create.assert_called_once_with(kernel, str(self.game), "--game-only", 42)
@@ -158,15 +218,13 @@ class LauncherTests(unittest.TestCase):
         with (
             patch.object(utils_launcher, "_kernel32", return_value=kernel),
             patch.object(utils_launcher, "_running_pids", return_value=[]),
-            patch.object(
-                utils_launcher.Launcher, "_verified_parent", return_value=None
-            ),
+            patch.object(utils_launcher, "_verified_parent", return_value=None),
             patch.object(
                 utils_launcher,
                 "get_installed_launcher",
                 return_value=str(self.root / "Launcher.exe"),
             ),
-            patch.object(utils_launcher.Launcher, "_verify_signature"),
+            patch.object(utils_launcher, "_verify_signature"),
             patch.object(utils_launcher.subprocess, "Popen"),
             patch.multiple(
                 utils_launcher.subprocess,
@@ -179,7 +237,7 @@ class LauncherTests(unittest.TestCase):
             patch.object(utils_launcher.time, "sleep"),
             self.assertRaises(TimeoutError),
         ):
-            self.launcher.launch(str(self.game))
+            self._launch(str(self.game))
         create.assert_not_called()
         kernel.CloseHandle.assert_not_called()
 
@@ -189,13 +247,11 @@ class LauncherTests(unittest.TestCase):
                 self.subTest(running=running),
                 patch.object(utils_launcher, "_running_pids", side_effect=running),
                 patch.object(utils_launcher, "_kernel32") as kernel,
-                patch.object(
-                    utils_launcher.Launcher, "_verified_parent", return_value=42
-                ),
+                patch.object(utils_launcher, "_verified_parent", return_value=42),
                 patch.object(utils_launcher, "_create_game_process") as create,
                 patch.object(utils_launcher.subprocess, "Popen") as start,
             ):
-                self.assertIsNone(self.launcher.launch(str(self.game)))
+                self.assertIsNone(self._launch(str(self.game)))
                 create.assert_not_called()
                 start.assert_not_called()
                 if len(running) == 1:
@@ -222,7 +278,7 @@ class LauncherTests(unittest.TestCase):
                         utils_launcher, "_running_pids", side_effect=[[], [123]]
                     ),
                     patch.object(
-                        utils_launcher.Launcher,
+                        utils_launcher,
                         "_verify_signature",
                         side_effect=failure,
                     ),
@@ -231,7 +287,7 @@ class LauncherTests(unittest.TestCase):
                     self.assertLogs(utils_launcher.logger, level="WARNING"),
                     self.assertRaises(RuntimeError) as raised,
                 ):
-                    self.launcher.launch(str(self.game))
+                    self._launch(str(self.game))
                 self.assertIs(raised.exception.__cause__, failure)
                 self.assertIn(str(failure), str(raised.exception))
                 find.assert_not_called()

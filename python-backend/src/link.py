@@ -84,16 +84,6 @@ def resolve_launch_target(script_name: str, target: str) -> dict:
     script = get_script(script_name)
     if script is None:
         return {"kind": "unavailable", "reason": "脚本已不存在，请刷新列表"}
-    assert "script_path" in script
-    path = get_game_exe_path(script_name) if target == "game" else script["script_path"]
-    if not path:
-        return {
-            "kind": "unavailable",
-            "reason": "未找到游戏路径" if target == "game" else "未找到脚本路径",
-        }
-    resolved = resolve_script_path(path)
-    if not resolved or not os.path.isfile(resolved):
-        return {"kind": "unavailable", "reason": "启动文件不存在，请检查配置"}
     if target == "game":
         arguments = script.get("game_arguments", "")  # 旧配置可以没有游戏参数。
         if not isinstance(arguments, str):
@@ -104,8 +94,7 @@ def resolve_launch_target(script_name: str, target: str) -> dict:
             "program": sys.executable,
             "args": ([] if frozen else ["-m", "src.headless"])
             + [
-                "--launch-game",
-                os.path.abspath(resolved),
+                f"--launch-game={script_name}",
                 f"--game-arguments={arguments}",
             ],
             "cwd": get_root_dir()
@@ -113,6 +102,13 @@ def resolve_launch_target(script_name: str, target: str) -> dict:
             else os.path.join(get_root_dir(), "python-backend"),
             "env": {},
         }
+    assert "script_path" in script
+    path = script["script_path"]
+    if not path:
+        return _unavailable("未找到脚本路径")
+    resolved = resolve_script_path(path)
+    if not resolved or not os.path.isfile(resolved):
+        return _unavailable("启动文件不存在，请检查配置")
     script_type = script["script_type"] if "script_type" in script else "external"  # noqa: SIM401
     if script_type != "python":
         return {"kind": "association", "path": os.path.abspath(resolved)}

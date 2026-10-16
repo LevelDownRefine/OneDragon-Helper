@@ -1,6 +1,6 @@
 # 配置适配器
 
-`set_config.py` 将外部脚本的配置格式、路径和字段适配为统一接口；业务编排归 [AppService](../service/README.md)。
+`set_config.py` 将外部脚本的配置格式、路径、字段和游戏启动方式适配为统一接口；任务调度编排归 [AppService](../service/README.md)。
 
 `script_name` 是全链路标识：EXE 使用文件名去后缀，Python/BAT 使用展示名。注册表和各声明以它为键，加载主配置时检查唯一性。
 
@@ -19,27 +19,32 @@
 | `set_weekly_start_day` | 编辑期同步字面起始日等字段 |
 | `prepare_weekly_start_days` | 运行期按周几起准备开关 |
 | `weekly_names/supports_weekly` | 只读声明，不初始化原生配置 |
+| `get_game_exe_path/launch_game` | 读取游戏本体路径，按脚本适配器启动游戏 |
 
 ## 游戏启动入口
 
-所有游戏通过独立 CLI 调用 `utils_launcher.launch_game`，`link` 只解析路径和参数，
-界面不判断是否需要启动器。`launch_game` 只负责分派：普通游戏沿用系统关联打开
-（包括快捷方式）；有启动器实例时调用它的 `Launcher.launch()`。
+所有游戏通过后台 CLI `--launch-game SCRIPT_NAME` 调用模块入口，再分派给
+对应适配器的 `ScriptConfig.launch_game(game_path, game_arguments)` 类方法。
+`link` 仅传脚本标识和游戏参数，游戏路径在后台解析；查路径和启动均不构造适配器，
+避免触发 MAA 原生任务队列初始化。普通和未适配游戏沿用系统关联打开，支持快捷方式。
 
-`Launcher` 同时持有配置和启动行为。`launch()` 集中完成输入检查、复用或启动官方
-启动器、等待进程就绪、创建游戏及释放句柄；签名和父进程检查由实例方法读取自身配置。
-实例不保存运行中的进程句柄，等待在后台执行。共享注册表查询和底层 WinAPI 调用保留为工具函数。
+有启动器的游戏在自己的 `ScriptConfig` 子类声明 `launcher_uninstall_id`、
+`launcher_filename` 和 `launcher_arguments`，统一调用 `utils_launcher.launch_with_launcher`。
+该流程共用 Windows 卸载记录的 HKCU/HKLM、32/64 位视图和 `InstallLocation`；
+未找到时从游戏目录向上查找启动器。无需额外的启动器类或按 EXE 文件名注册的表。
 
-终末地沿用原生配置中的游戏本体路径，手填 `game_path` 优先；`game_arguments`
-只传给游戏本体，游戏进程仍为 `Endfield.exe`。启动器就绪条件为 `Games.exe` 存在、
-能取得所需进程句柄且签名通过，不检查窗口激活、登录或更新状态。
-终末地启动器声明集中在 `EndfieldConfig.launcher`，其中 `arguments` 固定为
-`("--game=Endfield", "--reason=4")`，无需填入游戏参数。现有 `register()`
-按游戏 EXE 文件名将启动器实例登记到 `utils_launcher.LAUNCHERS`。
+终末地在 `EndfieldConfig` 声明卸载项 `33a0a6296a20400d503c59ac0fd6341e`、
+`Launcher.exe` 及固定参数 `("--game=Endfield", "--reason=4")`，并声明
+`launcher_process_name="Games.exe"` 和允许的签名证书。通用流程复用或启动启动器，
+等待进程存在、可取得所需句柄且签名通过，再创建游戏并释放句柄；不检查窗口激活、
+登录或更新状态。等待在后台执行。
 
-启动器查询共用 Windows 卸载记录的 HKCU/HKLM、32/64 位视图及 `InstallLocation`。
-终末地卸载项为 `33a0a6296a20400d503c59ac0fd6341e`；异环仍由 `NTEConfig`
-使用 `YH` 查找启动器，失败时保留从游戏目录向上查找的回退。
+异环在 `NTEConfig` 声明 `YH` 和 `NTELauncher.exe`，暂时只打开启动器；
+即使游戏路径未配置，仍可通过注册表找到启动器。它使用自己的启动器参数，
+不再将 `game_arguments` 传给启动器。自动启动异环游戏尚未验证。
+
+各游戏手填的 `game_path` 始终优先，指向游戏本体；未填时读取原生配置。
+`game_arguments` 只传给游戏本体，启动器参数由上述类属性声明。
 
 ## 任务声明
 

@@ -11,8 +11,6 @@ from pathlib import Path
 from unittest.mock import patch
 
 from src import cli, link
-from src.config import set_config
-from src.utils import utils_launcher
 
 
 class TestLinkDispatch(unittest.TestCase):
@@ -212,9 +210,7 @@ class LaunchTargetTests(unittest.TestCase):
     def test_external_and_game_use_separate_targets_and_arguments(self):
         with tempfile.TemporaryDirectory() as temporary:
             file = Path(temporary) / "demo.exe"
-            game = Path(temporary) / "game.exe"
             file.touch()
-            game.touch()
             arguments = '--profile "中文 空格" --literal "a&b"'
             with (
                 patch.object(
@@ -226,7 +222,7 @@ class LaunchTargetTests(unittest.TestCase):
                         "script_arguments": "--script-only",
                     },
                 ),
-                patch.object(link, "get_game_exe_path", return_value=str(game)),
+                patch.object(link, "get_game_exe_path") as game_path,
                 patch.object(link, "build_script_command") as build,
             ):
                 self.assertEqual(
@@ -236,65 +232,55 @@ class LaunchTargetTests(unittest.TestCase):
                 target = link.resolve_launch_target("demo", "game")
                 self.assertEqual(target["kind"], "command")
                 self.assertEqual(
-                    target["args"][-3:],
-                    ["--launch-game", str(game), f"--game-arguments={arguments}"],
+                    target["args"][-2:],
+                    ["--launch-game=demo", f"--game-arguments={arguments}"],
                 )
             build.assert_not_called()
+            game_path.assert_not_called()
 
 
 class LauncherTargetTests(unittest.TestCase):
-    def test_all_game_commands_preserve_path_and_arguments_through_cli(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            arguments = '--profile "中文 空格" --literal "a&b"'
-            with (
-                patch.object(
-                    link,
-                    "get_script",
-                    return_value={
-                        "script_path": "ok-ef.exe",
-                        "game_arguments": arguments,
-                    },
-                ),
-                patch.object(set_config, "get_script_game_path") as game_path,
-                patch.object(utils_launcher, "get_installed_launcher") as find_launcher,
-                patch.object(cli, "launch_game") as launch,
-                patch.object(cli, "AppService") as service,
-            ):
-                for filename in ("Endfield.exe", "custom.exe", "中文 快捷方式.lnk"):
-                    game = Path(temporary) / filename
-                    game.touch()
-                    game_path.return_value = str(game)
-                    for frozen in (False, True):
-                        with (
-                            self.subTest(filename=filename, frozen=frozen),
-                            patch.object(link.sys, "frozen", frozen, create=True),
-                        ):
-                            target = link.resolve_launch_target("ok-ef", "game")
-                            self.assertEqual(target["kind"], "command")
-                            self.assertEqual(target["program"], link.sys.executable)
-                            self.assertEqual(
-                                target["cwd"],
-                                link.get_root_dir()
-                                if frozen
-                                else os.path.join(
-                                    link.get_root_dir(), "python-backend"
-                                ),
-                            )
-                            command = target["args"]
-                            if not frozen:
-                                self.assertEqual(command[:2], ["-m", "src.headless"])
-                                command = command[2:]
-                            parsed = cli.build_parser().parse_args(command)
-                            self.assertEqual(cli.run_cli(parsed), 0)
-                            launch.assert_called_with(str(game), arguments)
-                            self.assertEqual(
-                                link.game_icon_path("ok-ef")["path"], str(game)
-                            )
-                find_launcher.assert_not_called()
-                service.assert_not_called()
+    def test_all_game_commands_preserve_script_identity_and_arguments_through_cli(self):
+        arguments = '--profile "中文 空格" --literal "a&b"'
+        with (
+            patch.object(
+                link,
+                "get_script",
+                return_value={"script_path": "", "game_arguments": arguments},
+            ),
+            patch.object(link, "get_game_exe_path") as game_path,
+            patch.object(link, "resolve_script_path") as resolve,
+            patch.object(cli, "launch_game") as launch,
+            patch.object(cli, "AppService") as service,
+        ):
+            for script_name in ("ok-ef", "ok-nte", "custom", "中文 脚本", "-custom"):
+                for frozen in (False, True):
+                    with (
+                        self.subTest(script=script_name, frozen=frozen),
+                        patch.object(link.sys, "frozen", frozen, create=True),
+                    ):
+                        target = link.resolve_launch_target(script_name, "game")
+                        self.assertEqual(target["kind"], "command")
+                        self.assertEqual(target["program"], link.sys.executable)
+                        self.assertEqual(
+                            target["cwd"],
+                            link.get_root_dir()
+                            if frozen
+                            else os.path.join(link.get_root_dir(), "python-backend"),
+                        )
+                        command = target["args"]
+                        if not frozen:
+                            self.assertEqual(command[:2], ["-m", "src.headless"])
+                            command = command[2:]
+                        parsed = cli.build_parser().parse_args(command)
+                        self.assertEqual(cli.run_cli(parsed), 0)
+                        launch.assert_called_with(script_name, arguments)
+            game_path.assert_not_called()
+            resolve.assert_not_called()
+            service.assert_not_called()
 
     def test_cli_reports_launcher_failure(self):
-        parsed = cli.build_parser().parse_args(["--launch-game", "Endfield.exe"])
+        parsed = cli.build_parser().parse_args(["--launch-game=ok-ef"])
         with (
             patch.object(
                 cli, "launch_game", side_effect=PermissionError("需要管理员权限")

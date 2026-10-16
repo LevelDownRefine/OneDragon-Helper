@@ -82,7 +82,7 @@ class TestGameArgumentsLaunch(unittest.TestCase):
         service.resolve_launch_target.return_value = {
             "kind": "command",
             "program": "C:/Helper/CLI.exe",
-            "args": ["--launch-game", "C:/Game/Endfield.exe", "--game-arguments="],
+            "args": ["--launch-game=demo", "--game-arguments="],
             "cwd": "C:/Helper",
             "env": {},
         }

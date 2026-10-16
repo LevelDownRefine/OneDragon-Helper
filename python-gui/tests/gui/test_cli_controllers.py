@@ -265,7 +265,7 @@ class ControllerTests(TestCase):
         target = {
             "kind": "command",
             "program": "/absolute/python",
-            "args": ["--launch-game", "C:/Game/Endfield.exe", "--game-arguments="],
+            "args": ["--launch-game=A", "--game-arguments="],
             "cwd": "/absolute/helper",
             "env": {},
         }

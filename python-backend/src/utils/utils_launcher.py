@@ -1,4 +1,4 @@
-"""统一启动游戏；需要官方启动器的游戏先准备并验证父进程。"""
+"""启动器公共机制：定位启动器，并按需通过其父进程创建游戏。"""
 
 import ctypes
 import json
@@ -8,7 +8,6 @@ import subprocess
 import sys
 import time
 from ctypes import wintypes
-from dataclasses import dataclass
 
 import psutil
 
@@ -22,156 +21,168 @@ _PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
 _EXTENDED_STARTUPINFO_PRESENT = 0x00080000
 
 
-@dataclass(frozen=True)
-class Launcher:
-    """官方启动器配置与启动行为；进程资源只在单次 launch 调用内持有。"""
-
-    game_exe: str
-    uninstall_id: str
-    filename: str
-    process_name: str
-    arguments: tuple[str, ...]
-    trusted_signers: frozenset[str]
-
-    def launch(self, game_path: str, game_arguments: str = "") -> int | None:
-        """复用或启动官方启动器，等待就绪后创建游戏，并释放本次进程句柄。"""
-        if not os.path.isfile(game_path):
-            raise FileNotFoundError(f"未找到游戏程序：{game_path}")
-        if not isinstance(game_arguments, str):
-            raise ValueError("游戏启动参数无效")
-        game_path = os.path.abspath(game_path)
-        game_process_name = os.path.basename(game_path)
-        if sys.platform != "win32":
-            raise OSError("通过父进程启动游戏仅支持 Windows")
-        if _running_pids(game_process_name):
-            logger.info("%s 已经运行，跳过重复启动", game_process_name)
-            return None
-
-        kernel = _kernel32()
-        parent = self._verified_parent(kernel)
-        if not parent:
-            launcher_path = get_installed_launcher(
-                self.process_name, self.uninstall_id, self.filename
-            )
-            if not launcher_path:
-                raise FileNotFoundError(f"未找到官方启动器：{self.filename}")
-            self._verify_signature(launcher_path)
-            subprocess.Popen(
-                [launcher_path, *self.arguments],
-                cwd=os.path.dirname(launcher_path),
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                creationflags=subprocess.DETACHED_PROCESS
-                | subprocess.CREATE_NEW_PROCESS_GROUP,
-            )
-            deadline = time.monotonic() + 30
-            while time.monotonic() < deadline:
-                parent = self._verified_parent(kernel)
-                if parent:
-                    break
-                time.sleep(0.25)
-            if not parent:
-                raise TimeoutError("官方启动器在 30 秒内未就绪")
-
-        try:
-            if _running_pids(game_process_name):
-                logger.info(
-                    "%s 已在启动器就绪期间启动，跳过重复启动", game_process_name
-                )
-                return None
-            pid = _create_game_process(kernel, game_path, game_arguments, parent)
-            logger.info("已通过官方启动器进程创建 %s：pid=%s", game_process_name, pid)
-            return pid
-        finally:
-            kernel.CloseHandle(parent)
-
-    def _verify_signature(self, path: str) -> None:
-        """验证文件签名及当前启动器允许的签名证书。"""
-        system_root = os.environ.get("SYSTEMROOT")
-        if not system_root:
-            raise OSError("无法确定 Windows 系统目录")
-        powershell = os.path.join(
-            system_root, "System32", "WindowsPowerShell", "v1.0", "powershell.exe"
-        )
-        script = (
-            "$ErrorActionPreference='Stop'; "
-            "[Console]::OutputEncoding=[System.Text.UTF8Encoding]::new(); "
-            "$s=Get-AuthenticodeSignature -LiteralPath $env:ODH_VERIFY_LAUNCHER; "
-            "@{status=[int]$s.Status; signer=$s.SignerCertificate.Thumbprint} | ConvertTo-Json -Compress"
-        )
-        result = subprocess.run(
-            [powershell, "-NoProfile", "-NonInteractive", "-Command", script],
-            env={
-                **os.environ,
-                "ODH_VERIFY_LAUNCHER": path,
-                "PSModulePath": os.path.join(
-                    system_root, "System32", "WindowsPowerShell", "v1.0", "Modules"
-                ),
-            },
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            check=True,
-            timeout=15,
-            creationflags=subprocess.CREATE_NO_WINDOW,
-        )
-        signature = json.loads(result.stdout)
-        signer = (signature.get("signer") or "").upper()
-        allowed_signers = {thumbprint.upper() for thumbprint in self.trusted_signers}
-        if signature.get("status") != 0 or signer not in allowed_signers:
-            raise RuntimeError(f"启动器签名无效或不受信任：{path}")
-
-    def _verified_parent(self, kernel) -> int | None:
-        rejected = None
-        for pid in _running_pids(self.process_name):
-            handle = None
-            try:
-                handle = _check_win32(
-                    kernel.OpenProcess(
-                        _PROCESS_CREATE_PROCESS | _PROCESS_QUERY_LIMITED_INFORMATION,
-                        False,
-                        pid,
-                    )
-                )
-                image = ctypes.create_unicode_buffer(32768)
-                length = wintypes.DWORD(len(image))
-                _check_win32(
-                    kernel.QueryFullProcessImageNameW(
-                        handle, 0, image, ctypes.byref(length)
-                    )
-                )
-                if (
-                    os.path.basename(image.value).casefold()
-                    != self.process_name.casefold()
-                ):
-                    raise RuntimeError(f"启动器进程路径无效：{image.value}")
-                self._verify_signature(image.value)
-                logger.info("已验证官方启动器进程：pid=%s, path=%s", pid, image.value)
-                return handle
-            except (
-                OSError,
-                RuntimeError,
-                subprocess.SubprocessError,
-                ValueError,
-            ) as error:
-                if handle:
-                    kernel.CloseHandle(handle)
-                if handle is None and getattr(error, "winerror", None) == 87:
-                    logger.debug("启动器进程 PID %s 已退出", pid)
-                    continue
-                logger.warning("无法使用启动器进程 PID %s：%s", pid, error)
-                rejected = error
-        if rejected is not None:
-            raise RuntimeError(
-                f"无法使用启动器进程 {self.process_name}：{rejected}"
-            ) from rejected
+def launch_with_launcher(
+    game_path: str | None,
+    game_arguments: str,
+    uninstall_id: str,
+    filename: str,
+    arguments: tuple[str, ...] = (),
+    process_name: str = "",
+    trusted_signers: frozenset[str] = frozenset(),
+) -> int | None:
+    """定位并打开启动器；声明父进程时等待就绪，再用游戏参数创建游戏。"""
+    if not isinstance(game_arguments, str):
+        raise ValueError("游戏启动参数无效")
+    if not process_name:
+        launcher_path = _find_launcher(game_path, uninstall_id, filename)
+        open_in_explorer(launcher_path, subprocess.list2cmdline(arguments))
+        logger.info("已打开游戏启动器：%s", launcher_path)
         return None
 
+    if not game_path or not os.path.isfile(game_path):
+        raise FileNotFoundError(f"未找到游戏程序：{game_path}")
+    game_path = os.path.abspath(game_path)
+    game_process_name = os.path.basename(game_path)
+    if sys.platform != "win32":
+        raise OSError("通过父进程启动游戏仅支持 Windows")
+    if _running_pids(game_process_name):
+        logger.info("%s 已经运行，跳过重复启动", game_process_name)
+        return None
 
-# 由 set_config.register 装配；独立调用 launch_game 时可显式传 launcher。
-LAUNCHERS: dict[str, Launcher] = {}
+    kernel = _kernel32()
+    parent = _verified_parent(kernel, process_name, trusted_signers)
+    if not parent:
+        launcher_path = _find_launcher(game_path, uninstall_id, filename)
+        _verify_signature(launcher_path, trusted_signers)
+        subprocess.Popen(
+            [launcher_path, *arguments],
+            cwd=os.path.dirname(launcher_path),
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=subprocess.DETACHED_PROCESS
+            | subprocess.CREATE_NEW_PROCESS_GROUP,
+        )
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline:
+            parent = _verified_parent(kernel, process_name, trusted_signers)
+            if parent:
+                break
+            time.sleep(0.25)
+        if not parent:
+            raise TimeoutError("官方启动器在 30 秒内未就绪")
+
+    try:
+        if _running_pids(game_process_name):
+            logger.info("%s 已在启动器就绪期间启动，跳过重复启动", game_process_name)
+            return None
+        pid = _create_game_process(kernel, game_path, game_arguments, parent)
+        logger.info("已通过官方启动器进程创建 %s：pid=%s", game_process_name, pid)
+        return pid
+    finally:
+        kernel.CloseHandle(parent)
+
+
+def _find_launcher(game_path: str | None, uninstall_id: str, filename: str) -> str:
+    """注册表优先，未找到时从游戏所在目录向上查找启动器。"""
+    installed = get_installed_launcher(filename, uninstall_id, filename)
+    if installed:
+        return installed
+    if game_path:
+        directory = os.path.dirname(os.path.abspath(game_path))
+        while True:
+            candidate = os.path.join(directory, filename)
+            if os.path.isfile(candidate):
+                return candidate
+            parent = os.path.dirname(directory)
+            if parent == directory:
+                break
+            directory = parent
+    raise FileNotFoundError(f"未找到官方启动器：{filename}")
+
+
+def _verify_signature(path: str, trusted_signers: frozenset[str]) -> None:
+    """验证文件签名及当前启动器允许的签名证书。"""
+    system_root = os.environ.get("SYSTEMROOT")
+    if not system_root:
+        raise OSError("无法确定 Windows 系统目录")
+    powershell = os.path.join(
+        system_root, "System32", "WindowsPowerShell", "v1.0", "powershell.exe"
+    )
+    script = (
+        "$ErrorActionPreference='Stop'; "
+        "[Console]::OutputEncoding=[System.Text.UTF8Encoding]::new(); "
+        "$s=Get-AuthenticodeSignature -LiteralPath $env:ODH_VERIFY_LAUNCHER; "
+        "@{status=[int]$s.Status; signer=$s.SignerCertificate.Thumbprint} | ConvertTo-Json -Compress"
+    )
+    result = subprocess.run(
+        [powershell, "-NoProfile", "-NonInteractive", "-Command", script],
+        env={
+            **os.environ,
+            "ODH_VERIFY_LAUNCHER": path,
+            "PSModulePath": os.path.join(
+                system_root, "System32", "WindowsPowerShell", "v1.0", "Modules"
+            ),
+        },
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=True,
+        timeout=15,
+        creationflags=subprocess.CREATE_NO_WINDOW,
+    )
+    signature = json.loads(result.stdout)
+    signer = (signature.get("signer") or "").upper()
+    allowed_signers = {thumbprint.upper() for thumbprint in trusted_signers}
+    if signature.get("status") != 0 or signer not in allowed_signers:
+        raise RuntimeError(f"启动器签名无效或不受信任：{path}")
+
+
+def _verified_parent(
+    kernel, process_name: str, trusted_signers: frozenset[str]
+) -> int | None:
+    rejected = None
+    for pid in _running_pids(process_name):
+        handle = None
+        try:
+            handle = _check_win32(
+                kernel.OpenProcess(
+                    _PROCESS_CREATE_PROCESS | _PROCESS_QUERY_LIMITED_INFORMATION,
+                    False,
+                    pid,
+                )
+            )
+            image = ctypes.create_unicode_buffer(32768)
+            length = wintypes.DWORD(len(image))
+            _check_win32(
+                kernel.QueryFullProcessImageNameW(
+                    handle, 0, image, ctypes.byref(length)
+                )
+            )
+            if os.path.basename(image.value).casefold() != process_name.casefold():
+                raise RuntimeError(f"启动器进程路径无效：{image.value}")
+            _verify_signature(image.value, trusted_signers)
+            logger.info("已验证官方启动器进程：pid=%s, path=%s", pid, image.value)
+            return handle
+        except (
+            OSError,
+            RuntimeError,
+            subprocess.SubprocessError,
+            ValueError,
+        ) as error:
+            if handle:
+                kernel.CloseHandle(handle)
+            if handle is None and getattr(error, "winerror", None) == 87:
+                logger.debug("启动器进程 PID %s 已退出", pid)
+                continue
+            logger.warning("无法使用启动器进程 PID %s：%s", pid, error)
+            rejected = error
+    if rejected is not None:
+        raise RuntimeError(
+            f"无法使用启动器进程 {process_name}：{rejected}"
+        ) from rejected
+    return None
 
 
 def get_installed_launcher(
@@ -373,26 +384,3 @@ def _create_game_process(kernel, game_path: str, arguments: str, parent: int) ->
                 kernel.CloseHandle(process.hProcess)
     finally:
         kernel.DeleteProcThreadAttributeList(attributes)
-
-
-def launch_game(
-    game_path: str,
-    game_arguments: str = "",
-    launcher: Launcher | None = None,
-) -> int | None:
-    """统一游戏入口：有启动器时委托实例，否则通过系统关联打开。"""
-    if launcher is None:
-        key = os.path.basename(game_path).casefold()
-        if key in LAUNCHERS:
-            launcher = LAUNCHERS[key]
-    if launcher is not None:
-        return launcher.launch(game_path, game_arguments)
-
-    if not os.path.isfile(game_path):
-        raise FileNotFoundError(f"未找到游戏程序：{game_path}")
-    if not isinstance(game_arguments, str):
-        raise ValueError("游戏启动参数无效")
-    game_path = os.path.abspath(game_path)
-    open_in_explorer(game_path, game_arguments)
-    logger.info("已打开游戏启动目标：%s", game_path)
-    return None

@@ -35,7 +35,7 @@ scripts:
 
 `get_script_resources(script_name)` 返回共享只读字典，未声明脚本返回 `None`；已注册适配器必须有声明。可选字段不补默认值，特殊机制仍由 Python 实现。
 
-终末地的 `Launcher` 实例由 `EndfieldConfig.launcher` 声明，固定启动器参数保留在该配置类中，由现有 `register()` 登记到 `utils_launcher.LAUNCHERS`。`Launcher.launch()` 自持启动、等待、校验与游戏进程创建流程，用户 `game_arguments` 只传给游戏本体。
+游戏统一由 `ScriptConfig.launch_game()` 启动。终末地和异环在各自适配器中声明 `launcher_*` 类属性，共用注册表查询和游戏目录向上查找的启动器流程；终末地另声明父进程和签名证书以创建游戏。用户 `game_path` 指向游戏本体，`game_arguments` 只传给游戏，启动器参数单独声明。
 
 声明按文件位置缓存，修改后重启；不支持用户覆盖或热加载。源码经 `get_root_dir()` 定位，发布包从 EXE 同级 `config/` 读取。新增声明必须提交到 Git 才会被打包，缺失或损坏不回退硬编码。
 

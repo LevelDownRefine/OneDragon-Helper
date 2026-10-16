@@ -547,8 +547,7 @@ with patch('src.utils.get_root_dir', return_value=root), patch('src.service.chai
                 "args": [
                     "-m",
                     "src.headless",
-                    "--launch-game",
-                    str(self.root / "scripts/ok-ww.exe"),
+                    "--launch-game=自定义脚本",
                     "--game-arguments=",
                 ],
                 "cwd": str(self.root / "python-backend"),
