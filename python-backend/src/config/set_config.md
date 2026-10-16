@@ -23,17 +23,19 @@
 ## 游戏启动入口
 
 所有游戏通过独立 CLI 调用 `utils_launcher.launch_game`，`link` 只解析路径和参数，
-界面不判断是否需要启动器。`launch_game` 内集中处理完整流程：普通游戏沿用系统关联
-打开（包括快捷方式）；有启动器声明时，复用或启动官方启动器、等待进程就绪，再创建游戏。
-等待在后台执行，避免阻塞界面；底层 Windows 进程创建与签名检查保留为工具函数。
+界面不判断是否需要启动器。`launch_game` 只负责分派：普通游戏沿用系统关联打开
+（包括快捷方式）；有启动器实例时调用它的 `Launcher.launch()`。
+
+`Launcher` 同时持有配置和启动行为。`launch()` 集中完成输入检查、复用或启动官方
+启动器、等待进程就绪、创建游戏及释放句柄；签名和父进程检查由实例方法读取自身配置。
+实例不保存运行中的进程句柄，等待在后台执行。共享注册表查询和底层 WinAPI 调用保留为工具函数。
 
 终末地沿用原生配置中的游戏本体路径，手填 `game_path` 优先；`game_arguments`
 只传给游戏本体，游戏进程仍为 `Endfield.exe`。启动器就绪条件为 `Games.exe` 存在、
 能取得所需进程句柄且签名通过，不检查窗口激活、登录或更新状态。
 终末地启动器声明集中在 `EndfieldConfig.launcher`，其中 `arguments` 固定为
 `("--game=Endfield", "--reason=4")`，无需填入游戏参数。现有 `register()`
-按游戏 EXE 文件名将声明装配到 `utils_launcher.LAUNCHERS`；`utils_launcher`
-只负责通用的启动器查找、签名校验与游戏进程创建。
+按游戏 EXE 文件名将启动器实例登记到 `utils_launcher.LAUNCHERS`。
 
 启动器查询共用 Windows 卸载记录的 HKCU/HKLM、32/64 位视图及 `InstallLocation`。
 终末地卸载项为 `33a0a6296a20400d503c59ac0fd6341e`；异环仍由 `NTEConfig`
