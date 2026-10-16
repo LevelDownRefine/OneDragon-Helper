@@ -324,7 +324,9 @@ class NTEConfig(ScriptConfig):
             return None
 
     def launch_game(self, game_arguments: str = "") -> int | None:
-        """通过官方启动器进程创建游戏；未配置游戏路径时只打开启动器。"""
+        """通过官方启动器的 /autoplay 参数自动启动游戏。"""
+        if isinstance(game_arguments, str) and game_arguments.strip():
+            logger.warning("异环通过官方启动器启动，暂不支持传递自定义游戏参数")
         game_path = get_game_exe_path(self._script_name)
         if game_path:
             game_path = os.path.abspath(resolve_script_path(game_path))
@@ -333,8 +335,7 @@ class NTEConfig(ScriptConfig):
             game_arguments,
             uninstall_id="YH",
             filename="NTELauncher.exe",
-            process_name="NTEGame.exe" if game_path else "",
-            trusted_signers=frozenset({"F11F50C68DCCDA8026A6A94138799F559DEEE554"}),
+            arguments=("/autoplay",),
         )
 
 

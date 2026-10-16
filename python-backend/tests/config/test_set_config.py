@@ -680,10 +680,7 @@ class TestLaunchGame(unittest.TestCase):
                 {
                     "uninstall_id": "YH",
                     "filename": "NTELauncher.exe",
-                    "process_name": "NTEGame.exe",
-                    "trusted_signers": frozenset(
-                        {"F11F50C68DCCDA8026A6A94138799F559DEEE554"}
-                    ),
+                    "arguments": ("/autoplay",),
                 },
             ),
         ):
@@ -701,21 +698,25 @@ class TestLaunchGame(unittest.TestCase):
                 launch.assert_called_once_with(str(game), arguments, **declaration)
                 open_game.assert_not_called()
 
-    def test_nte_without_game_path_can_still_resolve_installed_launcher(self):
+    def test_nte_autoplay_uses_launcher_without_game_process_handling(self):
         launcher_path = self.root / "NTELauncher.exe"
         launcher_path.touch()
-        for error in (
-            None,
-            PermissionError("配置无访问权限"),
-            json.JSONDecodeError("配置损坏", "{", 1),
+        game_path = str(self.root / "HTGame.exe")
+        for path, error, arguments in (
+            (game_path, None, '--profile "中文 游戏"'),
+            ("", None, ""),
+            ("", PermissionError("配置无访问权限"), ""),
+            ("", json.JSONDecodeError("配置损坏", "{", 1), ""),
         ):
             with (
-                self.subTest(error=error),
-                patch.object(set_config, "get_script_game_path", return_value=""),
+                self.subTest(path=path, error=error, arguments=arguments),
+                patch.object(set_config, "get_script_game_path", return_value=path),
                 patch.object(
                     set_config, "load_game_config", return_value=None, side_effect=error
                 ),
-                patch.object(set_config, "resolve_script_path") as resolve,
+                patch.object(
+                    set_config, "resolve_script_path", return_value=path
+                ) as resolve,
                 patch.object(
                     utils_launcher,
                     "get_installed_launcher",
@@ -724,15 +725,20 @@ class TestLaunchGame(unittest.TestCase):
                 patch.object(utils_launcher, "open_in_explorer") as open_launcher,
                 patch.object(utils_launcher, "_kernel32") as kernel,
             ):
-                if error is None:
-                    set_config.launch_game("ok-nte")
+                if error is None and not arguments:
+                    set_config.launch_game("ok-nte", arguments)
                 else:
-                    with self.assertLogs(set_config.logger, level="WARNING"):
-                        set_config.launch_game("ok-nte")
+                    with self.assertLogs(set_config.logger, level="WARNING") as logs:
+                        set_config.launch_game("ok-nte", arguments)
+                    if arguments:
+                        self.assertIn("暂不支持传递自定义游戏参数", logs.output[0])
                 find.assert_called_once_with("NTELauncher.exe", "YH", "NTELauncher.exe")
-                open_launcher.assert_called_once_with(str(launcher_path), "")
+                open_launcher.assert_called_once_with(str(launcher_path), "/autoplay")
                 kernel.assert_not_called()
-                resolve.assert_not_called()
+                if path:
+                    resolve.assert_called_once_with(path)
+                else:
+                    resolve.assert_not_called()
 
     def test_unrecoverable_game_path_read_failures_propagate(self):
         for script_name, source in (
