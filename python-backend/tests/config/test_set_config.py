@@ -680,6 +680,10 @@ class TestLaunchGame(unittest.TestCase):
                 {
                     "uninstall_id": "YH",
                     "filename": "NTELauncher.exe",
+                    "process_name": "NTEGame.exe",
+                    "trusted_signers": frozenset(
+                        {"F11F50C68DCCDA8026A6A94138799F559DEEE554"}
+                    ),
                 },
             ),
         ):
@@ -698,6 +702,8 @@ class TestLaunchGame(unittest.TestCase):
                 open_game.assert_not_called()
 
     def test_nte_without_game_path_can_still_resolve_installed_launcher(self):
+        launcher_path = self.root / "NTELauncher.exe"
+        launcher_path.touch()
         for error in (
             None,
             PermissionError("配置无访问权限"),
@@ -710,19 +716,22 @@ class TestLaunchGame(unittest.TestCase):
                     set_config, "load_game_config", return_value=None, side_effect=error
                 ),
                 patch.object(set_config, "resolve_script_path") as resolve,
-                patch.object(utils_launcher, "launch_with_launcher") as launch,
+                patch.object(
+                    utils_launcher,
+                    "get_installed_launcher",
+                    return_value=str(launcher_path),
+                ) as find,
+                patch.object(utils_launcher, "open_in_explorer") as open_launcher,
+                patch.object(utils_launcher, "_kernel32") as kernel,
             ):
                 if error is None:
                     set_config.launch_game("ok-nte")
                 else:
                     with self.assertLogs(set_config.logger, level="WARNING"):
                         set_config.launch_game("ok-nte")
-                launch.assert_called_once_with(
-                    None,
-                    "",
-                    uninstall_id="YH",
-                    filename="NTELauncher.exe",
-                )
+                find.assert_called_once_with("NTELauncher.exe", "YH", "NTELauncher.exe")
+                open_launcher.assert_called_once_with(str(launcher_path), "")
+                kernel.assert_not_called()
                 resolve.assert_not_called()
 
     def test_unrecoverable_game_path_read_failures_propagate(self):
