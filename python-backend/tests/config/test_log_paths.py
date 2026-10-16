@@ -83,5 +83,59 @@ class TestLogPaths(unittest.TestCase):
         self.assertNotIn("log_analysis_path", saved)
 
 
+class TestMarch7thLogPaths(unittest.TestCase):
+    def setUp(self):
+        self.root = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        self.logs = self.root / "logs"
+        self.logs.mkdir()
+        self.script = {
+            "display_name": "崩铁",
+            "script_path": str(self.root / "March7th Launcher.exe"),
+        }
+        self.pattern = resolve_log_path(self.script)
+        assert self.pattern is not None
+        self.parser = monitor.M7ALogParser()
+        self.enterContext(patch.object(self.parser, "_is_valid_log", return_value=True))
+        for name in (
+            "launcher.log",
+            "zzz.log",
+            "2026-1-16.log",
+            "2026-10-6.log",
+            "202-10-16.log",
+            "20260-10-16.log",
+            "2026-xx-16.log",
+            "202x-10-16.log",
+            "2026-10-xx.log",
+            "2026-10-16-debug.log",
+            "2026-10-16_12-00-00.log",
+            "2026-10-16.log.bak",
+        ):
+            (self.logs / name).write_text("ERROR unrelated", encoding="utf-8")
+
+    def test_analysis_and_chain_use_only_dated_logs(self):
+        (self.logs / "2026-10-15.log").write_text("未完成", encoding="utf-8")
+        latest = self.logs / "2026-10-16.log"
+        latest.write_text("每日实训已完成", encoding="utf-8")
+        self.assertEqual(resolve_log_path(self.script, analysis=True), self.pattern)
+        result = self.parser.parse(str(self.pattern))
+        self.assertEqual(result["log_path"], str(latest))
+        self.assertTrue(result["daily_done"])
+        self.assertEqual(result["errors"], [])
+
+        chain = self.root / "chain.yml"
+        generate_chain_config(
+            {"script_list": [self.script]},
+            {"March7th-Launcher"},
+            out_path=str(chain),
+        )
+        saved = load_data(chain, file_format="yaml")["script_list"][0]
+        self.assertEqual(saved["log_path"], str(self.pattern))
+
+    def test_unrelated_logs_do_not_fall_back_to_any_log_file(self):
+        result = self.parser.parse(str(self.pattern))
+        self.assertEqual(result["status"], monitor.ScriptLogStatus.NO_LOG)
+        self.assertIsNone(result["log_path"])
+
+
 if __name__ == "__main__":
     unittest.main()
