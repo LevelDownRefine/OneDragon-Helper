@@ -23,31 +23,31 @@
 
 ## 游戏启动入口
 
-所有游戏通过后台 CLI `--launch-game SCRIPT_NAME` 调用模块入口，再分派给
-对应适配器的 `launch_game(game_path, game_arguments)` 实例方法。
+所有游戏通过后台 CLI `--launch-game SCRIPT_NAME` 调用模块入口；已适配游戏分派给
+对应适配器的 `launch_game(game_path, game_arguments)` 实例方法，未适配游戏直接打开用户配置的路径。
 `link` 仅传脚本标识和游戏参数，游戏路径在后台解析；查路径和启动均使用缓存的适配器实例。
 MAA 保留构造时初始化原生任务队列的行为，首次读取路径或打开模拟器也会触发；
 缓存仅在当前进程内有效，后台启动游戏的新进程会重新初始化。
 基类 `launch_game()` 只通过系统关联直接打开游戏，支持快捷方式，不声明或判断启动器字段。
 
-终末地和异环各自覆盖 `launch_game()`，并在自己的子类中保存所需启动器配置，
-共同调用 `utils_launcher.launch_with_launcher`。
+终末地和异环各自覆盖 `launch_game()`，在方法内直接将启动器参数传给
+`utils_launcher.launch_with_launcher`。
 该流程共用 Windows 卸载记录的 HKCU/HKLM、32/64 位视图和 `InstallLocation`；
 未找到时从游戏目录向上查找启动器。无需额外的启动器类或按 EXE 文件名注册的表。
 
-终末地在 `EndfieldConfig` 声明卸载项 `33a0a6296a20400d503c59ac0fd6341e`、
-`Launcher.exe` 及固定参数 `("--game=Endfield", "--reason=4")`，并声明
-`launcher_process_name="Games.exe"` 和允许的签名证书。通用流程复用或启动启动器，
+终末地在 `EndfieldConfig.launch_game()` 传入卸载项 `33a0a6296a20400d503c59ac0fd6341e`、
+`Launcher.exe` 及固定参数 `("--game=Endfield", "--reason=4")`，以及
+`process_name="Games.exe"` 和允许的签名证书。通用流程复用或启动启动器，
 等待进程存在、可取得所需句柄且签名通过，再创建游戏并释放句柄；不检查窗口激活、
 登录或更新状态。等待在后台执行。
 
-异环在 `NTEConfig` 声明 `YH` 和 `NTELauncher.exe`，暂时只打开启动器；
+异环在 `NTEConfig.launch_game()` 传入 `YH` 和 `NTELauncher.exe`，暂时只打开启动器；
 即使游戏路径未配置，仍可通过注册表找到启动器；原生配置读取失败由它自己的
 `get_game_exe_path()` 记录日志并返回空路径。它使用自己的启动器参数，
 不再将 `game_arguments` 传给启动器。自动启动异环游戏尚未验证。
 
 各游戏手填的 `game_path` 始终优先，指向游戏本体；未填时读取原生配置。
-`game_arguments` 只传给游戏本体，启动器参数由上述类属性声明。
+`game_arguments` 只传给游戏本体，启动器参数写在上述启动方法中。
 
 ## 任务声明
 

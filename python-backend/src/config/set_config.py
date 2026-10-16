@@ -46,14 +46,12 @@ class ScriptConfig:
 
     def __init__(self) -> None:
         """按声明装配日常与周常对象，不读写原生配置。"""
-        self._dailies: list[Daily] = []
-        self._weeklies: list[Weekly] = []
-        if not self._script_name:
-            return
-        self._dailies = build_dailies(
+        self._dailies: list[Daily] = build_dailies(
             self._script_name, self.display_name, get_daily_configs(self._script_name)
         )
-        self._weeklies = build_weeklies(self._script_name, self.display_name)
+        self._weeklies: list[Weekly] = build_weeklies(
+            self._script_name, self.display_name
+        )
 
     def _daily_config_rel_path(self) -> str:
         """脚本 config 文件路径（取首个日常声明的 ``config``）。
@@ -270,16 +268,6 @@ class GenshinConfig(ScriptConfig):
 class EndfieldConfig(ScriptConfig):
     _script_name = "ok-ef"
     display_name = "终末地"
-    launcher_uninstall_id = "33a0a6296a20400d503c59ac0fd6341e"
-    launcher_filename = "Launcher.exe"
-    launcher_arguments = ("--game=Endfield", "--reason=4")
-    launcher_process_name = "Games.exe"
-    launcher_trusted_signers = frozenset(
-        {
-            "2B366F397E64A9494A553B70004E8CA1AAE02B9D",
-            "FF4AF264C36A27F0C805936708EF8EC67B396225",
-        }
-    )
 
     def launch_game(
         self, game_path: str | None, game_arguments: str = ""
@@ -288,11 +276,16 @@ class EndfieldConfig(ScriptConfig):
         return utils_launcher.launch_with_launcher(
             game_path,
             game_arguments,
-            uninstall_id=self.launcher_uninstall_id,
-            filename=self.launcher_filename,
-            arguments=self.launcher_arguments,
-            process_name=self.launcher_process_name,
-            trusted_signers=self.launcher_trusted_signers,
+            uninstall_id="33a0a6296a20400d503c59ac0fd6341e",
+            filename="Launcher.exe",
+            arguments=("--game=Endfield", "--reason=4"),
+            process_name="Games.exe",
+            trusted_signers=frozenset(
+                {
+                    "2B366F397E64A9494A553B70004E8CA1AAE02B9D",
+                    "FF4AF264C36A27F0C805936708EF8EC67B396225",
+                }
+            ),
         )
 
 
@@ -315,8 +308,6 @@ class StarRailConfig(ScriptConfig):
 class NTEConfig(ScriptConfig):
     _script_name = "ok-nte"
     display_name = "异环"
-    launcher_uninstall_id = "YH"
-    launcher_filename = "NTELauncher.exe"
 
     def get_game_exe_path(self) -> str | None:
         """读取游戏本体路径；原生配置不可读时仍允许从注册表定位启动器。"""
@@ -338,8 +329,8 @@ class NTEConfig(ScriptConfig):
         return utils_launcher.launch_with_launcher(
             game_path,
             game_arguments,
-            uninstall_id=self.launcher_uninstall_id,
-            filename=self.launcher_filename,
+            uninstall_id="YH",
+            filename="NTELauncher.exe",
         )
 
 
@@ -586,11 +577,18 @@ def get_game_exe_path(script_name: str) -> str | None:
 
 def launch_game(script_name: str, game_arguments: str = "") -> int | None:
     """按脚本适配器启动游戏；路径和启动方式均在后台解析。"""
-    config = _CONFIGS[script_name]() if script_name in _CONFIGS else ScriptConfig()
     game_path = get_game_exe_path(script_name)
     if game_path:
         game_path = os.path.abspath(resolve_script_path(game_path))
-    return config.launch_game(game_path, game_arguments)
+    if script_name in _CONFIGS:
+        return _CONFIGS[script_name]().launch_game(game_path, game_arguments)
+    if not isinstance(game_arguments, str):
+        raise ValueError("游戏启动参数无效")
+    if not game_path or not os.path.isfile(game_path):
+        raise FileNotFoundError(f"未找到游戏程序：{game_path}")
+    open_in_explorer(game_path, game_arguments)
+    logger.info("已打开游戏启动目标：%s", game_path)
+    return None
 
 
 def is_adapted(script_name: str) -> bool:

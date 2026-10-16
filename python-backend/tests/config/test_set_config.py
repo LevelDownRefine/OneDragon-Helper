@@ -372,7 +372,10 @@ class TestGetGameExePath(unittest.TestCase):
 
     def test_unadapted_base_returns_none(self):
         """基类未适配（无资源声明）→ None，不触发任何读取"""
-        with patch("src.config.set_config.load_game_config") as mock_load:
+        with (
+            patch("src.config.set_config.get_daily_configs", return_value=[]),
+            patch("src.config.set_config.load_game_config") as mock_load,
+        ):
             got = ScriptConfig().get_game_exe_path()
         self.assertIsNone(got)
         mock_load.assert_not_called()
@@ -638,7 +641,7 @@ class TestLaunchGame(unittest.TestCase):
                 initialize.assert_called_once_with()
                 self.assertEqual(events, ["initialize", "open", "open"])
 
-    def test_launcher_declarations_select_shared_flow_by_script(self):
+    def test_launcher_parameters_select_shared_flow_by_script(self):
         arguments = '--profile "中文 游戏"'
         game = self.root / "renamed-game.exe"
         game.touch()
@@ -733,18 +736,21 @@ class TestLaunchGame(unittest.TestCase):
     def test_invalid_direct_game_inputs_do_not_open_any_target(self):
         game = self.root / "game.exe"
         game.touch()
-        for path, arguments, error in (
-            (None, "", FileNotFoundError),
-            (str(self.root / "missing.exe"), "", FileNotFoundError),
-            (str(game), None, ValueError),
-        ):
-            with (
-                self.subTest(path=path, arguments=arguments),
-                patch.object(set_config, "open_in_explorer") as open_game,
-                self.assertRaises(error),
+        for script in ("ok-ww", "custom"):
+            for path, arguments, error in (
+                (None, "", FileNotFoundError),
+                (str(self.root / "missing.exe"), "", FileNotFoundError),
+                (str(self.root), "", FileNotFoundError),
+                (str(game), None, ValueError),
             ):
-                ScriptConfig().launch_game(path, arguments)
-            open_game.assert_not_called()
+                with (
+                    self.subTest(script=script, path=path, arguments=arguments),
+                    patch.object(set_config, "get_game_exe_path", return_value=path),
+                    patch.object(set_config, "open_in_explorer") as open_game,
+                    self.assertRaises(error),
+                ):
+                    set_config.launch_game(script, arguments)
+                open_game.assert_not_called()
 
 
 class TestSetConfigAdapter(unittest.TestCase):
