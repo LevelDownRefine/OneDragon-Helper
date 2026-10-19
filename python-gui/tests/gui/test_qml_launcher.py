@@ -906,7 +906,7 @@ class TestTaskCardWeeklyAreaHeightForSupportedScript(unittest.TestCase):
                          return_value={"script_list": scripts}).start()
             patch.object(main_window.BackgroundController, "resolve_bg",
                          return_value=None).start()
-            patch("src.config.task.weekly.read_task_source",
+            patch("src.config.task.task_source.read_task_source",
                   return_value=["无", "坏灭的喜剧", "铁骸的锈冢", "晨昏的回眸",
                                 "心兽的战场", "尘梦的赞礼", "蛀星的旧靥",
                                 "不死的神实", "寒潮的落幕", "毁灭的开端"]).start()
