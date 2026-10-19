@@ -27,7 +27,7 @@ from src.config.task.task_declarations import (
     get_value_map,
     load_weekly_map,
 )
-from src.config.task.task_source import read_task_source
+from src.config.task.task_source import TaskSourceMixin
 from src.utils.utils_dict import get_field, safe_update
 from src.utils.utils_sub_config import load_script_config, save_script_config
 from src.utils.utils_weekly import DISABLED_START_DAY, is_weekly_start_reached
@@ -40,7 +40,7 @@ logger = logging.getLogger(__name__)
 # ============================================================
 
 
-class Weekly:
+class Weekly(TaskSourceMixin):
     """单条周常：名称、由声明解析出的落点，以及它那部分的读写规则。
 
     Attributes:
@@ -85,24 +85,11 @@ class Weekly:
         if "options" not in result:
             return result
         group = result["options"]
-        if "source" in group:
-            values = [
-                {"display_name": name}
-                for name in read_task_source(self.script_name, group["source"])
-            ]
-        else:
-            assert "values" in group
-            values = group["values"]
+        values = self._materialize_options(group)
         assert all("options" not in option for option in values), (
             "当前周常菜单只支持一级选择"
         )
-        result["options"] = {
-            **group,
-            "values": [
-                {**option, "physical_name": get_physical_name(option)}
-                for option in values
-            ],
-        }
+        result["options"] = {**group, "values": values}
         return result
 
     def _load_config(self, *, allow_missing: bool = False) -> dict | None:

@@ -18,7 +18,7 @@ from src.config.task.task_declarations import (
     get_physical_name,
     get_value_map,
 )
-from src.config.task.task_source import read_task_source
+from src.config.task.task_source import TaskSourceMixin
 from src.utils.utils_dict import covers, get_field, safe_update
 from src.utils.utils_sub_config import (
     load_game_config,
@@ -30,7 +30,7 @@ from src.utils.utils_sub_config import (
 logger = logging.getLogger(__name__)
 
 
-class Daily:
+class Daily(TaskSourceMixin):
     """单个日常：名称、由声明解析出的落点，以及它那部分的读写规则。
 
     Attributes:
@@ -93,28 +93,13 @@ class Daily:
         )
         groups = [(result["options"], 0)]
         for group, depth in groups:
-            if "source" in group:
-                values = [
-                    {"display_name": name}
-                    for name in self.get_task_lists(group["source"])
-                ]
-            else:
-                assert "values" in group
-                values = group["values"]
-            group["values"] = [
-                {**option, "physical_name": get_physical_name(option)}
-                for option in values
-            ]
+            group["values"] = self._materialize_options(group)
             for option in group["values"]:
                 if "options" in option:
                     assert depth < 1, "当前日常菜单最多支持两级选择"
                     option["options"] = dict(option["options"])
                     groups.append((option["options"], depth + 1))
         return result
-
-    def get_task_lists(self, source: dict) -> list[str]:
-        """读取该日常某组选项的资源；特殊资源格式由机制类覆写。"""
-        return read_task_source(self.script_name, source)
 
     def _read_config(
         self, rel_path: str, *, allow_missing: bool = False
