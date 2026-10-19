@@ -115,7 +115,7 @@ class TestDailyMenus(unittest.TestCase):
         with (
             patch("src.config.set_config.load_daily_map", return_value=declarations),
             patch(
-                "src.config.task.daily.read_task_source", return_value=["副本"]
+                "src.config.task.task_source.read_task_source", return_value=["副本"]
             ) as source,
         ):
             menus = get_daily_map("current")
@@ -182,7 +182,7 @@ class TestDailyMenus(unittest.TestCase):
             "key": "stage",
             "source": {"path": "stages.json", "key": ["stages"]},
         }
-        with patch("src.config.task.daily.read_task_source") as source:
+        with patch("src.config.task.task_source.read_task_source") as source:
             daily = Daily("x", self.declaration, "脚本")
             source.assert_not_called()
             source.side_effect = [["甲"], [], ["乙"]]
@@ -439,7 +439,7 @@ class TestWeeklyMenus(unittest.TestCase):
                 "src.config.task.weekly.load_weekly_map",
                 return_value={"x": declarations},
             ),
-            patch("src.config.task.weekly.read_task_source") as source,
+            patch("src.config.task.task_source.read_task_source") as source,
         ):
             menus = get_weekly_map("x")
             self.assertEqual(get_weekly_map("unknown"), [])
@@ -475,7 +475,8 @@ class TestWeeklyMenus(unittest.TestCase):
                 }
                 weekly = Weekly("x", declaration, "脚本")
                 with patch(
-                    "src.config.task.weekly.read_task_source", side_effect=[["甲"], []]
+                    "src.config.task.task_source.read_task_source",
+                    side_effect=[["甲"], []],
                 ) as reader:
                     menus = [weekly.menu(), weekly.menu()]
                 self.assertEqual(
