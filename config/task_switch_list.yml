@@ -48,7 +48,7 @@ BetterGI:
   tasks_key: TaskDefinitions
   enabled_key: TaskEnabledList
 
-# 终末地：日常总开关在 DailyTask 的六组多选中；刷体力由日常卡管理。
+# 终末地：日常总开关在 DailyTask 的七组多选中；刷体力由日常卡管理。
 # 子任务开关仍在各自文件，外部命令保留独立布尔开关。
 ok-ef:
   options:
@@ -107,6 +107,8 @@ ok-ef:
       names: [演算]
     - list_key: 奖励任务
       names: [活动奖励, 日常奖励]
+    - list_key: 农牧任务
+      names: [农牧相关]
     - list_key: 自动送货任务
       names: [自动送货]
     - list_key: 收尾任务
