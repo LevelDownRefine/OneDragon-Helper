@@ -23,6 +23,7 @@ _GROUPS = {
     ],
     "战斗任务": ["演算"],
     "奖励任务": ["活动奖励", "日常奖励"],
+    "农牧任务": ["农牧相关"],
     "自动送货任务": ["自动送货"],
     "收尾任务": ["传送到帝江号右侧传送点"],
 }
@@ -79,7 +80,7 @@ class TestEndfieldTaskSwitches(unittest.TestCase):
             self.switch.read(),
             [{"name": name, "enabled": name != "执行外部命令"} for name in expected],
         )
-        self.assertEqual(len(expected), 23)
+        self.assertEqual(len(expected), 24)
         self.assertEqual(len(set(expected)), len(expected))
         self.assertNotIn("刷体力", expected)
         self.assertEqual(self.snapshot(), before)
@@ -100,9 +101,9 @@ class TestEndfieldTaskSwitches(unittest.TestCase):
             expected[group] = [name for name in seed[group] if name not in names]
 
         rows = self.switch.read()
-        self.assertEqual(len(rows), 23, "旧布尔字段不能产生重复行或额外入口")
+        self.assertEqual(len(rows), 24, "旧布尔字段不能产生重复行或额外入口")
         self.assertTrue(all(row["enabled"] for row in rows if row["name"] in states))
-        self.assertEqual(self.switch.write(states), 14)
+        self.assertEqual(self.switch.write(states), len(states))
         self.assertEqual(self.load(), expected)
         after = self.snapshot()
         self.assertEqual(
@@ -115,7 +116,7 @@ class TestEndfieldTaskSwitches(unittest.TestCase):
         self.assertEqual(self.switch.write(states), 0)
         self.assertEqual(self.snapshot(), after)
 
-        self.assertEqual(self.switch.write(dict.fromkeys(states, True)), 14)
+        self.assertEqual(self.switch.write(dict.fromkeys(states, True)), len(states))
         for group, names in _GROUPS.items():
             expected[group].extend(names)
         self.assertEqual(self.load(), expected)
