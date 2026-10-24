@@ -12,8 +12,11 @@ from src.utils import utils_wallpaper as wallpaper
 from src.utils.utils_wallpaper import (
     load_wallpapers,
     save_video_preview,
+    save_wallpaper_cache_bytes,
     save_wallpapers,
     video_preview_path,
+    wallpaper_cache_path,
+    wallpaper_cache_ready,
 )
 
 
@@ -230,6 +233,63 @@ class WallpaperTests(unittest.TestCase):
             wallpaper.wallpaper_view("script")["cache"], video_preview_path(str(video))
         )
         self.assertEqual(state["mode"], "video")
+
+
+class TestStaticWallpaperCache(UtilsWallpaperTestBase):
+    """wallpaper_cache_path / ready / save_wallpaper_cache_bytes：静态壁纸压缩缓存。"""
+
+    def _source(self, name: str = "src.png") -> str:
+        path = os.path.join(self.tmp_dir.name, name)
+        with open(path, "wb") as f:
+            f.write(b"png")
+        return path
+
+    def test_cache_path_is_script_named_under_cache_dir(self):
+        self.assertEqual(
+            wallpaper_cache_path("wu"),
+            os.path.join(os.path.dirname(self.json_path), "wallpaper_cache", "wu.jpg"),
+        )
+
+    def test_missing_cache_is_not_ready(self):
+        self.assertIsNone(wallpaper_cache_ready(self._source(), "wu"))
+
+    def test_fresh_cache_reused_and_stale_cache_rebuilt(self):
+        src = self._source()
+        cache = wallpaper_cache_path("wu")
+        os.makedirs(os.path.dirname(cache), exist_ok=True)
+        with open(cache, "wb") as f:
+            f.write(b"jpeg")
+        os.utime(src, (0, 0))  # 源早于缓存 → 直接复用
+        self.assertEqual(wallpaper_cache_ready(src, "wu"), cache)
+        os.utime(cache, (0, 0))
+        os.utime(src)  # 源比缓存新 → 需重建
+        self.assertIsNone(wallpaper_cache_ready(src, "wu"))
+
+    def test_force_deletes_cache_even_when_mtime_looks_fresh(self):
+        src = self._source()
+        cache = wallpaper_cache_path("wu")
+        os.makedirs(os.path.dirname(cache), exist_ok=True)
+        with open(cache, "wb") as f:
+            f.write(b"jpeg")
+        os.utime(src, (0, 0))
+        self.assertIsNone(wallpaper_cache_ready(src, "wu", force=True))
+        self.assertFalse(os.path.isfile(cache))
+
+    def test_save_bytes_writes_atomically_without_temporary_leftover(self):
+        path = wallpaper_cache_path("wu")
+        self.assertTrue(save_wallpaper_cache_bytes(path, b"jpeg"))
+        with open(path, "rb") as f:
+            self.assertEqual(f.read(), b"jpeg")
+        self.assertFalse(os.path.isfile(path + ".tmp"))
+
+    def test_save_failure_returns_false(self):
+        """落点目录被同名文件占用：写入失败返回 False 而非抛出。"""
+        blocker = os.path.join(self.tmp_dir.name, "wallpaper_cache")
+        with open(blocker, "w", encoding="utf-8") as f:
+            f.write("占用")
+        self.assertFalse(
+            save_wallpaper_cache_bytes(os.path.join(blocker, "wu.jpg"), b"jpeg")
+        )
 
 
 if __name__ == "__main__":

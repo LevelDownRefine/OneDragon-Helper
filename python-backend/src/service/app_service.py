@@ -29,8 +29,13 @@ import src.service.script_service as script_service
 import src.service.task_service as task_service
 from src.config.native_task_switch import native_task_switch_of
 from src.config.set_config import (
+    get_background_rel_path,
     get_daily_map,
+    get_daily_readback,
+    get_game_exe_path,
     get_weekly_map,
+    get_weekly_task,
+    is_adapted,
     set_config,
     set_daily_enabled,
     set_weekly_start_day,
@@ -50,6 +55,7 @@ from src.service.schedule import (
 )
 from src.service.script_service import InvalidScript, ScriptEdit
 from src.update import UpdateService, UpdateSession
+from src.utils import get_config_yml_path_under_root
 from src.utils.utils_config import (
     config_file_path,
     get_script,
@@ -67,9 +73,12 @@ from src.utils.utils_wallpaper import (
     load_wallpapers,
     save_video_preview,
     save_wallpaper_cache,
+    save_wallpaper_cache_bytes,
     save_wallpapers,
     set_wallpaper,
     video_preview_path,
+    wallpaper_cache_path,
+    wallpaper_cache_ready,
     wallpaper_view,
 )
 from src.utils.utils_weekly import (
@@ -174,6 +183,18 @@ class AppService:
         self, script_name: str, token: str, jpeg_base64: str
     ) -> bool:
         return save_wallpaper_cache(script_name, token, jpeg_base64)
+
+    def wallpaper_cache_path(self, script_name: str) -> str:
+        """静态壁纸压缩缓存的固定落点（GUI 解码缩放后写盘经 service）。"""
+        return wallpaper_cache_path(script_name)
+
+    def wallpaper_cache_ready(
+        self, src_path: str, script_name: str, *, force: bool = False
+    ) -> str | None:
+        return wallpaper_cache_ready(src_path, script_name, force=force)
+
+    def save_wallpaper_cache_bytes(self, cache_path: str, data: bytes) -> bool:
+        return save_wallpaper_cache_bytes(cache_path, data)
 
     def resolve_launch_target(self, script_name: str, target: str) -> dict:
         return link.resolve_launch_target(script_name, target)
@@ -296,6 +317,30 @@ class AppService:
     def get_daily_map(self, script_name: str) -> dict:
         """物化指定脚本的日常菜单。"""
         return get_daily_map(script_name)
+
+    def is_adapted(self, script_name: str) -> bool:
+        """查询脚本是否已注册副本适配（任务卡决定是否显示）。"""
+        return is_adapted(script_name)
+
+    def get_daily_readback(self, script_name: str) -> list[dict]:
+        """读该脚本全部日常的已选项与开关（任务卡反读）。"""
+        return get_daily_readback(script_name)
+
+    def get_weekly_task(self, script_name: str, weekly_name: str) -> str | None:
+        """经脚本适配器反读周常副本；未适配脚本返回 None。"""
+        return get_weekly_task(script_name, weekly_name)
+
+    def get_background_rel_path(self, script_name: str) -> str:
+        """读脚本默认背景图相对路径（相对脚本根目录，背景控制器）。"""
+        return get_background_rel_path(script_name)
+
+    def get_game_exe_path(self, script_name: str) -> str | None:
+        """解析游戏 exe 路径（图标渲染）；两处来源都没有时返回 None。"""
+        return get_game_exe_path(script_name)
+
+    def config_yml_path(self) -> str:
+        """总配置 config.yml 的落点（打开设置用）。"""
+        return get_config_yml_path_under_root()
 
     # ── 游戏侧 config 适配器（src.config.set_config 模块函数）────────────
     # ── 单脚本配置（src.utils.utils_config 模块函数）─────────────────────────
@@ -538,3 +583,7 @@ class AppService:
             shutdown_delay=shutdown_delay,
             close_running=close_running,
         )
+
+    def spawn_run(self, enabled_keys, *, chain_name: str = "today"):
+        """「启动全部」：按 schedule.yml 运行选项起独立控制台进程立即运行。"""
+        return chain_service.spawn_run_from_options(enabled_keys, chain_name=chain_name)

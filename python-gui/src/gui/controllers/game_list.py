@@ -183,7 +183,7 @@ class GameListController(QObject):
         # 图标缓存提供器：数据来源本控制器 games，reload_games 时刷新
         self.icon_provider = ScriptIconProvider([])
         # 游戏 exe 图标提供器（悬停提示）：按 script_name 解析游戏 exe 图标
-        self.game_icon_provider = GameIconProvider()
+        self.game_icon_provider = GameIconProvider(app_service)
         self._enabled: list = [True]
         self._control_mode = False
         self.current_index = 0

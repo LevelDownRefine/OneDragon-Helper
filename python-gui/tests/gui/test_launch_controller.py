@@ -47,29 +47,20 @@ class TestLaunchAllImmediate(unittest.TestCase):
 
     def test_runs_immediately(self):
         ctrl, service, toast = _make_controller()
-        with mock.patch("gui.controllers.launch.spawn_schedule_run") as mock_spawn:
-            self._run_launch(ctrl)
-        # 手动启动经 spawn_schedule_run 运行（target=now，不等待），
-        # 不直连 service.run_chain_once / schedule_run。
-        mock_spawn.assert_called_once()
-        args = mock_spawn.call_args
-        self.assertEqual(args.args[0], {"demo"})  # 启用脚本集合
-        self.assertEqual(args.args[1], "now")  # 即时：不等待
-        self.assertFalse(args.kwargs["mute"])
-        self.assertFalse(args.kwargs["unmute"])
-        self.assertIsNone(args.kwargs["shutdown_delay"])
+        self._run_launch(ctrl)
+        # 启动经 service.spawn_run（按 schedule.yml 运行选项起独立控制台进程，
+        # 即时不等待），不直连 service.run_chain_once / schedule_run。
+        service.spawn_run.assert_called_once_with({"demo"})
         service.run_chain_once.assert_not_called()
         service.schedule_run.assert_not_called()
 
     def test_spawn_failure_toasts_error(self):
-        """起进程失败（spawn 返回 None）：报失败引导看日志，不报成功。"""
+        """起进程失败（spawn_run 返回 None）：报失败引导看日志，不报成功。"""
         ctrl, service, toast = _make_controller()
+        service.spawn_run.return_value = None
         ctrl._confirm_run = mock.MagicMock(return_value=True)
-        with mock.patch(
-            "gui.controllers.launch.spawn_schedule_run", return_value=None
-        ) as mock_spawn:
-            ctrl.launchAll()
-        mock_spawn.assert_called_once()
+        ctrl.launchAll()
+        service.spawn_run.assert_called_once_with({"demo"})
         self.assertTrue(any("启动失败" in c[0][0] for c in toast.call_args_list))
 
 
@@ -205,17 +196,10 @@ class TestLaunchAllUnattended(unittest.TestCase):
         ctrl, service, toast = _make_controller()
         # 无人值守：确认窗不应被弹出（不告警、不回显调度配置）。
         ctrl._confirm_run = mock.MagicMock()
-        with mock.patch("gui.controllers.launch.spawn_schedule_run") as mock_spawn:
-            ctrl.launchAll(confirm=False)
+        ctrl.launchAll(confirm=False)
         ctrl._confirm_run.assert_not_called()
-        # 仍按上次配置经 spawn_schedule_run 启动（即时、无 special 参数）。
-        mock_spawn.assert_called_once()
-        args = mock_spawn.call_args
-        self.assertEqual(args.args[0], {"demo"})
-        self.assertEqual(args.args[1], "now")
-        self.assertFalse(args.kwargs["mute"])
-        self.assertFalse(args.kwargs["unmute"])
-        self.assertIsNone(args.kwargs["shutdown_delay"])
+        # 仍按上次配置经 service.spawn_run 启动（即时）。
+        service.spawn_run.assert_called_once_with({"demo"})
         toast.assert_called_once()
         self.assertIn("手动运行", toast.call_args[0][0])
 

@@ -26,6 +26,7 @@ from src.service.schedule import (
     _parse_run_options,
     is_valid_target_time,
     load_schedule,
+    run_launch_kwargs,
     save_schedule,
 )
 from src.utils import get_root_dir
@@ -373,14 +374,7 @@ def run_daily_plan() -> None:
         scripts,
         "now",
         chain_name="plan",
-        mute=opts.mute_enabled,
-        unmute=opts.unmute_enabled,
-        shutdown_delay=(
-            opts.shutdown_delay
-            if opts.shutdown_enabled and opts.shutdown_delay > 0
-            else None
-        ),
-        close_running=opts.close_running_enabled,
+        **run_launch_kwargs(opts),
         rerun_enabled=opts.rerun_enabled,
         smtp_config=smtp_config,
     )

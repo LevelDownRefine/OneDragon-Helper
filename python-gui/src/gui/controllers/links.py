@@ -10,7 +10,7 @@ import webbrowser
 from PySide6.QtCore import QObject, QTimer, Signal, Slot
 
 from src.service.app_service import AppService
-from src.utils import get_config_yml_path_under_root, open_in_explorer
+from src.utils import open_in_explorer
 
 
 class LinksController(QObject):
@@ -182,7 +182,7 @@ class LinksController(QObject):
     @Slot()
     def openSettings(self):
         """打开总配置文件 config.yml（系统默认程序），缺失时提示。"""
-        config_path = get_config_yml_path_under_root()
+        config_path = self._app_service.config_yml_path()
         if not os.path.isfile(config_path):
             self._toast("未找到 config/config.yml")
             return

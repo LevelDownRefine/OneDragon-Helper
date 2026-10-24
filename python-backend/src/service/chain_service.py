@@ -22,10 +22,19 @@ import sys
 
 from src.log.monitor import parse_logs
 from src.service.chain_gen import generate_chain_config as _generate_chain_config
-from src.service.schedule import RunOptions, ScheduledRun, _dump_run_options
+from src.service.schedule import (
+    RunOptions,
+    ScheduledRun,
+    _dump_run_options,
+    load_run_options,
+    run_launch_kwargs,
+)
 from src.utils import utils_config
 from src.utils.utils_runner import (
     build_run_chain_command as _build_run_chain_command,
+)
+from src.utils.utils_runner import (
+    spawn_schedule_run,
 )
 from src.utils.utils_sub_config import (
     get_script_name,
@@ -243,6 +252,21 @@ def schedule_run(
         rerun_enabled=rerun_enabled,
         smtp_config=smtp_config,
     ).run()
+
+
+def spawn_run_from_options(
+    enabled_keys: set[str], *, chain_name: str = "today"
+) -> subprocess.Popen | None:
+    """按 schedule.yml 运行选项起独立控制台进程立即运行（GUI「启动全部」入口）。
+
+    运行选项→启动参数的映射统一走 :func:`run_launch_kwargs`；等待与编排仍在
+    新进程内由 :func:`schedule_run` 执行，GUI 退出不影响运行。返回 None 表示
+    起进程失败（Popen 异常已被 spawn 记日志）。
+    """
+    options = load_run_options()
+    return spawn_schedule_run(
+        enabled_keys, "now", chain_name=chain_name, **run_launch_kwargs(options)
+    )
 
 
 def _run_chain_once_impl(

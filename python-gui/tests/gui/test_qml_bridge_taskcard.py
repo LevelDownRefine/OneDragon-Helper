@@ -2,7 +2,7 @@
 
 复用 gui_helpers.make_bridge：用 mock 隔离 config / 壁纸 I/O；is_adapted / set_config.get_weekly_map / get_daily_map /
 parse_daily_config 按用例 patch（task_card 经 AppService 取数，patch 目标指向
-真实模块函数），验证 QML 任务卡所需的数据与写回行为。
+src.service.app_service 的模块函数），验证 QML 任务卡所需的数据与写回行为。
 """
 
 import unittest
@@ -10,7 +10,6 @@ from unittest.mock import MagicMock, patch
 
 from PySide6.QtWidgets import QDialog
 
-from gui.controllers import task_card
 from src.service import app_service
 from src.service.script_service import ScriptEdit
 from tests.gui.helpers import make_bridge
@@ -47,7 +46,7 @@ class TestTaskCard(unittest.TestCase):
         )
         with (
             patch.object(bridge.backup, "_pick_zip", return_value="backup.zip"),
-            patch.object(task_card, "get_daily_readback") as readback,
+            patch("src.service.app_service.get_daily_readback") as readback,
         ):
             readback.return_value = [
                 {"name": "每日任务", "task": "副本A", "sequence": None, "enabled": None}
@@ -60,14 +59,14 @@ class TestTaskCard(unittest.TestCase):
             changed.assert_called_once_with()
             self.assertEqual(bridge.dailyItems[0]["task_label"], "副本B")
 
-    @patch.object(task_card, "is_adapted", return_value=True)
+    @patch("src.service.app_service.is_adapted", return_value=True)
     @patch(
         "src.service.app_service.get_weekly_map",
         return_value=[{"display_name": "周常"}],
     )
     @patch("src.service.app_service.get_weekly_start_map", return_value={})
     @patch("src.service.app_service.get_daily_map", return_value={})
-    @patch.object(task_card, "get_daily_readback", return_value=[])
+    @patch("src.service.app_service.get_daily_readback", return_value=[])
     def test_daily_items_default_is_empty(self, *_):
         b = make_bridge()
         self.assertEqual(b.dailyItems, [])
@@ -83,17 +82,17 @@ class TestTaskCard(unittest.TestCase):
             name, "追猎目标", False
         )
 
-    @patch.object(task_card, "is_adapted", return_value=False)
+    @patch("src.service.app_service.is_adapted", return_value=False)
     @patch("src.service.app_service.get_daily_map", return_value={})
     def test_task_adapted_reflects_is_adapted(self, *_):
         b = make_bridge()
         self.assertFalse(b.taskAdapted)
 
     @patch("src.service.app_service.set_config")  # 实时落盘子脚本 config（经 service）
-    @patch.object(task_card, "is_adapted", return_value=True)
+    @patch("src.service.app_service.is_adapted", return_value=True)
     @patch("src.service.app_service.get_weekly_map", return_value=[])
     @patch("src.service.app_service.get_daily_map", return_value={})
-    @patch.object(task_card, "get_daily_readback")
+    @patch("src.service.app_service.get_daily_readback")
     def test_select_daily_task_writes_config(self, readback, *_):
         b = make_bridge()
         name = b.games[0]["script_name"]
@@ -130,8 +129,8 @@ class TestTaskCard(unittest.TestCase):
         )
 
     @patch("src.service.app_service.get_weekly_map", return_value=[])
-    @patch.object(task_card, "is_adapted", return_value=True)
-    @patch.object(task_card, "get_daily_readback")
+    @patch("src.service.app_service.is_adapted", return_value=True)
+    @patch("src.service.app_service.get_daily_readback")
     def test_nte_menu_yields_two_daily_rows(self, readback, *_):
         """多日常（异环形态）：菜单按日常分组 → 两行，且下拉数据按日常取。"""
         menu = {
@@ -181,7 +180,7 @@ class TestTaskCard(unittest.TestCase):
             [{"display_name": "追猎目标", "physical_name": "追猎目标"}],
         )
 
-    @patch.object(task_card, "is_adapted", return_value=True)
+    @patch("src.service.app_service.is_adapted", return_value=True)
     def test_daily_options_shape(self, *_):
         menu = {
             "ok-ww": {
