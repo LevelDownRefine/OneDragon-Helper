@@ -4,25 +4,27 @@
 
 ![界面示例](assets/demo.png)
 
-- 适配脚本的日常、周常及原生任务开关，也可添加自定义脚本。
-- 支持失败重跑、日志分析、邮件汇总、每日计划及完成后关机。
-- 提供配置备份恢复、手动更新，以及 Rust、Qt 两套界面。
+- 更改各脚本日常和周常配置
+- 集成多游戏脚本，形成脚本链一同运行
+- 每日计划
+- 失败重跑
+- 动态背景
 
 ## 使用
 
-从 [Releases](https://github.com/LevelDownRefine/OneDragon-Helper/releases) 下载并解压完整安装包，运行主程序。Rust 包为 `OneDragon-Helper-Rust.zip`，Qt 包为 `OneDragon-Helper.zip`。各游戏脚本需自行安装，再添加到助手。
+从 [Releases](https://github.com/LevelDownRefine/OneDragon-Helper/releases) 下载并解压完整安装包，运行主程序。Rust 包为 `OneDragon-Helper-Rust.zip`（推荐），Qt 包为 `OneDragon-Helper.zip`。各游戏脚本需自行安装，再添加到助手。
 
 ## 源码运行
 
-Python 3.11+，依赖由根目录 uv workspace 管理：
+Python 3.11+
 
 ```powershell
 git submodule update --init --recursive
-uv sync --frozen
+uv sync
 .launcher-rust.bat
 ```
 
-Rust 界面另需 Rust 1.95+ 和 Windows MSVC 工具链；Qt 界面使用 `launcher.bat`。启动器读取当前检出的源码，可复用父目录环境。
+Rust 界面另需 Rust 1.95+ 和 Windows MSVC 工具链；Qt 界面使用 `launcher.bat`。
 
 ## 开发导航
 
