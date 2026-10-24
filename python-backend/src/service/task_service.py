@@ -9,12 +9,13 @@ from src.config.set_config import (
     get_weekly_task,
     is_adapted,
 )
+from src.errors import UserError
 from src.utils.utils_config import get_script, load_config
 from src.utils.utils_sub_config import get_script_name, resolve_script_path
 from src.utils.utils_weekly import get_weekly_start_map
 
 
-class InvalidTaskSelection(ValueError):
+class InvalidTaskSelection(UserError):
     """任务卡查询引用了不存在的脚本。"""
 
 

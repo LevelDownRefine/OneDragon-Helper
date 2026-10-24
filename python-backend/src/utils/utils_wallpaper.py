@@ -8,6 +8,7 @@ import logging
 import os
 
 from src.config.set_config import get_background_rel_path
+from src.errors import UserError
 from src.utils import get_wallpaper_json_path_under_root
 from src.utils.utils_config import get_script
 from src.utils.utils_io import load_data, save_data
@@ -20,7 +21,7 @@ VIDEO_EXTENSIONS = {".mp4", ".webm", ".mkv", ".mov"}
 MAX_CACHE_BYTES = 4 * 1024 * 1024
 
 
-class InvalidWallpaper(ValueError):
+class InvalidWallpaper(UserError):
     """外部文件或壁纸请求无效。"""
 
 

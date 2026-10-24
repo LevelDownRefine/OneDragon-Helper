@@ -16,6 +16,7 @@ from pathlib import Path, PureWindowsPath
 from ruamel.yaml.error import YAMLError
 
 from src.config.set_config import get_game_path_keys, iter_backup_paths
+from src.errors import UserError
 from src.utils import get_path_under_root
 from src.utils.utils_io import dump_data_str, load_data, parse_data
 from src.utils.utils_sub_config import get_script_root_dir
@@ -69,7 +70,7 @@ def create_backup() -> dict:
             if errors:
                 raise errors[0]
     if not files:
-        raise ValueError("未找到可备份的配置文件，请检查脚本目录")
+        raise UserError("未找到可备份的配置文件，请检查脚本目录")
     return {"status": "ok", "path": _write_zip(files), "file_count": len(files)}
 
 
@@ -85,10 +86,10 @@ def _target_path(root: str, rel: str) -> Path:
         or any(ord(char) < 32 for char in part)
         for part in parts
     ):
-        raise ValueError(f"非法配置相对路径: {rel}")
+        raise UserError(f"非法配置相对路径: {rel}")
     target = Path(root).resolve().joinpath(*parts)
     if target.resolve() != target:
-        raise ValueError(f"配置路径包含链接或目录重定向: {rel}")
+        raise UserError(f"配置路径包含链接或目录重定向: {rel}")
     return target
 
 
@@ -103,7 +104,7 @@ def _restore_targets(archive: zipfile.ZipFile) -> tuple[dict[str, Path], list[st
             continue  # 普通说明文件及旧包的 manifest.json / self 目录不参与恢复。
         parts = info.filename.split("/", 2)
         if len(parts) != 3 or not parts[1]:
-            raise ValueError(f"无效的 ZIP 目录: {info.filename}")
+            raise UserError(f"无效的 ZIP 目录: {info.filename}")
         _, script_name, rel = parts
         if script_name not in roots:
             roots[script_name] = get_script_root_dir(script_name)
@@ -115,19 +116,19 @@ def _restore_targets(archive: zipfile.ZipFile) -> tuple[dict[str, Path], list[st
         target = _target_path(root, rel)
         key = str(target).casefold()
         if key in targets:
-            raise ValueError(f"ZIP 内存在重复目标: {target}")
+            raise UserError(f"ZIP 内存在重复目标: {target}")
         if target.exists() and not target.is_file():
-            raise ValueError(f"恢复目标不是文件: {target}")
+            raise UserError(f"恢复目标不是文件: {target}")
         targets.add(key)
         files[info.filename] = target
     for target in targets:
         if any(str(parent).casefold() in targets for parent in Path(target).parents):
-            raise ValueError(f"恢复目标存在文件与目录冲突: {target}")
+            raise UserError(f"恢复目标存在文件与目录冲突: {target}")
     if not files and not skipped:
-        raise ValueError("ZIP 内没有 scripts/<脚本名>/<配置路径> 文件")
+        raise UserError("ZIP 内没有 scripts/<脚本名>/<配置路径> 文件")
     bad_member = archive.testzip()
     if bad_member is not None:
-        raise ValueError(f"ZIP 校验失败: {bad_member}")
+        raise UserError(f"ZIP 校验失败: {bad_member}")
     return files, sorted(skipped)
 
 
@@ -136,7 +137,7 @@ def _preserve_game_path(target: Path, temporary: Path, keys: tuple[str, ...]) ->
     assert keys
     ext = target.suffix.lower()
     if ext not in (".json", ".yaml", ".yml"):
-        raise ValueError(f"不支持的游戏路径配置格式: {ext}")
+        raise UserError(f"不支持的游戏路径配置格式: {ext}")
     file_format = "json" if ext == ".json" else "yaml"
     current = (
         load_data(target, file_format=file_format, cached=False, encoding="utf-8-sig")
@@ -146,12 +147,12 @@ def _preserve_game_path(target: Path, temporary: Path, keys: tuple[str, ...]) ->
     payload = temporary.read_bytes()
     restored = parse_data(payload.decode("utf-8-sig"), file_format=file_format)
     if not isinstance(current, dict) or not isinstance(restored, dict):
-        raise ValueError(f"游戏路径配置必须是对象: {target}")
+        raise UserError(f"游戏路径配置必须是对象: {target}")
     missing = object()
     value = current
     for key in keys:
         if not isinstance(value, dict):
-            raise ValueError(f"本机游戏路径字段结构不兼容: {target}")
+            raise UserError(f"本机游戏路径字段结构不兼容: {target}")
         if key not in value:
             value = missing
             break
@@ -166,7 +167,7 @@ def _preserve_game_path(target: Path, temporary: Path, keys: tuple[str, ...]) ->
         assert key in node
         node = node[key]
         if not isinstance(node, dict):
-            raise ValueError(f"备份游戏路径字段结构不兼容: {target}")
+            raise UserError(f"备份游戏路径字段结构不兼容: {target}")
     key = keys[-1]
     if value is missing:
         if key not in node:
@@ -226,7 +227,7 @@ def restore_backup(zip_path: str) -> dict:
                     f"恢复前备份: {pre_backup or '无（目标原先不存在）'}"
                 ) from exc
     except (zipfile.BadZipFile, zlib.error, RuntimeError) as exc:
-        raise ValueError(f"备份无法读取：{type(exc).__name__}: {exc}") from exc
+        raise UserError(f"备份无法读取：{type(exc).__name__}: {exc}") from exc
     for script_name in skipped:
         logger.warning("[backup] 未配置脚本路径，跳过: %s", script_name)
     logger.info("[backup] 已恢复 %d 个文件，跳过 %d 个脚本", restored, len(skipped))

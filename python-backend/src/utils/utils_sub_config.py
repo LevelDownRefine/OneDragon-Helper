@@ -10,6 +10,7 @@ import re
 import tempfile
 from pathlib import Path
 
+from src.errors import UserError
 from src.utils import (
     get_config_yml_path_under_root,
     get_root_dir,
@@ -19,6 +20,10 @@ from src.utils import (
 from src.utils.utils_io import FileFormat, load_data, save_data
 
 logger = logging.getLogger(__name__)
+
+
+class ScriptConfigUnavailable(UserError):
+    """脚本配置不可用：未适配或配置文件缺失；读路径可按「未设置」处理。"""
 
 
 DEFAULT_RUN_TIMEOUT = 3600
@@ -189,7 +194,7 @@ def _config_format(path: str) -> FileFormat:
         return "json"
     if suffix in (".yaml", ".yml"):
         return "yaml"
-    raise ValueError(f"不支持的配置文件格式: {suffix}")
+    raise UserError(f"不支持的配置文件格式: {suffix}")
 
 
 def load_template(script_name: str, rel_path: str) -> dict | list:
@@ -210,10 +215,13 @@ def load_config(script_name: str, rel_path: str) -> dict | list:
     """
     读取指定脚本的 config 文件，返回解析后的 dict 或 list。
     支持 .json 和 .yaml/.yml 格式。
-    assert 文件存在。
+
+    Raises:
+        ScriptConfigUnavailable: 文件不存在（脚本未安装或未适配）。
     """
     path = get_sub_config_path(script_name, rel_path)
-    assert os.path.exists(path), f"[set_config] config 文件不存在: {path}"
+    if not os.path.exists(path):
+        raise ScriptConfigUnavailable(f"config 文件不存在: {path}")
     return load_data(path, file_format=_config_format(path), cached=False)
 
 
@@ -236,12 +244,12 @@ def load_script_config(
         解析后的 config dict；仅 allow_missing=True 且读取失败时为 None。
 
     Raises:
-        AssertionError: allow_missing=False 且文件不存在、内容损坏或解析结果非 dict。
+        ScriptConfigUnavailable: allow_missing=False 且文件不存在。
+        AssertionError: allow_missing=False 且解析结果非 dict。
     """
     try:
         config = load_config(script_name, rel_path)
-    except AssertionError:
-        # 未安装 / 文件缺失由 load_config 以断言表达，读路径按「未设置」处理。
+    except ScriptConfigUnavailable:
         if not allow_missing:
             raise
         return None
@@ -361,7 +369,7 @@ def resolve_log_path(script: dict, *, analysis: bool = False) -> Path | None:
         return None
     raw = settings[key]
     if not isinstance(raw, str):
-        raise ValueError(f"{key} 必须为文本")
+        raise UserError(f"{key} 必须为文本")
     raw = raw.strip().replace("\\", "/")
     if not raw:
         return None
@@ -378,7 +386,7 @@ def resolve_log_path(script: dict, *, analysis: bool = False) -> Path | None:
             / raw
         )
     if any(char in str(path.parent) for char in "*?") or "**" in path.name:
-        raise ValueError(f"{key} 仅允许文件名含通配符")
+        raise UserError(f"{key} 仅允许文件名含通配符")
     return path
 
 

@@ -6,10 +6,12 @@ from concurrent.futures import CancelledError, Future, ThreadPoolExecutor
 from threading import Event, Lock
 from uuid import uuid4
 
+from src.errors import UserError
+
 logger = logging.getLogger(__name__)
 
 
-class InvalidJob(ValueError):
+class InvalidJob(UserError):
     """尚有操作进行中，或请求引用了过期任务。"""
 
 

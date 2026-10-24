@@ -6,6 +6,7 @@ from copy import deepcopy
 from pathlib import Path, PureWindowsPath
 
 from src.config.task.task_source import read_task_source
+from src.errors import UserError
 from src.utils import get_root_dir
 from src.utils.utils_io import load_data
 from src.utils.utils_sub_config import (
@@ -96,29 +97,29 @@ class TaskOptions:
                             ):
                                 argument = source["argument"]
                                 if len(item.value.args) <= argument:
-                                    raise ValueError("枚举构造参数已变化")
+                                    raise UserError("枚举构造参数已变化")
                                 value = item.value.args[argument]
                                 if not isinstance(
                                     value, ast.Constant
                                 ) or not isinstance(value.value, str):
-                                    raise ValueError("枚举候选名不再是字符串常量")
+                                    raise UserError("枚举候选名不再是字符串常量")
                                 names.append(value.value)
                 if not names:
-                    raise ValueError("未找到枚举候选项")
+                    raise UserError("未找到枚举候选项")
             else:
                 records = load_data(
                     path, file_format="json", cached=False, encoding="utf-8-sig"
                 )
                 if not isinstance(records, dict):
-                    raise ValueError("候选资源不再是字典")
+                    raise UserError("候选资源不再是字典")
                 assert "field" in source
                 names = []
                 for record in records.values():
                     if not isinstance(record, dict) or source["field"] not in record:
-                        raise ValueError("候选资源字段已变化")
+                        raise UserError("候选资源字段已变化")
                     names.append(record[source["field"]])
             if not all(isinstance(name, str) and name for name in names):
-                raise ValueError("候选资源名称必须是非空字符串")
+                raise UserError("候选资源名称必须是非空字符串")
             if "prepend" in source:
                 names = [*source["prepend"], *names]
         assert isinstance(names, list)
@@ -228,15 +229,15 @@ class TaskOptions:
         rows = {row["id"]: row for row in self.read()}
         for ident, value in values.items():
             if ident not in rows:
-                raise ValueError(f"任务选项 {ident} 已不可用，请刷新配置")
+                raise UserError(f"任务选项 {ident} 已不可用，请刷新配置")
             row = rows[ident]
             if not self._valid_type(row, value):
-                raise ValueError(f"{row['display_name']} 类型无效")
+                raise UserError(f"{row['display_name']} 类型无效")
             if row["type"] != "bool":
                 choices = {choice["physical_name"] for choice in row["choices"]}
                 selected = [value] if row["type"] == "choice" else value
                 if any(item not in choices for item in selected):
-                    raise ValueError(f"{row['display_name']} 包含未知选项")
+                    raise UserError(f"{row['display_name']} 包含未知选项")
             field = next(
                 field
                 for group in self.groups
@@ -244,7 +245,7 @@ class TaskOptions:
                 if field["id"] == ident
             )
             if "min_items" in field and len(value) < field["min_items"]:
-                raise ValueError(
+                raise UserError(
                     f"{row['display_name']} 至少选择 {field['min_items']} 项"
                 )
         pending = {}
@@ -256,7 +257,7 @@ class TaskOptions:
             if path not in pending:
                 config = self._load(group)
                 if config is None:
-                    raise ValueError("任务配置已不可用，请刷新配置")
+                    raise UserError("任务配置已不可用，请刷新配置")
                 pending[path] = config
             for field in selected:
                 node = pending[path]
@@ -264,7 +265,7 @@ class TaskOptions:
                     if key not in node:
                         node[key] = {}
                     if not isinstance(node[key], dict):
-                        raise ValueError(f"{field['display_name']} 配置结构已变化")
+                        raise UserError(f"{field['display_name']} 配置结构已变化")
                     node = node[key]
                 node[field["keys"][-1]] = deepcopy(values[field["id"]])
         return list(pending.items())

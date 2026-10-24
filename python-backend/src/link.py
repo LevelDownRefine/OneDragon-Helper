@@ -5,6 +5,7 @@ import sys
 
 from src.config.script_resources import get_script_resources
 from src.config.set_config import get_game_exe_path
+from src.errors import UserError
 from src.log import get_log_dir
 from src.utils import get_root_dir
 from src.utils.utils_config import config_file_path, get_script
@@ -46,7 +47,7 @@ def game_icon_path(script_name: str) -> dict:
 def resolve_script_target(script_name: str, target: str) -> dict:
     """复用资源声明与原路径解析，返回 URL、绝对路径或不可用原因。"""
     if target not in (*_LINKS, "folder", "log", "configfile"):
-        raise ValueError(f"不支持的资源入口：{target}")
+        raise UserError(f"不支持的资源入口：{target}")
     script = get_script(script_name)
     if script is None:
         return _unavailable("尚无脚本或脚本已移除")
@@ -80,7 +81,7 @@ def resolve_script_target(script_name: str, target: str) -> dict:
 def resolve_launch_target(script_name: str, target: str) -> dict:
     """只解析启动信息；前端显式点击后启动，不启动调度链。"""
     if target not in ("script", "game"):
-        raise ValueError("不支持的启动入口")
+        raise UserError("不支持的启动入口")
     script = get_script(script_name)
     if script is None:
         return {"kind": "unavailable", "reason": "脚本已不存在，请刷新列表"}

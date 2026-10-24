@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from src.config.task import task_options as mod
+from src.errors import UserError
 
 
 class TestTaskOptions(unittest.TestCase):
@@ -97,7 +98,7 @@ class TestTaskOptions(unittest.TestCase):
         path.parent.mkdir(parents=True)
         path.write_text("{}", encoding="utf-8")
         self.assertEqual(options.read(), [])
-        with self.assertRaises(ValueError):
+        with self.assertRaises(UserError):
             options.prepare({"completion_action": "关闭游戏"})
         self.assertEqual(path.read_text(encoding="utf-8"), "{}")
 
@@ -129,20 +130,20 @@ class TestTaskOptions(unittest.TestCase):
             {"targets": ["a", "a"]},
             {"targets": ["x"]},
         ]:
-            with self.subTest(values=values), self.assertRaises(ValueError):
+            with self.subTest(values=values), self.assertRaises(UserError):
                 self.options.prepare(values)
             self.assertEqual(self.path.read_bytes(), original)
 
     def test_missing_files_and_fields_are_not_filled_or_created(self):
         self.path.unlink()
         self.assertEqual(self.options.read(), [])
-        with self.assertRaises(ValueError):
+        with self.assertRaises(UserError):
             self.options.prepare({"mode": "b"})
         self.assertFalse(self.path.exists())
         self.path.write_text('{"nested": {}, "mode": "b"}', encoding="utf-8")
         self.assertEqual([row["id"] for row in self.options.read()], ["mode"])
         self.assertEqual(self.options.read()[0]["value"], "b")
-        with self.assertRaises(ValueError):
+        with self.assertRaises(UserError):
             self.options.prepare({"enabled": True})
         self.assertEqual(json.loads(self.path.read_text()), {"nested": {}, "mode": "b"})
 
@@ -289,7 +290,7 @@ class TestTaskOptions(unittest.TestCase):
                         [row["id"] for row in self.options.read()],
                         ["enabled", "targets"],
                     )
-                self.assertIn("ValueError", logs.output[0])
+                self.assertIn("UserError", logs.output[0])
 
     def test_undeclared_script_does_not_read_user_configuration(self):
         with patch.object(

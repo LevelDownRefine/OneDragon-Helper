@@ -19,6 +19,7 @@ from src.config.task.daily import (
 )
 from src.config.task.task_declarations import load_daily_map
 from src.utils import utils_sub_config
+from src.utils.utils_sub_config import ScriptConfigUnavailable
 
 
 def daily_of(script_name: str, daily_name: str) -> Daily:
@@ -700,12 +701,12 @@ class TestLoadReadPathTolerance(unittest.TestCase):
         return daily_of("ok-ww", "每日任务")
 
     def test_missing_config_returns_none_without_warning(self):
-        """config 缺失（以断言表达）属正常状态 → None 且不告警。"""
+        """config 缺失（ScriptConfigUnavailable）属正常状态 → None 且不告警。"""
         with (
             patch.object(
                 utils_sub_config,
                 "load_config",
-                side_effect=AssertionError("config 文件不存在"),
+                side_effect=ScriptConfigUnavailable("config 文件不存在"),
             ),
             self.assertNoLogs("src.utils.utils_sub_config", level="WARNING"),
         ):

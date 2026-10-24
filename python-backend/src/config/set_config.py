@@ -17,6 +17,7 @@ from src.config.task.weekly import Weekly, build_weeklies
 from src.utils import open_in_explorer, utils_launcher
 from src.utils.utils_dict import get_field
 from src.utils.utils_sub_config import (
+    ScriptConfigUnavailable,
     get_script_game_path,
     load_game_config,
     resolve_script_path,
@@ -507,9 +508,10 @@ def get_config_path(script_name: str) -> str:
         config 绝对路径。
 
     Raises:
-        AssertionError: 脚本未适配。
+        ScriptConfigUnavailable: 脚本未适配。
     """
-    assert script_name in _CONFIGS, f"[set_config] 未适配脚本: {script_name}"
+    if script_name not in _CONFIGS:
+        raise ScriptConfigUnavailable(f"未适配脚本: {script_name}")
     return _get_config_path_impl(
         script_name, _CONFIGS[script_name]()._daily_config_rel_path()
     )

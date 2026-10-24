@@ -16,6 +16,7 @@ from unittest.mock import Mock, call, create_autospec, patch
 from jsonrpcserver import dispatch_to_serializable
 from updater.utils import FileLease, UpdateBusyError
 
+from src.errors import UserError
 from src.headless import (
     InvalidParams,
     _daily_task,
@@ -314,8 +315,8 @@ with patch('src.utils.get_root_dir', return_value=root), patch('src.service.dail
             responses[1]["result"]["value"].startswith("https://github.com/")
         )
         self.assertEqual(responses[2]["result"]["kind"], "unavailable")
-        self.assertEqual(responses[3]["error"]["code"], -32002)
-        self.assertFalse(responses[3]["error"]["data"]["refresh_required"])
+        self.assertEqual(responses[3]["error"]["code"], -32602)
+        self.assertEqual(responses[3]["error"]["message"], "不支持的资源入口：game")
         self.assertEqual(self.native.read_bytes(), before)
 
     def test_script_edit_round_trip_rename_and_validation_without_qt(self):
@@ -555,7 +556,8 @@ with patch('src.utils.get_root_dir', return_value=root), patch('src.service.chai
             },
         )
         self.assertEqual(responses[3]["result"]["kind"], "unavailable")
-        self.assertFalse(responses[4]["error"]["data"]["refresh_required"])
+        self.assertEqual(responses[4]["error"]["code"], -32602)
+        self.assertEqual(responses[4]["error"]["message"], "不支持的启动入口")
 
     def test_list_add_reorder_remove_without_running_script_or_qt(self):
         added = self.root / "scripts/new.py"
@@ -1397,6 +1399,21 @@ class ProtocolValidationTests(unittest.TestCase):
                 response = handle_request(service, payload)
                 self.assertEqual(response["error"]["code"], code)
         self.assertEqual(service.mock_calls, [])
+
+    def test_user_error_maps_to_invalid_params_with_original_message(self):
+        service = mock_service()
+        service.resolve_script_target.side_effect = UserError("不支持的资源入口：game")
+        response = handle_request(service, request("script.target", ["示例", "game"]))
+        self.assertEqual(
+            response["error"], {"code": -32602, "message": "不支持的资源入口：game"}
+        )
+
+    def test_unexpected_error_maps_to_operation_failed(self):
+        service = mock_service()
+        service.resolve_script_target.side_effect = RuntimeError("内部故障")
+        response = handle_request(service, request("script.target", ["示例", "game"]))
+        self.assertEqual(response["error"]["code"], -32002)
+        self.assertFalse(response["error"]["data"]["refresh_required"])
 
     def test_write_requests_forward_values_and_never_query(self):
         cases = [

@@ -12,6 +12,7 @@ from src.config.task.task_declarations import get_daily_configs
 from src.utils import get_root_dir, safe_path_join, utils_sub_config
 from src.utils.utils_io import dump_data_str
 from src.utils.utils_sub_config import (
+    ScriptConfigUnavailable,
     check_script_name_uniqueness,
     default_script_entry,
     get_process_name,
@@ -315,12 +316,12 @@ class TestScriptConfigIO(unittest.TestCase):
     """load_script_config / save_script_config：落点读写共用的缺失语义与回读校验。"""
 
     def test_load_allow_missing_returns_none_on_missing(self):
-        """文件缺失（load_config 以断言表达）→ 读路径返回 None 且不告警"""
+        """文件缺失（load_config 抛 ScriptConfigUnavailable）→ 读路径返回 None 且不告警"""
         with (
             mock.patch.object(
                 utils_sub_config,
                 "load_config",
-                side_effect=AssertionError("config 文件不存在"),
+                side_effect=ScriptConfigUnavailable("config 文件不存在"),
             ),
             self.assertNoLogs("src.utils.utils_sub_config", level="WARNING"),
         ):

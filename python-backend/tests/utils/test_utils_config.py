@@ -16,6 +16,7 @@ from src.utils.utils_config import (
     save_config,
 )
 from src.utils.utils_io import load_data, save_data
+from src.utils.utils_sub_config import ScriptConfigUnavailable
 
 
 class UtilsConfigTestBase(unittest.TestCase):
@@ -135,7 +136,7 @@ class TestConfigFilePath(UtilsConfigTestBase):
         self._setup_script("原神", "external", "C:/a.exe")
         with patch(
             "src.utils.utils_config.get_config_path",
-            side_effect=AssertionError("未适配脚本: 原神"),
+            side_effect=ScriptConfigUnavailable("未适配脚本: 原神"),
         ):
             path, error = config_file_path("a")
         self.assertIsNone(path)

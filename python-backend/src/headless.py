@@ -12,10 +12,12 @@ from pathlib import Path
 
 from jsonrpcserver import Error, Success, dispatch_to_serializable
 
+from src.errors import UserError
+
 logger = logging.getLogger(__name__)
 
 
-class InvalidParams(ValueError):
+class InvalidParams(UserError):
     """助手表单的字段类型或取值无效。"""
 
 
@@ -232,11 +234,7 @@ class HeadlessApi:
 
 def rpc_methods(service, *, persistent=True) -> dict:
     """显式开放助手方法，保留业务互斥和错误语义；协议和参数绑定交给库。"""
-    from src.service.chain_service import InvalidRunRequest
-    from src.service.script_service import DuplicateScript, InvalidScript
-    from src.service.task_service import InvalidTaskSelection
-    from src.utils.utils_job import InvalidJob
-    from src.utils.utils_wallpaper import InvalidWallpaper
+    from src.service.script_service import DuplicateScript
 
     api = HeadlessApi(service)
     methods = {
@@ -317,14 +315,7 @@ def rpc_methods(service, *, persistent=True) -> dict:
                 return Success(method(*args, **kwargs))
             except DuplicateScript as exc:
                 return Error(-32001, str(exc), {"refresh_required": False})
-            except (
-                InvalidParams,
-                InvalidTaskSelection,
-                InvalidScript,
-                InvalidRunRequest,
-                InvalidJob,
-                InvalidWallpaper,
-            ) as exc:
+            except UserError as exc:
                 return Error(-32602, str(exc))
             except Exception:  # noqa: BLE001 -- 业务边界记录失败；写入可能已部分完成。
                 logger.exception("助手请求失败，method=%s", name)

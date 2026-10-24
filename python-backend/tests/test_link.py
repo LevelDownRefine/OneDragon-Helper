@@ -11,6 +11,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from src import cli, link
+from src.errors import UserError
 
 
 class TestLinkDispatch(unittest.TestCase):
@@ -149,7 +150,7 @@ class ScriptTargetTests(unittest.TestCase):
             )
 
     def test_game_launch_is_not_a_navigation_target(self):
-        with self.assertRaises(ValueError):
+        with self.assertRaises(UserError):
             link.resolve_script_target("example", "game")
         self.lookup.assert_not_called()
 
@@ -177,6 +178,10 @@ class LaunchTargetTests(unittest.TestCase):
                     link.resolve_launch_target("demo", "script")["kind"],
                     "unavailable",
                 )
+
+    def test_unsupported_launch_target_is_user_error(self):
+        with self.assertRaises(UserError):
+            link.resolve_launch_target("demo", "未知入口")
 
     def test_python_command_excludes_unchanged_environment_and_preserves_args(self):
         with tempfile.TemporaryDirectory() as temporary:

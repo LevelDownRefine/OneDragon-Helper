@@ -14,6 +14,7 @@ from src.utils import (
 )
 from src.utils.utils_io import load_data, save_data
 from src.utils.utils_sub_config import (
+    ScriptConfigUnavailable,
     check_script_name_uniqueness,
     get_script_name,
     is_exe_script,
@@ -109,7 +110,7 @@ def config_file_path(script_name: str) -> tuple[str | None, str | None]:
     if is_exe_script(script_path):
         try:
             config_path = get_config_path(get_script_name(script))
-        except AssertionError as e:
+        except ScriptConfigUnavailable as e:
             return None, f"该脚本暂未适配配置文件，无法打开：{e}"
         if not os.path.isfile(config_path):
             return None, f"配置文件不存在：{config_path}"

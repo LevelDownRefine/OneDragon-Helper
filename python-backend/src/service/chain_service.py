@@ -20,6 +20,7 @@ import os
 import subprocess
 import sys
 
+from src.errors import UserError
 from src.log.monitor import parse_logs
 from src.service.chain_gen import generate_chain_config as _generate_chain_config
 from src.service.schedule import RunOptions, ScheduledRun, _dump_run_options
@@ -46,7 +47,7 @@ logger = logging.getLogger(__name__)
 # ``utils_config.load_config``。
 
 
-class InvalidRunRequest(ValueError):
+class InvalidRunRequest(UserError):
     """运行请求包含无效脚本或缺少确认。"""
 
 
