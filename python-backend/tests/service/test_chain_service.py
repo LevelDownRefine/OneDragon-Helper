@@ -70,6 +70,50 @@ class TestBatchRun(unittest.TestCase):
             )
 
 
+class TestSpawnRunFromOptions(unittest.TestCase):
+    """spawn_run_from_options：GUI「启动全部」按 schedule.yml 选项起独立进程。"""
+
+    def test_options_map_to_spawn_kwargs(self):
+        options = RunOptions(
+            mute_enabled=True,
+            unmute_enabled=True,
+            shutdown_enabled=True,
+            shutdown_delay=45,
+            close_running_enabled=False,
+        )
+        with (
+            patch.object(chain_service, "load_run_options", return_value=options),
+            patch.object(chain_service, "spawn_schedule_run") as spawn,
+        ):
+            chain_service.spawn_run_from_options({"demo"})
+        spawn.assert_called_once_with(
+            {"demo"},
+            "now",
+            chain_name="today",
+            mute=True,
+            unmute=True,
+            shutdown_delay=45,
+            close_running=False,
+        )
+
+    def test_shutdown_disabled_maps_to_none(self):
+        options = RunOptions(shutdown_enabled=False, shutdown_delay=45)
+        with (
+            patch.object(chain_service, "load_run_options", return_value=options),
+            patch.object(chain_service, "spawn_schedule_run") as spawn,
+        ):
+            chain_service.spawn_run_from_options({"demo"}, chain_name="plan")
+        spawn.assert_called_once_with(
+            {"demo"},
+            "now",
+            chain_name="plan",
+            mute=False,
+            unmute=False,
+            shutdown_delay=None,
+            close_running=True,
+        )
+
+
 class TestRunChainOnce(unittest.TestCase):
     """生成所选脚本链并等待子进程结束。"""
 

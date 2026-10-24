@@ -198,6 +198,23 @@ def load_run_options(schedule: dict | None = None) -> RunOptions:
     return _parse_run_options(data)
 
 
+def run_launch_kwargs(options: RunOptions) -> dict:
+    """RunOptions → 调度启动 kwargs；spawn 壳（GUI 启动全部）与每日计划共用一份映射。
+
+    ``shutdown_delay`` 仅在启用且大于 0 时传入，None 表达不关机。
+    """
+    return {
+        "mute": options.mute_enabled,
+        "unmute": options.unmute_enabled,
+        "shutdown_delay": (
+            options.shutdown_delay
+            if options.shutdown_enabled and options.shutdown_delay > 0
+            else None
+        ),
+        "close_running": options.close_running_enabled,
+    }
+
+
 def _dump_run_options(options: RunOptions, base_notify: dict | None = None) -> dict:
     """把 RunOptions 序列化为 schedule.yml 的子块字典（不含授权码注册）。
 

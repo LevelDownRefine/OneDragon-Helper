@@ -910,7 +910,7 @@ class SingleScriptConfigDialog(FormDialogBase):
         )
 
     def _find_script_data(self) -> dict:
-        """从 config.yml 读取本脚本的完整数据字典；脚本不在表中返回空 dict。"""
+        """经 service 读取本脚本的完整数据字典；脚本不在表中返回空 dict。"""
         if self._edit_view is not None:
             return self._edit_view["script"]
         script = self._app_service.get_script(self.script_name)

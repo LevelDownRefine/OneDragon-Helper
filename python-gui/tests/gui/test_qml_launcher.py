@@ -315,9 +315,8 @@ class TestFloatBar(unittest.TestCase):
     def test_open_settings_starts_config(self):
         b = make_bridge()
         with (
-            patch.object(
-                links,
-                "get_config_yml_path_under_root",
+            patch(
+                "src.service.app_service.get_config_yml_path_under_root",
                 return_value="C:/cfg/config.yml",
             ),
             patch.object(os.path, "isfile", return_value=True),
@@ -331,9 +330,8 @@ class TestFloatBar(unittest.TestCase):
         spy = MagicMock()
         b.toastRequested.connect(spy)
         with (
-            patch.object(
-                links,
-                "get_config_yml_path_under_root",
+            patch(
+                "src.service.app_service.get_config_yml_path_under_root",
                 return_value="C:/cfg/config.yml",
             ),
             patch.object(os.path, "isfile", return_value=False),
@@ -702,7 +700,7 @@ class TestTaskCardDailyChipOpensMenu(unittest.TestCase):
             ]
             with (
                 patch("src.service.app_service.get_weekly_map", return_value=[]),
-                patch("gui.controllers.task_card.get_daily_readback",
+                patch("src.service.app_service.get_daily_readback",
                       return_value=records),
             ):
                 bridge = make_bridge()

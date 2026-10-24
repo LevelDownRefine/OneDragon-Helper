@@ -134,9 +134,9 @@ class TestWeeklyItems(unittest.TestCase):
                 "src.config.task.task_declarations.get_weekly_task_list_yml_path_under_root",
                 return_value=defs_path,
             ),
-            patch.object(task_card_mod, "get_weekly_task", return_value=None),
         ):
             ctrl = _make_controller()
+            ctrl._app_service.get_weekly_task.return_value = None
             items = ctrl.weekly_items
         tmp.cleanup()
         self.assertEqual(len(items), 2)
@@ -297,8 +297,8 @@ class TestDailyItems(unittest.TestCase):
     """daily_items：一次反读记录 + 声明菜单 → 每行 chip 文案与「不启用」入口。"""
 
     def _items(self, ctrl, records):
-        with patch.object(task_card_mod, "get_daily_readback", return_value=records):
-            return ctrl.daily_items
+        ctrl._app_service.get_daily_readback.return_value = records
+        return ctrl.daily_items
 
     def test_prefers_readback_over_declared(self):
         """反读有真相时以反读为准，不走声明项回退。"""
@@ -545,14 +545,12 @@ class TestWeeklyItemsReadback(unittest.TestCase):
                 ]
             },
         )
-        with (
-            patch(
-                "src.config.task.task_declarations.get_weekly_task_list_yml_path_under_root",
-                return_value=defs_path,
-            ),
-            patch.object(task_card_mod, "get_weekly_task", return_value="铁骸的锈冢"),
+        with patch(
+            "src.config.task.task_declarations.get_weekly_task_list_yml_path_under_root",
+            return_value=defs_path,
         ):
             ctrl = _make_controller()
+            ctrl._app_service.get_weekly_task.return_value = "铁骸的锈冢"
             items = ctrl.weekly_items
         tmp.cleanup()
         self.assertEqual(items[0]["task_label"], "铁骸的锈冢")
@@ -637,6 +635,7 @@ class TestEmptyCurrentSentinel(unittest.TestCase):
         service = MagicMock()
         service.get_weekly_map.return_value = {}
         service.get_weekly_start_for.return_value = None
+        service.is_adapted.return_value = False
         ctrl = TaskCardController(_EmptyGameList(), service, MagicMock())
         self.assertIs(ctrl._current, task_card_mod._EMPTY_GAME)
         self.assertEqual(ctrl.task_title, "")

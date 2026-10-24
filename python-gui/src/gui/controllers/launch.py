@@ -12,7 +12,6 @@ from PySide6.QtWidgets import QDialog, QMessageBox
 from gui.dialogs import styled_msg_box
 from gui.run_confirm_dialog import RunConfirmDialog
 from src.utils import open_in_explorer
-from src.utils.utils_runner import spawn_schedule_run
 from src.utils.utils_sub_config import get_script_name
 
 
@@ -28,11 +27,11 @@ class LaunchController(QObject):
 
     @Slot()
     def launchAll(self, confirm: bool = True):
-        """启动全部：先校验，再经 spawn_schedule_run 运行。
+        """启动全部：先校验，再经 service 以 now 起独立控制台进程运行。
 
-        经 ``spawn_schedule_run`` 以 now 起独立控制台进程，
-        ``chain_service.schedule_run`` 处理生成→运行→重跑→邮件/关机。
-        每日触发由系统计划独立负责，手动启动不等待。GUI 退出不影响运行。
+        service 的 ``spawn_run`` 按 schedule.yml 运行选项拼装并以 now 起
+        独立控制台进程，``chain_service.schedule_run`` 处理生成→运行→重跑→
+        邮件/关机。每日触发由系统计划独立负责，手动启动不等待。GUI 退出不影响运行。
 
         Args:
             confirm: 是否弹运行前确认窗（含不合法告警与调度配置回显）。GUI 打开后的
@@ -50,25 +49,15 @@ class LaunchController(QObject):
             return
         if confirm and not self._confirm_run(enabled_script_names):
             return
-        options = self._app_service.load_run_options()
-        msg = f"手动运行：已在新控制台窗口生成并运行链 ({len(enabled_script_names)} 个脚本)"
-        proc = spawn_schedule_run(
-            enabled_script_names,
-            "now",
-            mute=options.mute_enabled,
-            unmute=options.unmute_enabled,
-            shutdown_delay=(
-                options.shutdown_delay
-                if options.shutdown_enabled and options.shutdown_delay > 0
-                else None
-            ),
-            close_running=options.close_running_enabled,
-        )
+        proc = self._app_service.spawn_run(enabled_script_names)
         if proc is None:
             # 起进程失败（Popen 异常已被 spawn 记日志）：不报成功，引导看日志。
             self._toast("启动失败，详见 logs/ 当日日志")
             return
-        self._toast(f"{msg}（关闭控制台即取消）")
+        self._toast(
+            f"手动运行：已在新控制台窗口生成并运行链 "
+            f"({len(enabled_script_names)} 个脚本)（关闭控制台即取消）"
+        )
 
     @Slot()
     def launchScript(self):

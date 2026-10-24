@@ -75,11 +75,67 @@ def video_preview_path(source_path: str) -> str | None:
         [os.path.normcase(os.path.abspath(source_path)), stat.st_size, stat.st_mtime_ns]
     )
     key = hashlib.sha256(identity.encode("utf-8")).hexdigest()
+    return os.path.join(_cache_directory(), f"video_{key}.jpg")
+
+
+def _cache_directory() -> str:
     return os.path.join(
-        os.path.dirname(get_wallpaper_json_path_under_root()),
-        "wallpaper_cache",
-        f"video_{key}.jpg",
+        os.path.dirname(get_wallpaper_json_path_under_root()), "wallpaper_cache"
     )
+
+
+def wallpaper_cache_path(script_name: str) -> str:
+    """静态壁纸压缩缓存的固定落点：wallpaper_cache/<脚本标识>.jpg。"""
+    return os.path.join(_cache_directory(), f"{script_name}.jpg")
+
+
+def wallpaper_cache_ready(
+    src_path: str, script_name: str, *, force: bool = False
+) -> str | None:
+    """判定静态壁纸压缩缓存是否可直接复用；force 时先删旧缓存杜绝误用。
+
+    Args:
+        src_path: 用户原图路径（调用方已确认存在，判定按其 mtime）。
+        script_name: 脚本标识（缓存文件名）。
+        force: 换壁纸时 True——源内容已变，先删旧缓存再重建，避免旧缓存被当较新复用。
+
+    Returns:
+        可直接使用的缓存路径；需重建（含旧缓存已删）时返回 None。
+    """
+    cache = wallpaper_cache_path(script_name)
+    if force and os.path.isfile(cache):
+        try:
+            os.remove(cache)
+        except OSError as e:
+            logger.warning(
+                "[wallpaper] 旧壁纸缓存删除失败（可能被占用），将覆盖：%s",
+                type(e).__name__,
+            )
+    if (
+        not force
+        and os.path.isfile(cache)
+        and os.path.getmtime(cache) >= os.path.getmtime(src_path)
+    ):
+        return cache
+    return None
+
+
+def save_wallpaper_cache_bytes(cache_path: str, data: bytes) -> bool:
+    """原子保存调用方编码好的压缩缓存图（tmp + os.replace）；失败返回 False。
+
+    落点由调用方给出（静态缓存 ``wallpaper_cache_path``、RPC 缓存按 token 命名）；
+    内部调用（GUI 渲染端）信任入参，RPC 入口 ``save_wallpaper_cache`` 负责
+    base64/JPEG 校验后委托到这里。
+    """
+    try:
+        os.makedirs(os.path.dirname(cache_path), exist_ok=True)
+        with open(cache_path + ".tmp", "wb") as stream:
+            stream.write(data)
+        os.replace(cache_path + ".tmp", cache_path)
+    except OSError as e:
+        logger.warning("[wallpaper] 壁纸缓存写入失败(%s)：%s", type(e).__name__, e)
+        return False
+    return True
 
 
 def save_video_preview(source_path: str, cache_path: str, data: bytes) -> bool:
@@ -199,13 +255,5 @@ def save_wallpaper_cache(script_name: str, token: str, jpeg_base64: str) -> bool
     if current["token"] != token:
         return False
     prefix = "video_" if current["mode"] == "video" else "rust_image_"
-    directory = os.path.join(
-        os.path.dirname(get_wallpaper_json_path_under_root()), "wallpaper_cache"
-    )
-    path = os.path.join(directory, f"{prefix}{token}.jpg")
-    os.makedirs(directory, exist_ok=True)
-    temporary = path + ".tmp"
-    with open(temporary, "wb") as stream:
-        stream.write(data)
-    os.replace(temporary, path)
-    return True
+    path = os.path.join(_cache_directory(), f"{prefix}{token}.jpg")
+    return save_wallpaper_cache_bytes(path, data)

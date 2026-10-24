@@ -296,12 +296,18 @@ class TestMaaNativeConfig(unittest.TestCase):
         from unittest.mock import MagicMock
 
         from gui.controllers.task_card import TaskCardController
-        from src.config.set_config import get_daily_map
+        from src.config.set_config import (
+            get_daily_map,
+            get_daily_readback,
+            is_adapted,
+        )
         from src.config.task.task_declarations import get_daily_configs
 
         self.cfg._init_config()
         service = MagicMock()
         service.get_daily_map.side_effect = get_daily_map
+        service.get_daily_readback.side_effect = get_daily_readback
+        service.is_adapted.side_effect = is_adapted
         service.set_script_daily_task.side_effect = (
             lambda script, task_name, sequence, daily_display_name: (
                 self.cfg.set_daily_task(daily_display_name, task_name, sequence)

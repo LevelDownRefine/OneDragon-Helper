@@ -1,8 +1,8 @@
 """背景控制器：背景模式（视频/图片/渐变）/ 壁纸 / 视频错误回退。
 
 独立 QObject，自管状态（_bg_mode / _bg_url / _grad_color / _grad_char）。
-壁纸表（wallpaper.json）读写经 service（AppService.load/save_wallpapers），
-本控制器只管缓存图生成（Qt 渲染关注点）与背景解析（resolve_bg）。
+壁纸表（wallpaper.json）读写与缓存路径/新鲜度/落盘均经 service（AppService），
+本控制器只管缓存图的解码缩放（Qt 渲染关注点）与背景解析（resolve_bg）。
 """
 
 import logging
@@ -14,15 +14,12 @@ from PySide6.QtGui import QImage, QImageReader, QTransform
 # QML 首次传入对象前注册包装类型，否则 QVideoSink 会被包装成普通 QObject。
 from PySide6.QtMultimedia import QVideoSink
 
-from src.config.set_config import get_background_rel_path
 from src.utils.utils_sub_config import get_script_root_dir, resolve_script_path
 
 logger = logging.getLogger(__name__)
 
-# 自定义壁纸缓存：用户选图时按最长边压到 WALLPAPER_MAX_SIDE 后存于
-# config/wallpaper_cache/<script_name>.jpg，resolve_bg 优先返回缓存，避免大图
-# 直接进 GPU 纹理（与 main.qml 的 sourceSize 互补）。视频首帧也复用此尺寸上限。
-WALLPAPER_CACHE_DIR = "config/wallpaper_cache"
+# 自定义壁纸按最长边压到 WALLPAPER_MAX_SIDE 后交 service 落盘缓存，
+# resolve_bg 优先返回缓存，避免大图直接进 GPU 纹理（与 main.qml 的 sourceSize 互补）。
 WALLPAPER_MAX_SIDE = 1920
 
 
@@ -100,7 +97,7 @@ class BackgroundController(QObject):
         Returns:
             背景图绝对路径；未适配/未声明/文件缺失 → 空字符串（使用渐变背景）。
         """
-        rel = get_background_rel_path(script_name)
+        rel = self._app_service.get_background_rel_path(script_name)
         if not rel:
             return ""
         root = get_script_root_dir(script_name)
@@ -134,7 +131,8 @@ class BackgroundController(QObject):
         """确保某自定义壁纸（调用方已确认是图像且存在）的缓存可用。
 
         force=False（解析 / 复用路径）：缓存存在且较新直接返回，避免重复压缩大图。
-        force=True（用户刚更换壁纸）：源文件已变，先删旧缓存再重建，杜绝旧缓存被当成较新返回。
+        force=True（用户刚更换壁纸）：源文件已变，service 先删旧缓存再重建。
+        缓存路径、新鲜度判定与落盘归 service；本控制器只做解码缩放与 JPEG 编码。
 
         Args:
             src_path: 用户原图路径（图像）。
@@ -143,22 +141,10 @@ class BackgroundController(QObject):
         """
         if not os.path.isfile(src_path):
             return None
-        cache = os.path.join(
-            resolve_script_path(WALLPAPER_CACHE_DIR), f"{script_name}.jpg"
+        cache = self._app_service.wallpaper_cache_ready(
+            src_path, script_name, force=force
         )
-        if force and os.path.isfile(cache):
-            try:
-                os.remove(cache)  # 换壁纸：清掉旧缓存，避免旧内容（不同源）被误用
-            except OSError as e:
-                logger.warning(
-                    "[bg] 旧壁纸缓存删除失败（可能被占用），将覆盖：%s",
-                    type(e).__name__,
-                )
-        if (
-            not force
-            and os.path.isfile(cache)
-            and os.path.getmtime(cache) >= os.path.getmtime(src_path)
-        ):
+        if cache:
             return cache
         try:
             # 只读图像头判断尺寸：长边未超上限时无需生成缓存，跳过整图解码。
@@ -174,22 +160,27 @@ class BackgroundController(QObject):
             if img.isNull():
                 logger.warning("[bg] 壁纸解码失败，跳过缓存：%s", src_path)
                 return None
-            out = img.scaled(
+            scaled = img.scaled(
                 max(1, round(dims.width() * scale)),
                 max(1, round(dims.height() * scale)),
                 Qt.KeepAspectRatio,
                 Qt.SmoothTransformation,
             ).convertToFormat(QImage.Format_RGB888)
-            os.makedirs(os.path.dirname(cache), exist_ok=True)
-            if not out.save(cache, "JPG", quality=90):
-                logger.warning("[bg] 壁纸缓存写入失败：%s", cache)
+            buffer = QBuffer()
+            buffer.open(QIODevice.WriteOnly)
+            scaled.save(buffer, "JPG", quality=90)
+            cache_path = self._app_service.wallpaper_cache_path(script_name)
+            if not self._app_service.save_wallpaper_cache_bytes(
+                cache_path, bytes(buffer.data())
+            ):
+                logger.warning("[bg] 壁纸缓存写入失败：%s", cache_path)
                 return None
         except (OSError, MemoryError) as e:
             logger.warning(
                 "[bg] 壁纸缓存生成失败（%s），回退原图", type(e).__name__, exc_info=True
             )
             return None
-        return cache
+        return cache_path
 
     def apply_current(self, game: dict):
         """按当前选中脚本刷新背景（路径经 resolve_bg 解析）。

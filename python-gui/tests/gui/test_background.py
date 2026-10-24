@@ -17,11 +17,8 @@ from PySide6.QtGui import QColor, QImage
 from PySide6.QtWidgets import QApplication
 
 import gui.controllers.background as bgmod
-from gui.controllers.background import (
-    WALLPAPER_CACHE_DIR,
-    WALLPAPER_MAX_SIDE,
-    BackgroundController,
-)
+from gui.controllers.background import WALLPAPER_MAX_SIDE, BackgroundController
+from src.utils import utils_wallpaper as wallpaper
 
 
 def _make_image(path: str, w: int, h: int, color: str = "red") -> str:
@@ -32,6 +29,29 @@ def _make_image(path: str, w: int, h: int, color: str = "red") -> str:
     return path
 
 
+def _wire_cache_service(test, ctrl, tmp_dir):
+    """把 mock service 的缓存三接口接到真实后端实现（目录隔离到 tmp_dir）。
+
+    缓存路径/新鲜度/落盘已归 utils_wallpaper；控制器只持 service 引用，
+    故用真实后端函数驱动 mock，保证「缓存目录由 wallpaper.json 落点推导」这一契约也被测到。
+    """
+    test.enterContext(
+        patch(
+            "src.utils.utils_wallpaper.get_wallpaper_json_path_under_root",
+            return_value=os.path.join(tmp_dir, "wallpaper.json"),
+        )
+    )
+    ctrl._app_service.wallpaper_cache_path.side_effect = wallpaper.wallpaper_cache_path
+    ctrl._app_service.wallpaper_cache_ready.side_effect = (
+        lambda src_path, name, **kwargs: wallpaper.wallpaper_cache_ready(
+            src_path, name, **kwargs
+        )
+    )
+    ctrl._app_service.save_wallpaper_cache_bytes.side_effect = (
+        wallpaper.save_wallpaper_cache_bytes
+    )
+
+
 class TestWallpaperCache(unittest.TestCase):
     """_build_wallpaper_cache：压缩 / 跳过 / 回退。"""
 
@@ -40,26 +60,13 @@ class TestWallpaperCache(unittest.TestCase):
         self._cache_dir = os.path.join(self._tmp, "wallpaper_cache")
         self._img_dir = os.path.join(self._tmp, "imgs")
         os.makedirs(self._img_dir)
-        # 把缓存目录重定向到临时目录，避免污染项目 config/wallpaper_cache
-        self._resolved = {}
-        self._patcher = patch.object(
-            bgmod,
-            "resolve_script_path",
-            side_effect=self._fake_resolve,
-        )
-        self._patcher.start()
-        self.addCleanup(self._patcher.stop)
         self._app = QApplication.instance() or QApplication([])
         self.ctrl = BackgroundController(
             game_list=MagicMock(),
             app_service=MagicMock(),
             toast=MagicMock(),
         )
-
-    def _fake_resolve(self, path):
-        if path == WALLPAPER_CACHE_DIR:
-            return self._cache_dir
-        return path
+        _wire_cache_service(self, self.ctrl, self._tmp)
 
     def test_downscales_large_image(self):
         """大图应压缩到最长边 <= 上限，且缓存为有效 JPG。"""
@@ -125,22 +132,13 @@ class TestWallpaperFor(unittest.TestCase):
         self._cache_dir = os.path.join(self._tmp, "wallpaper_cache")
         self._img_dir = os.path.join(self._tmp, "imgs")
         os.makedirs(self._img_dir)
-        self._patcher = patch.object(
-            bgmod, "resolve_script_path", side_effect=self._fake_resolve
-        )
-        self._patcher.start()
-        self.addCleanup(self._patcher.stop)
         self._app = QApplication.instance() or QApplication([])
         self.ctrl = BackgroundController(
             game_list=MagicMock(),
             app_service=MagicMock(),
             toast=MagicMock(),
         )
-
-    def _fake_resolve(self, path):
-        if path == WALLPAPER_CACHE_DIR:
-            return self._cache_dir
-        return path
+        _wire_cache_service(self, self.ctrl, self._tmp)
 
     def test_prefers_fresh_cache(self):
         """缓存存在且较新：直接返回缓存路径，不重新生成。"""
@@ -255,7 +253,7 @@ class TestOpenWallpaper(unittest.TestCase):
 
 
 class TestScriptBackground(unittest.TestCase):
-    """_script_background：读 set_config.background（相对脚本根），isfile 守卫。"""
+    """_script_background：读脚本声明的背景图（相对脚本根），isfile 守卫。"""
 
     def setUp(self):
         self._app = QApplication.instance() or QApplication([])
@@ -264,26 +262,30 @@ class TestScriptBackground(unittest.TestCase):
             app_service=MagicMock(),
             toast=MagicMock(),
         )
+        self.ctrl._app_service.get_background_rel_path.return_value = ""
 
-    @patch.object(bgmod, "get_background_rel_path", return_value="assets/x.webp")
-    @patch.object(bgmod, "get_script_root_dir", return_value="/script/root")
-    def test_declared_and_present(self, _mock_root, _mock_rel):
+    def test_declared_and_present(self):
         # 声明且文件存在：返回脚本根拼接的绝对路径
-        with patch.object(bgmod.os.path, "isfile", return_value=True):
+        self.ctrl._app_service.get_background_rel_path.return_value = "assets/x.webp"
+        with (
+            patch.object(bgmod, "get_script_root_dir", return_value="/script/root"),
+            patch.object(bgmod.os.path, "isfile", return_value=True),
+        ):
             self.assertEqual(
                 self.ctrl._script_background("ok-ww"),
                 os.path.join("/script/root", "assets/x.webp"),
             )
 
-    @patch.object(bgmod, "get_background_rel_path", return_value="assets/x.webp")
-    @patch.object(bgmod, "get_script_root_dir", return_value="/script/root")
-    def test_declared_but_missing(self, _mock_root, _mock_rel):
+    def test_declared_but_missing(self):
         # 声明但文件缺失：返回空字符串（使用渐变背景）
-        with patch.object(bgmod.os.path, "isfile", return_value=False):
+        self.ctrl._app_service.get_background_rel_path.return_value = "assets/x.webp"
+        with (
+            patch.object(bgmod, "get_script_root_dir", return_value="/script/root"),
+            patch.object(bgmod.os.path, "isfile", return_value=False),
+        ):
             self.assertEqual(self.ctrl._script_background("ok-ww"), "")
 
-    @patch.object(bgmod, "get_background_rel_path", return_value="")
-    def test_not_declared(self, _mock_rel):
+    def test_not_declared(self):
         # 子类未声明 background（如原神）：返回空字符串
         self.assertEqual(self.ctrl._script_background("BetterGI"), "")
 
@@ -311,22 +313,13 @@ class TestResolveBg(unittest.TestCase):
         self._cache_dir = os.path.join(self._tmp, "wallpaper_cache")
         self._img_dir = os.path.join(self._tmp, "imgs")
         os.makedirs(self._img_dir)
-        self._patcher = patch.object(
-            bgmod, "resolve_script_path", side_effect=self._fake_resolve
-        )
-        self._patcher.start()
-        self.addCleanup(self._patcher.stop)
         self._app = QApplication.instance() or QApplication([])
         self.ctrl = BackgroundController(
             game_list=MagicMock(),
             app_service=MagicMock(),
             toast=MagicMock(),
         )
-
-    def _fake_resolve(self, path):
-        if path == WALLPAPER_CACHE_DIR:
-            return self._cache_dir
-        return path
+        _wire_cache_service(self, self.ctrl, self._tmp)
 
     def test_custom_wallpaper_returns_cache(self):
         """有自定义大图壁纸：resolve_bg 优先返回缓存（而非原始大图路径）。"""

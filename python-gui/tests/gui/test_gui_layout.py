@@ -52,8 +52,8 @@ class TestSharedLayout(unittest.TestCase):
                 with (
                     patch("src.service.app_service.get_daily_map", return_value={}),
                     patch("src.service.app_service.get_weekly_map", return_value=weekly),
-                    patch("gui.controllers.task_card.get_daily_readback", return_value=[]),
-                    patch("gui.controllers.task_card.get_weekly_task", return_value=None),
+                    patch("src.service.app_service.get_daily_readback", return_value=[]),
+                    patch("src.service.app_service.get_weekly_task", return_value=None),
                 ):
                     bridge = make_bridge()
                     qmlRegisterSingletonInstance(
@@ -141,7 +141,7 @@ class TestSharedLayout(unittest.TestCase):
 
             with (
                 patch("src.service.app_service.get_weekly_map", return_value=[]),
-                patch("gui.controllers.task_card.get_daily_readback",
+                patch("src.service.app_service.get_daily_readback",
                       side_effect=fake_readback),
             ):
                 bridge = make_bridge()
