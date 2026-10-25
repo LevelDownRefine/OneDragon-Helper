@@ -417,6 +417,7 @@ class TestQmlScriptDrop(unittest.TestCase):
                 ),
             },
             capture_output=True,
+            errors="replace",
             text=True,
             timeout=30,
         )

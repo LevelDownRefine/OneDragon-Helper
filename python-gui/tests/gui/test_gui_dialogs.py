@@ -204,9 +204,16 @@ class TestSingleScriptConfigDialogBlock(unittest.TestCase):
                         }
                     ]
                 )
-                with patch(
-                    "src.utils.utils_config.require_config_yml_path",
-                    return_value=config,
+                with (
+                    patch(
+                        "src.utils.utils_config.require_config_yml_path",
+                        return_value=config,
+                    ),
+                    # weekly.yml 属生成配置：超时输入框初始值隔离为默认值。
+                    patch(
+                        "src.service.app_service.weekly_inputs",
+                        return_value=[3600] * 7,
+                    ),
                 ):
                     dialog = SingleScriptConfigDialog("日志分析", "日志分析", "C:/x.py")
                     self.addCleanup(dialog.close)
@@ -228,6 +235,7 @@ class TestSingleScriptConfigDialogBlock(unittest.TestCase):
                 "src.utils.utils_config.require_config_yml_path",
                 return_value=cfg,
             ),
+            patch("src.service.app_service.weekly_inputs", return_value=[3600] * 7),
             patch("gui.dialogs.styled_msg_box"),
             patch.object(SingleScriptConfigDialog, "accept"),
         ):

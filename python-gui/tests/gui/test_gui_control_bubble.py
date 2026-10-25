@@ -21,6 +21,8 @@ class TestControlBubble(unittest.TestCase):
             from gui.main_window import QmlBridge
             from src.service.app_service import AppService
             from tests.gui.helpers import make_bridge
+            from unittest.mock import patch
+            patch("src.service.app_service.get_weekly_start_map", return_value={}).start()
 
             with (
                 patch.object(AppService, "get_daily_map", return_value={}),
@@ -130,6 +132,7 @@ class TestControlBubble(unittest.TestCase):
                 ),
             },
             capture_output=True,
+            errors="replace",
             text=True,
             timeout=30,
         )

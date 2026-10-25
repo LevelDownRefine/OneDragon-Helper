@@ -347,6 +347,10 @@ class TestApplyCurrent(unittest.TestCase):
             app_service=MagicMock(),
             toast=MagicMock(),
         )
+        # 壁纸表为空且脚本未声明背景：apply_current 走渐变路径，
+        # 不触碰真实 config（生成配置绊线会在 CI 上暴露此类依赖）。
+        self.ctrl._app_service.load_wallpapers.return_value = {}
+        self.ctrl._app_service.get_background_rel_path.return_value = ""
 
     def test_version_increments_on_apply(self):
         """换壁纸 / 切脚本都走 apply_current：版本号自增，使 QML source 身份变化触发重载。"""

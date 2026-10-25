@@ -532,6 +532,7 @@ class TestQmlApp(unittest.TestCase):
         proc = subprocess.run(
             [sys.executable, "-c", _NATIVE_CONFIG_STUB + code],
             capture_output=True,
+            errors="replace",
             text=True,
             timeout=60,
             cwd=os.getcwd(),
@@ -637,6 +638,7 @@ class TestTaskCardPopupGeometry(unittest.TestCase):
         proc = subprocess.run(
             [sys.executable, "-c", _NATIVE_CONFIG_STUB + code],
             capture_output=True,
+            errors="replace",
             text=True,
             timeout=60,
             cwd=os.getcwd(),
@@ -692,6 +694,8 @@ class TestTaskCardDailyChipOpensMenu(unittest.TestCase):
             from gui.main_window import QmlBridge
             from src.utils.utils_sub_config import resolve_script_path
             from tests.gui.helpers import make_bridge
+            from unittest.mock import patch
+            patch("src.service.app_service.get_weekly_start_map", return_value={}).start()
 
             from src.config.set_config import get_daily_map
             dailies = get_daily_map("March7th-Launcher")["March7th-Launcher"]["dailies"]
@@ -763,6 +767,7 @@ class TestTaskCardDailyChipOpensMenu(unittest.TestCase):
         proc = subprocess.run(
             [sys.executable, "-c", _NATIVE_CONFIG_STUB + code],
             capture_output=True,
+            errors="replace",
             text=True,
             timeout=60,
             cwd=os.getcwd(),
@@ -836,6 +841,7 @@ class TestTaskCardWeeklyHiddenForUnsupportedScript(unittest.TestCase):
         proc = subprocess.run(
             [sys.executable, "-c", _NATIVE_CONFIG_STUB + code],
             capture_output=True,
+            errors="replace",
             text=True,
             timeout=60,
             cwd=os.getcwd(),
@@ -938,6 +944,7 @@ class TestTaskCardWeeklyAreaHeightForSupportedScript(unittest.TestCase):
         proc = subprocess.run(
             [sys.executable, "-c", _NATIVE_CONFIG_STUB + code],
             capture_output=True,
+            errors="replace",
             text=True,
             timeout=60,
             cwd=os.getcwd(),
@@ -1087,6 +1094,7 @@ class TestWeeklyRowChipGeometry(unittest.TestCase):
         proc = subprocess.run(
             [sys.executable, "-c", _NATIVE_CONFIG_STUB + code],
             capture_output=True,
+            errors="replace",
             text=True,
             timeout=60,
             cwd=os.getcwd(),

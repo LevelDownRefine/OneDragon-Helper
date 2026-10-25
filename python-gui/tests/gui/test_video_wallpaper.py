@@ -139,6 +139,8 @@ class TestVideoWallpaperQml(unittest.TestCase):
             from gui.icons import UiIconProvider
             from src.utils.utils_sub_config import resolve_script_path
             from tests.gui.helpers import make_bridge
+            from unittest.mock import patch
+            patch("src.service.app_service.get_weekly_start_map", return_value={}).start()
 
             with tempfile.TemporaryDirectory() as directory, patch(
                 "src.utils.utils_wallpaper.get_wallpaper_json_path_under_root",
@@ -182,6 +184,7 @@ class TestVideoWallpaperQml(unittest.TestCase):
                 ),
             },
             capture_output=True,
+            errors="replace",
             text=True,
             timeout=15,
         )
@@ -209,6 +212,8 @@ class TestVideoWallpaperQml(unittest.TestCase):
             # grabWindow 像素断言；真实后端下的整窗圆角由
             # tests/exe/test_gui_rendering_exe.py 覆盖。
             from tests.gui.helpers import make_bridge
+            from unittest.mock import patch
+            patch("src.service.app_service.get_weekly_start_map", return_value={}).start()
 
             with tempfile.TemporaryDirectory() as directory, patch(
                 "src.utils.utils_wallpaper.get_wallpaper_json_path_under_root",
@@ -302,6 +307,7 @@ class TestVideoWallpaperQml(unittest.TestCase):
                 ),
             },
             capture_output=True,
+            errors="replace",
             text=True,
             timeout=30,
         )

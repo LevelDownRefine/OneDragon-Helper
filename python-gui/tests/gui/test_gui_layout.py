@@ -27,6 +27,8 @@ class TestSharedLayout(unittest.TestCase):
             from gui.main_window import QmlBridge
             from src.utils.utils_sub_config import resolve_script_path
             from tests.gui.helpers import make_bridge
+            from unittest.mock import patch
+            patch("src.service.app_service.get_weekly_start_map", return_value={}).start()
 
             with tempfile.TemporaryDirectory() as directory:
                 qml_dir = Path(directory) / "qml"
@@ -94,6 +96,7 @@ class TestSharedLayout(unittest.TestCase):
         result = subprocess.run(
             [sys.executable, "-c", code],
             capture_output=True,
+            errors="replace",
             text=True,
             timeout=30,
             cwd=os.getcwd(),
@@ -125,6 +128,8 @@ class TestSharedLayout(unittest.TestCase):
             from gui.main_window import QmlBridge
             from src.utils.utils_sub_config import resolve_script_path
             from tests.gui.helpers import make_bridge
+            from unittest.mock import patch
+            patch("src.service.app_service.get_weekly_start_map", return_value={}).start()
 
             ROW_H = 56
             TOP = 68           # 首行 y（标题行 + 分隔线之下）
@@ -198,6 +203,7 @@ class TestSharedLayout(unittest.TestCase):
         result = subprocess.run(
             [sys.executable, "-c", code],
             capture_output=True,
+            errors="replace",
             text=True,
             timeout=60,
             cwd=os.getcwd(),

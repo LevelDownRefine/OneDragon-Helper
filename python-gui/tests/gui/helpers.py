@@ -47,6 +47,8 @@ def make_bridge():
             AppService, "load_config", return_value={"script_list": deepcopy(_SCRIPTS)}
         ),
         patch("src.service.daily_plan.load_schedule", return_value={}),
+        # 壁纸表属生成配置：构造期 apply_current 与后续解析都不读真实文件。
+        patch("src.service.app_service.load_wallpapers", return_value={}),
     ):
         b = QmlBridge()
     b.app_service.load_config = MagicMock(
@@ -55,4 +57,5 @@ def make_bridge():
     # 构造后的重排、添加和计划操作同样隔离 I/O。
     b.app_service.load_daily_plan = MagicMock(return_value=DailyPlanOptions())
     b.app_service.save_config = MagicMock()
+    b.app_service.load_wallpapers = MagicMock(return_value={})
     return b
