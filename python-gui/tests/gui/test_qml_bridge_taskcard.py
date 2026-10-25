@@ -1,8 +1,8 @@
 """测试 QmlBridge 任务卡后端（日常副本 / 周常周几）。
 
-复用 gui_helpers.make_bridge：用 mock 隔离 config / 壁纸 I/O；is_adapted / set_config.get_weekly_map / get_daily_map /
-parse_daily_config 按用例 patch（task_card 经 AppService 取数，patch 目标指向
-src.service.app_service 的模块函数），验证 QML 任务卡所需的数据与写回行为。
+复用 gui_helpers.make_bridge：任务卡经 AppService.script_view 聚合视图取数
+（与 Rust 前端同一视图），桥测试按用例设置视图替身；写回行为验证 QML 任务卡
+所需的数据与落盘。
 """
 
 import unittest
@@ -15,64 +15,63 @@ from src.service.script_service import ScriptEdit
 from tests.gui.helpers import make_bridge
 
 
+def _daily(name, task=None, sequence=None, enabled=None, values=None):
+    return {
+        "name": name,
+        "task": task,
+        "sequence": sequence,
+        "enabled": enabled,
+        "options": {"values": values or []},
+    }
+
+
+def _view(dailies=(), weeklies=()):
+    return {
+        "script": {},
+        "dailies": list(dailies),
+        "weeklies": list(weeklies),
+    }
+
+
 class TestTaskCard(unittest.TestCase):
     """任务卡数据 / 写回：与旧 task_card.py 对齐。"""
 
-    @patch("src.service.app_service.get_daily_map", return_value={})
-    def test_restore_refreshes_task_properties(self, _map):
+    def test_restore_refreshes_task_properties(self):
         bridge = make_bridge()
-        name = bridge.games[0]["script_name"]
-        bridge.task_card._daily_map_cache = {
-            name: {
-                "dailies": [
-                    {
-                        "display_name": "每日任务",
-                        "options": {
-                            "values": [
-                                {
-                                    "display_name": "副本A",
-                                    "physical_name": "副本A",
-                                }
-                            ]
-                        },
-                    }
-                ]
-            }
-        }
+        bridge.app_service.script_view.return_value = _view(
+            dailies=[
+                _daily(
+                    "每日任务",
+                    task="副本A",
+                    values=[{"display_name": "副本A", "physical_name": "副本A"}],
+                )
+            ]
+        )
         changed = MagicMock()
         bridge.taskStateChanged.connect(changed)
         bridge.app_service.restore_backup = MagicMock(
             return_value={"restored": 1, "skipped_scripts": []}
         )
-        with (
-            patch.object(bridge.backup, "_pick_zip", return_value="backup.zip"),
-            patch("src.service.app_service.get_daily_readback") as readback,
-        ):
-            readback.return_value = [
-                {"name": "每日任务", "task": "副本A", "sequence": None, "enabled": None}
-            ]
+        with patch.object(bridge.backup, "_pick_zip", return_value="backup.zip"):
             self.assertEqual(bridge.dailyItems[0]["task_label"], "副本A")
-            readback.return_value = [
-                {"name": "每日任务", "task": "副本B", "sequence": None, "enabled": None}
-            ]
+            bridge.app_service.script_view.return_value = _view(
+                dailies=[
+                    _daily(
+                        "每日任务",
+                        task="副本B",
+                        values=[{"display_name": "副本B", "physical_name": "副本B"}],
+                    )
+                ]
+            )
             bridge.restoreConfig()
             changed.assert_called_once_with()
             self.assertEqual(bridge.dailyItems[0]["task_label"], "副本B")
 
-    @patch("src.service.app_service.is_adapted", return_value=True)
-    @patch(
-        "src.service.app_service.get_weekly_map",
-        return_value=[{"display_name": "周常"}],
-    )
-    @patch("src.service.app_service.get_weekly_start_map", return_value={})
-    @patch("src.service.app_service.get_daily_map", return_value={})
-    @patch("src.service.app_service.get_daily_readback", return_value=[])
-    def test_daily_items_default_is_empty(self, *_):
+    def test_daily_items_default_is_empty(self):
         b = make_bridge()
         self.assertEqual(b.dailyItems, [])
 
-    @patch("src.service.app_service.get_daily_map", return_value={})
-    def test_set_daily_enabled_writes_through_service(self, *_):
+    def test_set_daily_enabled_writes_through_service(self):
         """日常开关经 Bridge → service 落盘（开关无副本名可反查，显式带日常）。"""
         b = make_bridge()
         name = b.games[0]["script_name"]
@@ -83,40 +82,24 @@ class TestTaskCard(unittest.TestCase):
         )
 
     @patch("src.service.app_service.is_adapted", return_value=False)
-    @patch("src.service.app_service.get_daily_map", return_value={})
     def test_task_adapted_reflects_is_adapted(self, *_):
         b = make_bridge()
         self.assertFalse(b.taskAdapted)
 
     @patch("src.service.app_service.set_config")  # 实时落盘子脚本 config（经 service）
     @patch("src.service.app_service.is_adapted", return_value=True)
-    @patch("src.service.app_service.get_weekly_map", return_value=[])
-    @patch("src.service.app_service.get_daily_map", return_value={})
-    @patch("src.service.app_service.get_daily_readback")
-    def test_select_daily_task_writes_config(self, readback, *_):
+    def test_select_daily_task_writes_config(self, *_):
         b = make_bridge()
         name = b.games[0]["script_name"]
         # 反读无真相 → chip 回退声明的首个选项
-        b.task_card._daily_map_cache = {
-            name: {
-                "dailies": [
-                    {
-                        "display_name": "每日任务",
-                        "options": {
-                            "values": [
-                                {
-                                    "display_name": "副本A",
-                                    "physical_name": "副本A",
-                                }
-                            ]
-                        },
-                    }
-                ]
-            }
-        }
-        readback.return_value = [
-            {"name": "每日任务", "task": None, "sequence": None, "enabled": None}
-        ]
+        b.app_service.script_view.return_value = _view(
+            dailies=[
+                _daily(
+                    "每日任务",
+                    values=[{"display_name": "副本A", "physical_name": "副本A"}],
+                )
+            ]
+        )
         b.selectDaily("每日任务", "副本A", "seq1")
         self.assertEqual(b.dailyItems[0]["task_label"], "副本A")
         # 实时落盘子脚本 config（日常副本编辑期即生效，不再依赖运行全体），经 service 入口；
@@ -128,50 +111,30 @@ class TestTaskCard(unittest.TestCase):
             daily_display_name="每日任务",
         )
 
-    @patch("src.service.app_service.get_weekly_map", return_value=[])
-    @patch("src.service.app_service.is_adapted", return_value=True)
-    @patch("src.service.app_service.get_daily_readback")
-    def test_nte_menu_yields_two_daily_rows(self, readback, *_):
-        """多日常（异环形态）：菜单按日常分组 → 两行，且下拉数据按日常取。"""
-        menu = {
-            "ok-ww": {
-                "dailies": [
-                    {
-                        "display_name": "异象界域",
-                        "options": {
-                            "values": [
-                                {
-                                    "display_name": "空幕",
-                                    "physical_name": "空幕",
-                                }
-                            ]
-                        },
-                    },
-                    {
-                        "display_name": "追猎目标",
-                        "options": {
-                            "values": [
-                                {
-                                    "display_name": "追猎目标",
-                                    "physical_name": "追猎目标",
-                                }
-                            ]
-                        },
-                    },
-                ]
-            }
-        }
-        readback.return_value = [
-            {"name": "异象界域", "task": "空幕", "sequence": None, "enabled": True},
-            {
-                "name": "追猎目标",
-                "task": "追猎目标",
-                "sequence": None,
-                "enabled": False,
-            },
-        ]
-        with patch("src.service.app_service.get_daily_map", return_value=menu):
-            b = make_bridge()
+    def test_nte_menu_yields_two_daily_rows(self):
+        """多日常（异环形态）：视图两行，且下拉数据按日常取。"""
+        b = make_bridge()
+        b.app_service.script_view.return_value = _view(
+            dailies=[
+                _daily(
+                    "异象界域",
+                    task="空幕",
+                    enabled=True,
+                    values=[{"display_name": "空幕", "physical_name": "空幕"}],
+                ),
+                _daily(
+                    "追猎目标",
+                    task="追猎目标",
+                    enabled=False,
+                    values=[
+                        {
+                            "display_name": "追猎目标",
+                            "physical_name": "追猎目标",
+                        }
+                    ],
+                ),
+            ]
+        )
         self.assertEqual(
             [item["name"] for item in b.dailyItems], ["异象界域", "追猎目标"]
         )
@@ -180,35 +143,26 @@ class TestTaskCard(unittest.TestCase):
             [{"display_name": "追猎目标", "physical_name": "追猎目标"}],
         )
 
-    @patch("src.service.app_service.is_adapted", return_value=True)
-    def test_daily_options_shape(self, *_):
-        menu = {
-            "ok-ww": {
-                "dailies": [
-                    {
-                        "display_name": "每日任务",
-                        "options": {
-                            "values": [
-                                {
-                                    "display_name": "副本A",
-                                    "physical_name": "副本A",
-                                    "options": {
-                                        "values": [
-                                            {
-                                                "display_name": "难1",
-                                                "physical_name": "s1",
-                                            }
-                                        ]
-                                    },
-                                }
-                            ]
-                        },
-                    }
-                ]
-            }
-        }
-        with patch("src.service.app_service.get_daily_map", return_value=menu):
-            b = make_bridge()
+    def test_daily_options_shape(self):
+        b = make_bridge()
+        b.app_service.script_view.return_value = _view(
+            dailies=[
+                _daily(
+                    "每日任务",
+                    values=[
+                        {
+                            "display_name": "副本A",
+                            "physical_name": "副本A",
+                            "options": {
+                                "values": [
+                                    {"display_name": "难1", "physical_name": "s1"}
+                                ]
+                            },
+                        }
+                    ],
+                )
+            ]
+        )
         opts = b.dailyOptions("每日任务")
         self.assertEqual(opts[0]["display_name"], "副本A")
         self.assertEqual(
@@ -216,8 +170,7 @@ class TestTaskCard(unittest.TestCase):
             [{"display_name": "难1", "physical_name": "s1"}],
         )
 
-    @patch("src.service.app_service.get_daily_map", return_value={})
-    def test_daily_options_empty_when_no_cfg(self, *_):
+    def test_daily_options_empty_when_no_cfg(self):
         b = make_bridge()
         self.assertEqual(b.dailyOptions("每日任务"), [])
 

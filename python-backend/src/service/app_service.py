@@ -31,10 +31,8 @@ from src.config.native_task_switch import native_task_switch_of
 from src.config.set_config import (
     get_background_rel_path,
     get_daily_map,
-    get_daily_readback,
     get_game_exe_path,
     get_weekly_map,
-    get_weekly_task,
     is_adapted,
     set_config,
     set_daily_enabled,
@@ -321,14 +319,6 @@ class AppService:
     def is_adapted(self, script_name: str) -> bool:
         """查询脚本是否已注册副本适配（任务卡决定是否显示）。"""
         return is_adapted(script_name)
-
-    def get_daily_readback(self, script_name: str) -> list[dict]:
-        """读该脚本全部日常的已选项与开关（任务卡反读）。"""
-        return get_daily_readback(script_name)
-
-    def get_weekly_task(self, script_name: str, weekly_name: str) -> str | None:
-        """经脚本适配器反读周常副本；未适配脚本返回 None。"""
-        return get_weekly_task(script_name, weekly_name)
 
     def get_background_rel_path(self, script_name: str) -> str:
         """读脚本默认背景图相对路径（相对脚本根目录，背景控制器）。"""

@@ -21,7 +21,6 @@ from gui.controllers.game_list import GameListController
 from gui.file_drop import WindowsFileDrop
 from gui.main_window import QmlBridge
 from src.service import script_service
-from src.service.app_service import AppService
 from src.utils import utils_config, utils_weekly
 from src.utils.utils_io import load_data
 from src.utils.utils_sub_config import get_script_name
@@ -283,13 +282,10 @@ class TestNativeDropPersistence(unittest.TestCase):
                     return_value=str(weekly),
                 ),
                 patch("src.service.daily_plan.load_schedule", return_value={}),
-                patch.object(AppService, "get_daily_map", return_value={}),
-                patch.object(AppService, "get_weekly_map", return_value=[]),
                 patch(
                     "gui.controllers.background.BackgroundController.resolve_bg",
                     return_value=None,
                 ),
-                patch("src.service.app_service.get_daily_readback", return_value=[]),
                 patch(
                     "gui.file_drop.ctypes.WinDLL",
                     side_effect=[shell, MagicMock(), MagicMock()],
@@ -346,10 +342,7 @@ class TestQmlScriptDrop(unittest.TestCase):
             app = get_app()
             with (
                 tempfile.TemporaryDirectory() as directory,
-                patch.object(AppService, "get_daily_map", return_value={}),
-                patch.object(AppService, "get_weekly_map", return_value=[]),
                 patch.object(BackgroundController, "resolve_bg", return_value=None),
-                patch("src.service.app_service.get_daily_readback", return_value=[]),
             ):
                 bridge = make_bridge()
                 qmlRegisterSingletonInstance(QmlBridge, "OneDragonHelper", 1, 0, "Bridge", bridge)

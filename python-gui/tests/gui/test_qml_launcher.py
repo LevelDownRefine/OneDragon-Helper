@@ -588,20 +588,23 @@ class TestTaskCardPopupGeometry(unittest.TestCase):
             }]
             fake_tasks = [f"副本{i}" for i in range(1, 10)]
             fake_weekly = [{
-                "display_name": "历战余响",
+                "name": "历战余响",
                 "options": {
                     "values": [
                         {"display_name": t, "physical_name": t} for t in fake_tasks
                     ]
                 },
+                "task": None,
+                "start_day": None,
             }]
             with (
                 patch.object(AppService, "load_config",
                              return_value={"script_list": scripts}),
                 patch.object(main_window.BackgroundController, "resolve_bg",
                              return_value=None),
-                patch("src.service.app_service.get_weekly_map",
-                      return_value=fake_weekly),
+                patch.object(AppService, "script_view",
+                             return_value={"script": {}, "dailies": [],
+                                           "weeklies": fake_weekly}),
             ):
                 with (
                     patch("src.service.daily_plan.load_schedule", return_value={}),
@@ -695,72 +698,68 @@ class TestTaskCardDailyChipOpensMenu(unittest.TestCase):
             from src.utils.utils_sub_config import resolve_script_path
             from tests.gui.helpers import make_bridge
             from unittest.mock import patch
-            patch("src.service.app_service.get_weekly_start_map", return_value={}).start()
 
             from src.config.set_config import get_daily_map
             dailies = get_daily_map("March7th-Launcher")["March7th-Launcher"]["dailies"]
-            records = [
-                {"name": "培养目标", "task": "培养目标", "sequence": True, "enabled": None}
-            ]
-            with (
-                patch("src.service.app_service.get_weekly_map", return_value=[]),
-                patch("src.service.app_service.get_daily_readback",
-                      return_value=records),
-            ):
-                bridge = make_bridge()
-                qmlRegisterSingletonInstance(
-                    QmlBridge, "OneDragonHelper", 1, 0, "Bridge", bridge)
-                engine = QQmlApplicationEngine()
-                engine.addImageProvider("uiicon", UiIconProvider())
-                engine.addImageProvider("scripticon", bridge.game_list.icon_provider)
-                engine.load(QUrl.fromLocalFile(
-                    resolve_script_path("python-gui/src/gui/qml/main.qml")))
-                assert len(engine.rootObjects()) == 1
-                window = engine.rootObjects()[0]
-                QTest.qWait(400)
-                bridge.task_card._daily_map_cache = {"ok-ww": {"dailies": dailies}}
-                bridge.taskStateChanged.emit()
-                QTest.qWait(300)
+            record = {"name": "培养目标", "task": "培养目标", "sequence": True, "enabled": None}
+            bridge = make_bridge()
+            bridge.app_service.script_view.return_value = {
+                "script": {},
+                "dailies": [{**record, "options": dailies[0]["options"]}],
+                "weeklies": [],
+            }
+            qmlRegisterSingletonInstance(
+                QmlBridge, "OneDragonHelper", 1, 0, "Bridge", bridge)
+            engine = QQmlApplicationEngine()
+            engine.addImageProvider("uiicon", UiIconProvider())
+            engine.addImageProvider("scripticon", bridge.game_list.icon_provider)
+            engine.load(QUrl.fromLocalFile(
+                resolve_script_path("python-gui/src/gui/qml/main.qml")))
+            assert len(engine.rootObjects()) == 1
+            window = engine.rootObjects()[0]
+            QTest.qWait(400)
+            bridge.task_card.refresh()  # 以注入的视图驱动 QML 重读
+            QTest.qWait(300)
 
-                # Repeater 委托的 QObject 所有权不等于视觉父子关系，按视觉树查找。
-                def find_item(name):
-                    pending = [window.contentItem()]
-                    while pending:
-                        item = pending.pop()
-                        if item.objectName() == name:
-                            return item
-                        pending.extend(item.childItems())
-                    raise AssertionError(name)
-
-                popup = window.findChild(QQuickItem, "dailyPopup")
-                assert not popup.isVisible()
-                chip = find_item("dailyButton")
-                point = chip.mapToScene(QPointF(chip.width() / 2, chip.height() / 2))
-                QTest.mouseClick(window, Qt.LeftButton, pos=point.toPoint())
-                QTest.qWait(200)
-                print("POPUP", popup.isVisible(), popup.property("dailyName"),
-                      flush=True)
-                assert popup.isVisible(), "点日常 chip 未弹出菜单"
-                assert popup.property("dailyName") == "培养目标"
-                popup.setProperty("selName", "培养目标")
-                QTest.qWait(100)
-                assert popup.height() >= 72, "二级停用项必须完整可见"
-                pending = list(popup.childItems())
-                second = None
+            # Repeater 委托的 QObject 所有权不等于视觉父子关系，按视觉树查找。
+            def find_item(name):
+                pending = [window.contentItem()]
                 while pending:
                     item = pending.pop()
-                    if item.property("text") == "不启用":
-                        second = item
-                        break
+                    if item.objectName() == name:
+                        return item
                     pending.extend(item.childItems())
-                assert second is not None
-                with patch.object(bridge.task_card._app_service, "set_script_daily_task") as save:
-                    point = second.mapToScene(QPointF(second.width() / 2, second.height() / 2))
-                    QTest.mouseClick(window, Qt.LeftButton, pos=point.toPoint())
-                    QTest.qWait(100)
-                    save.assert_called_once_with("ok-ww", daily_display_name="培养目标",
-                                                 task_name="培养目标", sequence=False)
-                    assert save.call_args.kwargs["sequence"] is False
+                raise AssertionError(name)
+
+            popup = window.findChild(QQuickItem, "dailyPopup")
+            assert not popup.isVisible()
+            chip = find_item("dailyButton")
+            point = chip.mapToScene(QPointF(chip.width() / 2, chip.height() / 2))
+            QTest.mouseClick(window, Qt.LeftButton, pos=point.toPoint())
+            QTest.qWait(200)
+            print("POPUP", popup.isVisible(), popup.property("dailyName"),
+                  flush=True)
+            assert popup.isVisible(), "点日常 chip 未弹出菜单"
+            assert popup.property("dailyName") == "培养目标"
+            popup.setProperty("selName", "培养目标")
+            QTest.qWait(100)
+            assert popup.height() >= 72, "二级停用项必须完整可见"
+            pending = list(popup.childItems())
+            second = None
+            while pending:
+                item = pending.pop()
+                if item.property("text") == "不启用":
+                    second = item
+                    break
+                pending.extend(item.childItems())
+            assert second is not None
+            with patch.object(bridge.task_card._app_service, "set_script_daily_task") as save:
+                point = second.mapToScene(QPointF(second.width() / 2, second.height() / 2))
+                QTest.mouseClick(window, Qt.LeftButton, pos=point.toPoint())
+                QTest.qWait(100)
+                save.assert_called_once_with("ok-ww", daily_display_name="培养目标",
+                                             task_name="培养目标", sequence=False)
+                assert save.call_args.kwargs["sequence"] is False
                 assert not popup.isVisible()
             """
         )
@@ -914,10 +913,36 @@ class TestTaskCardWeeklyAreaHeightForSupportedScript(unittest.TestCase):
                   return_value=["无", "坏灭的喜剧", "铁骸的锈冢", "晨昏的回眸",
                                 "心兽的战场", "尘梦的赞礼", "蛀星的旧靥",
                                 "不死的神实", "寒潮的落幕", "毁灭的开端"]).start()
-            # 周几起落在 weekly.yml（用户文件，CI 无、本地格式随版本而变）：指向不存在的
-            # 路径，读取器按「未设置」回退空结构，测试不依赖运行时数据。
-            patch("src.utils.utils_weekly.get_weekly_yml_path_under_root",
-                  return_value="__no_weekly_yml__").start()
+            # 任务卡经聚合视图取数：真实物化崩铁日常/周常声明（read_task_source 已桩；
+            # 反读在 _load_config_yml 桩下按未安装出记录），周几起以未设置注入。
+            from src.config.set_config import (
+                get_daily_map,
+                get_daily_readback,
+                get_weekly_map,
+            )
+
+            records = {
+                r["name"]: r for r in get_daily_readback("March7th-Launcher")
+            }
+            dailies_view = [
+                {**records[d["display_name"]], "options": d["options"]}
+                for d in get_daily_map("March7th-Launcher")[
+                    "March7th-Launcher"
+                ]["dailies"]
+                if d["display_name"] in records
+            ]
+            weekly_view = [
+                {
+                    "name": d["display_name"],
+                    "options": d["options"] if "options" in d else None,
+                    "task": None,
+                    "start_day": None,
+                }
+                for d in get_weekly_map("March7th-Launcher")
+            ]
+            patch.object(AppService, "script_view",
+                         return_value={"script": {}, "dailies": dailies_view,
+                                       "weeklies": weekly_view}).start()
             patch("src.service.daily_plan.load_schedule", return_value={}).start()
             bridge = QmlBridge()
             qmlRegisterSingletonInstance(
@@ -1008,29 +1033,37 @@ class TestWeeklyRowChipGeometry(unittest.TestCase):
                 "script_path": "scripts/March7th-Launcher/March7th-Launcher.exe",
                 "script_type": "external",
             }]
-            # 真实声明当前无周常带副本选型，故桩掉周常菜单，给两条假周常覆盖两种形态：
+            # 真实声明当前无周常带副本选型，故桩掉任务卡视图，给两条假周常覆盖两种形态：
             # 无副本（周几起独占整宽）与有副本（周几起 + 副本各占半宽）。
             fake_weekly = [
-                {"display_name": "无副本周常"},
+                {"name": "无副本周常", "options": None, "task": None,
+                 "start_day": None},
                 {
-                    "display_name": "有副本周常",
+                    "name": "有副本周常",
                     "options": {
                         "values": [
                             {"display_name": f"副本{i}", "physical_name": f"副本{i}"}
                             for i in range(1, 4)
                         ]
                     },
+                    "task": None,
+                    "start_day": None,
                 },
             ]
             patch.object(AppService, "load_config",
                          return_value={"script_list": scripts}).start()
             patch.object(main_window.BackgroundController, "resolve_bg",
                          return_value=None).start()
-            patch("src.service.app_service.get_weekly_map",
-                  return_value=fake_weekly).start()
-            # 周几起落用户文件：指向不存在的路径，按「未设置」回退。
-            patch("src.utils.utils_weekly.get_weekly_yml_path_under_root",
-                  return_value="__no_weekly_yml__").start()
+            # 日常行用合成数据（本测试量的是周常 chip 几何），但必须有一行，
+            # 否则 QML 不渲染 dailyButton，报表回调找不到节点即超时。
+            fake_dailies = [{
+                "name": "日常", "task": None, "sequence": None, "enabled": None,
+                "options": {"values": [
+                    {"display_name": "无", "physical_name": "无"}]},
+            }]
+            patch.object(AppService, "script_view",
+                         return_value={"script": {}, "dailies": fake_dailies,
+                                       "weeklies": fake_weekly}).start()
             patch("src.service.daily_plan.load_schedule", return_value={}).start()
             bridge = QmlBridge()
             qmlRegisterSingletonInstance(

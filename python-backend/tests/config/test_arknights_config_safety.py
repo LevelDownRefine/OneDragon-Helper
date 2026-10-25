@@ -305,9 +305,20 @@ class TestMaaNativeConfig(unittest.TestCase):
 
         self.cfg._init_config()
         service = MagicMock()
-        service.get_daily_map.side_effect = get_daily_map
-        service.get_daily_readback.side_effect = get_daily_readback
         service.is_adapted.side_effect = is_adapted
+
+        def card_view(script_name):
+            """按 task_service.script_view 的口径装配视图（真实物化 + 真实反读）。"""
+            menus = get_daily_map(script_name)
+            records = {r["name"]: r for r in get_daily_readback(script_name)}
+            dailies = [
+                {**records[d["display_name"]], "options": d["options"]}
+                for d in menus.get(script_name, {"dailies": []})["dailies"]
+                if d["display_name"] in records
+            ]
+            return {"script": {}, "dailies": dailies, "weeklies": []}
+
+        service.script_view.side_effect = card_view
         service.set_script_daily_task.side_effect = (
             lambda script, task_name, sequence, daily_display_name: (
                 self.cfg.set_daily_task(daily_display_name, task_name, sequence)
@@ -330,6 +341,8 @@ class TestMaaNativeConfig(unittest.TestCase):
             ) as reader,
         ):
             controller.build_daily_cache()
+            # 视图按需物化（build_daily_cache 只失效缓存）：首次求值触发菜单物化。
+            self.assertTrue(controller.daily_items)  # 首次求值触发物化
             reader.assert_called_once_with(
                 "MAA", "cache/gui/StageActivityV2.json", "config/gui.new.json"
             )
@@ -343,8 +356,13 @@ class TestMaaNativeConfig(unittest.TestCase):
             controller.selectDaily("理智作战", "AP-5", None)
             controller.selectDaily("剩余理智", "1-7", None)
             controller.setDailyEnabled("理智作战", False)
+            # 新契约（与 Rust 的 script.view 同口径）：每次 refresh 后整视图重取一次，
+            # 同一周期内的重复读不重新物化资源。
             controller.daily_options("活动关卡")
-            reader.assert_not_called()  # 选择关卡和打开已缓存菜单都不重读资源。
+            reader.assert_called_once()
+            controller.daily_options("理智作战")
+            controller.daily_options("剩余理智")
+            reader.assert_called_once()
         self.assertEqual(self.task("活动关优先")["StagePlan"], ["AT-7"])
         self.assertFalse(self.task("理智作战")["IsEnable"])
         self.assertTrue(self.task("剩余理智")["IsEnable"])

@@ -140,16 +140,12 @@ class TestVideoWallpaperQml(unittest.TestCase):
             from src.utils.utils_sub_config import resolve_script_path
             from tests.gui.helpers import make_bridge
             from unittest.mock import patch
-            patch("src.service.app_service.get_weekly_start_map", return_value={}).start()
 
             with tempfile.TemporaryDirectory() as directory, patch(
                 "src.utils.utils_wallpaper.get_wallpaper_json_path_under_root",
                 return_value=str(Path(directory) / "wallpaper.json"),
             ):
                 with (
-                    patch("src.service.app_service.get_daily_map", return_value={}),
-                    patch("src.service.app_service.get_weekly_map", return_value=[]),
-                    patch("src.service.app_service.get_daily_readback", return_value=[]),
                     patch("gui.controllers.background.BackgroundController.resolve_bg", return_value=None),
                 ):
                     bridge = make_bridge()
@@ -213,16 +209,12 @@ class TestVideoWallpaperQml(unittest.TestCase):
             # tests/exe/test_gui_rendering_exe.py 覆盖。
             from tests.gui.helpers import make_bridge
             from unittest.mock import patch
-            patch("src.service.app_service.get_weekly_start_map", return_value={}).start()
 
             with tempfile.TemporaryDirectory() as directory, patch(
                 "src.utils.utils_wallpaper.get_wallpaper_json_path_under_root",
                 return_value=str(Path(directory) / "wallpaper.json"),
             ):
                 with (
-                    patch("src.service.app_service.get_daily_map", return_value={}),
-                    patch("src.service.app_service.get_weekly_map", return_value=[]),
-                    patch("src.service.app_service.get_daily_readback", return_value=[]),
                     patch("gui.controllers.background.BackgroundController.resolve_bg", return_value=None),
                 ):
                     bridge = make_bridge()

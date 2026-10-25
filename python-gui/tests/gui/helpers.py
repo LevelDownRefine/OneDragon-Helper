@@ -58,4 +58,9 @@ def make_bridge():
     b.app_service.load_daily_plan = MagicMock(return_value=DailyPlanOptions())
     b.app_service.save_config = MagicMock()
     b.app_service.load_wallpapers = MagicMock(return_value={})
+    # 任务卡经聚合视图取数（QML 属性求值随引擎加载发生）：默认空视图，
+    # 用例按需改 return_value。
+    b.app_service.script_view = MagicMock(
+        return_value={"script": {}, "dailies": [], "weeklies": []}
+    )
     return b

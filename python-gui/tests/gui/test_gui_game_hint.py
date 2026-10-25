@@ -26,10 +26,7 @@ class TestGameIconHint(unittest.TestCase):
             get_app()
             icon_path = str(Path("assets/ds.ico").resolve())
             with (
-                patch.object(AppService, "get_daily_map", return_value={}),
-                patch.object(AppService, "get_weekly_map", return_value=[]),
                 patch.object(BackgroundController, "resolve_bg", return_value=None),
-                patch("src.service.app_service.get_daily_readback", return_value=[]),
                 patch.object(AppService, "game_icon_path", return_value={"path": icon_path}) as read_path,
                 patch("src.service.app_service.get_game_exe_path", return_value=icon_path),
                 patch("gui.icons._exe_icon", return_value=QIcon(icon_path)),

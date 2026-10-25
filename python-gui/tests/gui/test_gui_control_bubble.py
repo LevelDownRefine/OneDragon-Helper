@@ -12,23 +12,18 @@ class TestControlBubble(unittest.TestCase):
         code = textwrap.dedent(
             """
             from pathlib import Path
-            from unittest.mock import patch
             from PySide6.QtCore import QPoint, QPointF, Qt, QUrl
             from PySide6.QtQml import QQmlApplicationEngine, qmlRegisterSingletonInstance
             from PySide6.QtTest import QTest
+            from unittest.mock import patch
+
             from gui.controllers.background import BackgroundController
             from gui.icons import UiIconProvider
             from gui.main_window import QmlBridge
-            from src.service.app_service import AppService
             from tests.gui.helpers import make_bridge
-            from unittest.mock import patch
-            patch("src.service.app_service.get_weekly_start_map", return_value={}).start()
 
             with (
-                patch.object(AppService, "get_daily_map", return_value={}),
-                patch.object(AppService, "get_weekly_map", return_value=[]),
                 patch.object(BackgroundController, "resolve_bg", return_value=None),
-                patch("src.service.app_service.get_daily_readback", return_value=[]),
             ):
                 bridge = make_bridge()
                 qmlRegisterSingletonInstance(QmlBridge, "OneDragonHelper", 1, 0, "Bridge", bridge)
