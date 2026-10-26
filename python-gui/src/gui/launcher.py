@@ -19,8 +19,6 @@ from PySide6.QtWidgets import QApplication
 
 from gui.file_drop import install_file_drop
 from gui.main_window import QmlBridge
-from src.cli import build_parser, run_cli
-from src.config.generate_config import config_workflow
 from src.utils.utils_logger import install_crash_hooks, setup_logging
 from src.utils.utils_shutdown import set_shutdown_confirmation
 from src.utils.utils_sub_config import resolve_script_path
@@ -75,32 +73,30 @@ def main():
             raise ValueError("关机倒计时须为 1～86400 秒")
         sys.exit(SHUTDOWN_CONFIRM_EXIT if confirm_shutdown(seconds) else 0)
     _start_startup_timer()
-    args = build_parser().parse_args()
-    # 日志先于 config_workflow：init 对齐产生的 WARNING（如补缺失字段）必须进
-    # 日志文件可追溯；否则走 logging 兜底裸印 stderr，无时间戳且 windowed exe
-    # 下彻底丢失。幂等，GUI 路径复用。
-    # 运行类出口（计划/定时运行/指定链）与 GUI 分文件落盘：两侧会同时持有各自的
-    # 日志文件，rename 式轮转会被另一个持有者拒绝并让本进程日志全部写不进去。
-    plan_run = (
-        args.run_daily or args.schedule_run is not None or args.run_chain is not None
-    )
-    setup_logging(role="plan" if plan_run else "gui")
+    arguments = sys.argv[1:]
+    if arguments not in ([], ["--after-update"]):
+        # 旧命令行入口属于后端模式，窗口启动不导入业务服务。
+        from gui.shutdown_dialog import confirm_shutdown
+        from src.cli import build_parser, run_cli
+        from src.config.generate_config import config_workflow
+
+        args = build_parser().parse_args()
+        plan_run = (
+            args.run_daily
+            or args.schedule_run is not None
+            or args.run_chain is not None
+        )
+        setup_logging(role="plan" if plan_run else "gui")
+        install_crash_hooks()
+        config_workflow()
+        set_shutdown_confirmation(confirm_shutdown)
+        exit_code = run_cli(args)
+        assert exit_code is not None
+        raise SystemExit(exit_code)
+    setup_logging(role="gui")
     install_crash_hooks()
-    config_workflow()
-    from gui.shutdown_dialog import confirm_shutdown
-
-    set_shutdown_confirmation(confirm_shutdown)
-    # 模块导入耗时（_STARTUP_T0 之前）由 python -X importtime 观测；
-    # 此处起记录 main() 内各阶段耗时。
-    _log_startup("main() 初始化（config_workflow/parse_args/setup_logging）")
-
-    # 非 GUI 的 CLI 出口：解析后即退出，不进入事件循环。
-    exit_code = run_cli(args)
-    if exit_code is not None:
-        sys.exit(exit_code)
-    _log_startup("run_cli")
-
-    _launch_qml(skip_auto_launch=args.after_update)
+    _log_startup("GUI 初始化")
+    _launch_qml(skip_auto_launch=bool(arguments))
 
 
 def _install_qt_message_logger():
@@ -168,7 +164,12 @@ def _launch_qml(*, skip_auto_launch: bool = False):
         )
         program, arguments, cwd = str(executable), ["serve", "--stdio"], str(root)
     else:
-        program = None
+        from gui.dialogs import show_warning
+
+        message = "发布包不完整：缺少独立 CLI 后端，请重新解压完整安装包"
+        logger.error(message)
+        show_warning(None, message)
+        raise SystemExit(2)
     if program is not None:
 
         def client_factory():

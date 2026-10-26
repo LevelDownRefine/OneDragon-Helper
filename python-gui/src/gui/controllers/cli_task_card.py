@@ -11,7 +11,7 @@ from gui.controllers.task_card import TaskCardController
 
 class CliTaskCardController(TaskCardController):
     def __init__(self, game_list, client, toast, parent=None, client_factory=None):
-        super().__init__(game_list, None, toast, parent)
+        super().__init__(game_list, toast, parent)
         self._client = client
         self._client_factory = client_factory
         self._generation = 0

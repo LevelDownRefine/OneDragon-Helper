@@ -40,7 +40,7 @@ class RunOptionsEditor(QWidget):
     """运行选项编辑器：按生命周期三段（运行前/中/后）排列七项勾选 + 邮件配置。
 
     复用 ``gui.dialogs`` 的样式与控件构造；``run_options`` 属性回显勾选项，
-    写盘由调用方经 ``AppService`` 委托 ``src.service.schedule.save_schedule``。
+    保存请求由宿主弹窗经 CLI 提交。
     """
 
     def __init__(self, options: RunOptions, parent=None):

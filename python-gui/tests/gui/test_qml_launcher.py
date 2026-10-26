@@ -1,15 +1,4 @@
-"""测试 gui.main_window 与 QML 应用骨架：脚本列表、背景切换、视频回退。
-
-QML 引擎在 offscreen 下可加载场景（无视频渲染，但场景对象建立）；桥接逻辑
-用 mock 隔离 chain_service 模块文件 I/O。脚本图标 provider 不在加载时触发（Image
-渲染时才调用），避免 offscreen 依赖 exe 图标。
-
-各职责已拆到 src/gui/controllers/ 下 mixin；monkeypatch 目标需指向实际引用
-该名字的子模块（os/subprocess/webbrowser 指向标准库模块；config 读取走 AppService——
-其 load_config 已委托 src.utils.utils_config，故 load_config 类方法 patch 指向
-AppService；资源/启动目标由 service 解析，外部打开动作在控制器，
-周常/适配相关函数在 task_card）。
-"""
+"""CLI 桥接的列表、外部打开动作与真实 QML 场景。"""
 
 import os
 import subprocess
@@ -20,20 +9,19 @@ import webbrowser
 from unittest.mock import MagicMock, patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-# 禁用 QML 磁盘缓存：损坏的 .qmlc 会导致类型解析错乱
-# （Type IconButton unavailable / Cannot assign to "data"）。
 os.environ.setdefault("QML_DISABLE_DISK_CACHE", "1")
 
-from PySide6.QtWidgets import QApplication  # noqa: E402
-
-from gui.controllers import launch, links  # noqa: E402
+from gui.controllers import links  # noqa: E402
 from gui.controllers.game_list import ScriptIconProvider  # noqa: E402
 from gui.icons import UiIconProvider  # noqa: E402
-from tests.gui.helpers import make_bridge  # noqa: E402
+from tests.gui.helpers import (  # noqa: E402
+    drain_events,
+    get_app,
+    make_bridge,
+    wallpaper_view,
+)
 
-# 全局 QApplication 实例（offscreen 平台，CI 无显示器）
-_app = QApplication.instance() or QApplication([])
-
+_app = get_app()
 _NATIVE_CONFIG_STUB = (
     "import tests\n"
     "from unittest.mock import patch\n"
@@ -44,364 +32,352 @@ _NATIVE_CONFIG_STUB = (
 )
 
 
-def setUpModule():
-    """只模拟原生脚本未安装，应用脚本列表仍由各用例提供。"""
-    native_config = patch(
-        "src.utils.utils_sub_config._load_config_yml",
-        return_value={"script_list": []},
-    )
-    native_config.start()
-    unittest.addModuleCleanup(native_config.stop)
+def _requests(bridge, method):
+    return [params for name, params in bridge.test_client.requests if name == method]
 
 
 class TestBridge(unittest.TestCase):
-    """QmlBridge：脚本列表 / 背景切换 / 视频回退。"""
-
     def test_games_loaded_from_config(self):
-        b = make_bridge()
-        self.assertEqual([g["display_name"] for g in b.games], ["鸣潮", "测试脚本"])
+        bridge = make_bridge()
+        self.assertEqual(
+            [game["display_name"] for game in bridge.games], ["鸣潮", "测试脚本"]
+        )
 
     def test_bridges_have_independent_script_config(self):
         first = make_bridge()
         first.games[0]["display_name"] = "已修改"
-        first.app_service.load_config()["script_list"][0]["display_name"] = "已保存"
+        first.test_client.scripts[0]["display_name"] = "已保存"
         second = make_bridge()
         self.assertEqual(second.games[0]["display_name"], "鸣潮")
-        self.assertEqual(
-            second.app_service.load_config()["script_list"][0]["display_name"], "鸣潮"
-        )
+        self.assertEqual(second.test_client.scripts[0]["display_name"], "鸣潮")
 
     @patch("PySide6.QtWidgets.QLineEdit")
-    def test_prewarms_line_edit_without_config_warmup(self, mock_line_edit):
-        """首帧后仅预热 QLineEdit，不预热脚本配置。"""
-        b = make_bridge()
-        b._prewarm_line_edit()
-        mock_line_edit.assert_called_once_with()
-        mock_line_edit.return_value.deleteLater.assert_called_once_with()
+    def test_prewarms_line_edit_without_config_warmup(self, line_edit):
+        bridge = make_bridge()
+        bridge.test_client.requests.clear()
+        bridge._prewarm_line_edit()
+        line_edit.assert_called_once_with()
+        line_edit.return_value.deleteLater.assert_called_once_with()
+        self.assertEqual(bridge.test_client.requests, [])
 
     def test_background_mode_default_gradient(self):
-        # 壁纸视图默认渐变（make_bridge 注入），无可用背景时走渐变兜底
-        b = make_bridge()
-        self.assertEqual(b.backgroundMode, "gradient")
-        self.assertEqual(b.gradientChar, "鸣")
+        bridge = make_bridge()
+        self.assertEqual(bridge.backgroundMode, "gradient")
+        self.assertEqual(bridge.gradientChar, "鸣")
 
     def test_background_mode_matches_resolved_media(self):
         for path, mode in (("C:/fake/clip.mp4", "video"), ("C:/fake/img.jpg", "image")):
             with self.subTest(path=path):
-                bridge = make_bridge()
-                bridge.app_service.wallpaper_view.return_value = {
-                    "script_name": "",
-                    "display_name": "",
-                    "mode": mode,
-                    "source": path,
-                    "custom_path": None,
-                    "token": "t",
-                    "cache": None,
-                }
-                bridge.background.apply_current(bridge.game_list.current_game)
+                bridge = make_bridge(
+                    responses={
+                        "wallpaper.current": lambda params, mode=mode, path=path: (
+                            wallpaper_view(
+                                params["script_name"], mode=mode, source=path, token="t"
+                            )
+                        )
+                    }
+                )
                 self.assertEqual(bridge.backgroundMode, mode)
                 self.assertTrue(bridge.backgroundUrl.endswith(path.rsplit("/", 1)[1]))
 
     def test_select_game_switches_background(self):
-        b = make_bridge()
-        b.selectGame(1)
-        self.assertEqual(b.currentIndex, 1)
-        self.assertEqual(b.gradientChar, "测")
+        bridge = make_bridge()
+        bridge.selectGame(1)
+        drain_events()
+        self.assertEqual(bridge.currentIndex, 1)
+        self.assertEqual(bridge.gradientChar, "测")
 
     def test_select_game_invalid_raises(self):
-        b = make_bridge()
+        bridge = make_bridge()
         with self.assertRaises(AssertionError):
-            b.selectGame(99)
+            bridge.selectGame(99)
 
     def test_video_error_falls_back_gradient(self):
-        b = make_bridge()
-        with self.assertLogs(b.background.__class__.__module__, level="WARNING"):
-            b.videoError("boom")
-        self.assertEqual(b.backgroundMode, "gradient")
+        bridge = make_bridge()
+        with self.assertLogs("gui.controllers.background", level="WARNING"):
+            bridge.videoError("boom")
+        self.assertEqual(bridge.backgroundMode, "gradient")
 
 
 class TestLeftRail(unittest.TestCase):
-    """QmlBridge 左侧栏交互：enabled 内存态 / 控制模式 / 重排 / 启动。"""
-
     def test_enabled_defaults_all_true(self):
-        b = make_bridge()
-        self.assertEqual(b.enabledStates, [True, True])
+        self.assertEqual(make_bridge().enabledStates, [True, True])
 
     def test_control_mode_select_toggles_enabled(self):
-        b = make_bridge()
-        b.toggleMode()
-        self.assertTrue(b.controlMode)
-        b.selectGame(0)
-        self.assertEqual(b.enabledStates, [False, True])
-        b.selectGame(0)  # 再点恢复
-        self.assertEqual(b.enabledStates, [True, True])
+        bridge = make_bridge()
+        bridge.toggleMode()
+        self.assertTrue(bridge.controlMode)
+        bridge.selectGame(0)
+        self.assertEqual(bridge.enabledStates, [False, True])
+        bridge.selectGame(0)
+        self.assertEqual(bridge.enabledStates, [True, True])
 
     def test_browse_mode_select_switches_index(self):
-        b = make_bridge()
-        b.selectGame(1)
-        self.assertEqual(b.currentIndex, 1)
-        self.assertEqual(b.enabledStates, [True, True])  # 浏览模式不改 enabled
+        bridge = make_bridge()
+        bridge.selectGame(1)
+        drain_events()
+        self.assertEqual(bridge.currentIndex, 1)
+        self.assertEqual(bridge.enabledStates, [True, True])
 
     def test_select_game_emits_current_index_changed(self):
-        # 白圈（index === Bridge.currentIndex）靠 currentIndexChanged 通知 QML 重算；
-        # currentIndex 现已用独立 notify 信号（不再复用 gamesChanged）。若 selectGame
-        # 漏 emit，QML 端选中位永远不跟随（Python 层 property 读取测不出）。
-        b = make_bridge()
+        bridge = make_bridge()
         emissions = []
-        b.currentIndexChanged.connect(lambda: emissions.append(1))
-        b.selectGame(1)  # 0 → 1，切换选中
+        bridge.currentIndexChanged.connect(lambda: emissions.append(1))
+        bridge.selectGame(1)
         self.assertEqual(len(emissions), 1)
         emissions.clear()
-        b.selectGame(1)  # 同项，不切选中
+        bridge.selectGame(1)
         self.assertEqual(emissions, [])
 
     def test_select_all_and_deselect_all(self):
-        b = make_bridge()
-        b.deselectAll()
-        self.assertEqual(b.enabledStates, [False, False])
-        b.selectAll()
-        self.assertEqual(b.enabledStates, [True, True])
+        bridge = make_bridge()
+        bridge.deselectAll()
+        self.assertEqual(bridge.enabledStates, [False, False])
+        bridge.selectAll()
+        self.assertEqual(bridge.enabledStates, [True, True])
 
     def test_reorder_games_syncs_config_and_enabled(self):
-        b = make_bridge()
-        b.app_service.reorder_scripts = MagicMock()
-        b.deselectAll()
-        b.selectAll()
-        b.reorderGames(0, 1)  # 鸣潮 → 测试脚本之后
-        self.assertEqual([g["display_name"] for g in b.games], ["测试脚本", "鸣潮"])
-        b.app_service.reorder_scripts.assert_called_once_with(["测试脚本", "ok-ww"])
+        bridge = make_bridge()
+        bridge.deselectAll()
+        bridge.selectAll()
+        bridge.reorderGames(0, 1)
+        drain_events()
+        self.assertEqual(
+            [game["display_name"] for game in bridge.games], ["测试脚本", "鸣潮"]
+        )
+        self.assertEqual(
+            _requests(bridge, "script.reorder"),
+            [{"script_names": ["测试脚本", "ok-ww"]}],
+        )
+        self.assertEqual(bridge.enabledStates, [True, True])
 
-    def test_launch_all_without_cli_toasts(self):
-        b = make_bridge()
-        b.deselectAll()
+    def test_launch_all_without_selection_toasts(self):
+        bridge = make_bridge()
+        bridge.deselectAll()
         messages = []
-        b.toastRequested.connect(messages.append)
-        with patch("gui.controllers.launch.subprocess.Popen") as spawn:
-            b.launchAll()
-        self.assertEqual(messages, ["未找到独立 CLI，请重新解压完整安装包"])
+        bridge.toastRequested.connect(messages.append)
+        with patch.object(subprocess, "Popen") as spawn:
+            bridge.launchAll()
+            drain_events()
+        self.assertEqual(messages, ["没有勾选手动运行的脚本"])
+        self.assertEqual(_requests(bridge, "run.view"), [])
         spawn.assert_not_called()
 
     def test_launch_script_python(self):
-        b = make_bridge()
-        b.selectGame(1)  # 测试脚本（python）
-        with (
-            patch.object(
-                b.app_service,
-                "resolve_launch_target",
-                return_value={
+        bridge = make_bridge(
+            responses={
+                "script.launch_target": {
                     "kind": "command",
                     "program": "python",
                     "args": ["--script", "中文 x.py"],
                     "cwd": ".",
                     "env": {"PYTHONPATH": "runner"},
-                },
-            ) as resolve,
+                }
+            }
+        )
+        bridge.selectGame(1)
+        with (
             patch.dict(os.environ, {"ODH_TEST_PARENT": "keep"}),
-            patch.object(subprocess, "Popen") as popen,
+            patch.object(subprocess, "Popen") as spawn,
         ):
-            b.launchScript()
-        resolve.assert_called_once_with("测试脚本", "script")
-        popen.assert_called_once()
-        self.assertEqual(popen.call_args.args[0], ["python", "--script", "中文 x.py"])
-        self.assertEqual(popen.call_args.kwargs["cwd"], ".")
-        self.assertEqual(popen.call_args.kwargs["env"]["PYTHONPATH"], "runner")
-        self.assertEqual(popen.call_args.kwargs["env"]["ODH_TEST_PARENT"], "keep")
+            bridge.launchScript()
+            drain_events()
+        self.assertEqual(
+            _requests(bridge, "script.launch_target"),
+            [{"script_name": "测试脚本", "target": "script"}],
+        )
+        spawn.assert_called_once()
+        self.assertEqual(spawn.call_args.args[0], ["python", "--script", "中文 x.py"])
+        self.assertEqual(spawn.call_args.kwargs["cwd"], ".")
+        self.assertEqual(spawn.call_args.kwargs["env"]["PYTHONPATH"], "runner")
+        self.assertEqual(spawn.call_args.kwargs["env"]["ODH_TEST_PARENT"], "keep")
 
     def test_launch_script_failure_does_not_report_success(self):
         for kind in ("association", "command", "unavailable"):
             with self.subTest(kind=kind):
-                b = make_bridge()
+                bridge = make_bridge(
+                    responses={
+                        "script.launch_target": {
+                            "kind": kind,
+                            "path": "demo.exe",
+                            "program": "python",
+                            "args": [],
+                            "cwd": ".",
+                            "env": {},
+                            "reason": "文件不存在",
+                        }
+                    }
+                )
                 toasts = []
-                b.toastRequested.connect(toasts.append)
-                target = {
-                    "kind": kind,
-                    "path": "demo.exe",
-                    "program": "python",
-                    "args": [],
-                    "cwd": ".",
-                    "env": {},
-                    "reason": "文件不存在",
-                }
+                bridge.toastRequested.connect(toasts.append)
                 with (
-                    patch.object(
-                        b.app_service, "resolve_launch_target", return_value=target
-                    ),
                     patch.object(
                         subprocess, "Popen", side_effect=OSError("拒绝启动")
                     ) as spawn,
                     patch.object(
-                        launch, "open_in_explorer", side_effect=OSError("拒绝启动")
+                        links, "open_in_explorer", side_effect=OSError("拒绝启动")
                     ) as open_path,
                 ):
-                    if kind == "unavailable":
-                        b.launchScript()
-                    else:
-                        with self.assertRaisesRegex(OSError, "拒绝启动"):
-                            b.launchScript()
+                    bridge.launchScript()
+                    drain_events()
                 if kind == "unavailable":
                     spawn.assert_not_called()
                     open_path.assert_not_called()
-                    self.assertEqual(len(toasts), 1)
                     self.assertIn("文件不存在", toasts[0])
                 else:
-                    self.assertEqual(toasts, [])
+                    self.assertIn("拒绝启动", toasts[0])
+                    if kind == "command":
+                        spawn.assert_called_once()
+                        open_path.assert_not_called()
+                    else:
+                        open_path.assert_called_once()
+                        spawn.assert_not_called()
+                self.assertEqual(len(toasts), 1)
+                self.assertFalse(any("已启动" in message for message in toasts))
 
     def test_empty_environment_overrides_inherit_parent(self):
-        b = make_bridge()
-        with (
-            patch.object(
-                b.app_service,
-                "resolve_launch_target",
-                return_value={
+        bridge = make_bridge(
+            responses={
+                "script.launch_target": {
                     "kind": "command",
                     "program": "Runner.exe",
                     "args": ["--script", "x.py"],
                     "cwd": ".",
                     "env": {},
-                },
-            ),
-            patch.object(subprocess, "Popen") as popen,
-        ):
-            b.launchScript()
-        self.assertIsNone(popen.call_args.kwargs["env"])
+                }
+            }
+        )
+        with patch.object(subprocess, "Popen") as spawn:
+            bridge.launchScript()
+            drain_events()
+        self.assertIsNone(spawn.call_args.kwargs["env"])
 
 
 class TestFloatBar(unittest.TestCase):
-    """QmlBridge 悬浮条：打开链接 / 启动游戏 / 脚本目录 / 换壁纸。"""
-
     def test_link_actions_reach_browser(self):
         for action, key, url in (
-            (
-                "openHome",
-                "home",
-                "https://github.com/LevelDownRefine/OneDragon-Helper",
-            ),
+            ("openHome", "home", "https://github.com/LevelDownRefine/OneDragon-Helper"),
             ("openBilibili", "bili", "https://www.bilibili.com/"),
         ):
-            b = make_bridge()
-            with (
-                self.subTest(action=action),
-                patch.object(
-                    b.app_service,
-                    "resolve_script_target",
-                    return_value={"kind": "url", "value": url},
-                ) as link,
-                patch.object(webbrowser, "open") as browser,
-            ):
-                getattr(b, action)()
-                link.assert_called_once_with("ok-ww", key)
+            with self.subTest(action=action):
+                bridge = make_bridge(
+                    responses={"script.target": {"kind": "url", "value": url}}
+                )
+                with patch.object(webbrowser, "open") as browser:
+                    getattr(bridge, action)()
+                    drain_events()
+                self.assertEqual(
+                    _requests(bridge, "script.target"),
+                    [{"script_name": "ok-ww", "target": key}],
+                )
                 browser.assert_called_once_with(url)
 
     def test_launch_game_starts_exe(self):
-        b = make_bridge()
-        with (
-            patch.object(
-                b.app_service,
-                "resolve_launch_target",
-                return_value={"kind": "association", "path": "D:/Game/game.exe"},
-            ),
-            patch.object(links, "open_in_explorer") as start,
-        ):
-            b.launchGame()
+        bridge = make_bridge(
+            responses={
+                "script.launch_target": {
+                    "kind": "association",
+                    "path": "D:/Game/game.exe",
+                }
+            }
+        )
+        with patch.object(links, "open_in_explorer") as start:
+            bridge.launchGame()
+            drain_events()
         start.assert_called_once_with("D:/Game/game.exe")
+        self.assertEqual(
+            _requests(bridge, "script.launch_target"),
+            [{"script_name": "ok-ww", "target": "game"}],
+        )
 
     def test_launch_game_missing_toasts(self):
-        b = make_bridge()
-        spy = MagicMock()
-        b.toastRequested.connect(spy)
-        with patch.object(
-            b.app_service,
-            "resolve_launch_target",
-            return_value={"kind": "unavailable", "reason": "未找到游戏路径"},
-        ):
-            b.launchGame()
-        spy.assert_called_once()
+        bridge = make_bridge(
+            responses={
+                "script.launch_target": {
+                    "kind": "unavailable",
+                    "reason": "未找到游戏路径",
+                }
+            }
+        )
+        toast = MagicMock()
+        bridge.toastRequested.connect(toast)
+        bridge.launchGame()
+        drain_events()
+        toast.assert_called_once()
+        self.assertIn("未找到游戏路径", toast.call_args.args[0])
 
     def test_open_settings_starts_config(self):
-        b = make_bridge()
-        with (
-            patch(
-                "src.service.app_service.get_config_yml_path_under_root",
-                return_value="C:/cfg/config.yml",
-            ),
-            patch.object(os.path, "isfile", return_value=True),
-            patch.object(links, "open_in_explorer") as start,
-        ):
-            b.openSettings()
+        bridge = make_bridge(
+            responses={"script.target": {"kind": "path", "value": "C:/cfg/config.yml"}}
+        )
+        with patch.object(links, "open_in_explorer") as start:
+            bridge.openScriptConfig()
+            drain_events()
         start.assert_called_once_with("C:/cfg/config.yml")
+        self.assertEqual(
+            _requests(bridge, "script.target"),
+            [{"script_name": "ok-ww", "target": "configfile"}],
+        )
 
     def test_open_settings_missing_toasts(self):
-        b = make_bridge()
-        spy = MagicMock()
-        b.toastRequested.connect(spy)
-        with (
-            patch(
-                "src.service.app_service.get_config_yml_path_under_root",
-                return_value="C:/cfg/config.yml",
-            ),
-            patch.object(os.path, "isfile", return_value=False),
-        ):
-            b.openSettings()
-        spy.assert_called_once()
+        bridge = make_bridge(
+            responses={
+                "script.target": {"kind": "unavailable", "reason": "配置文件不存在"}
+            }
+        )
+        toast = MagicMock()
+        bridge.toastRequested.connect(toast)
+        bridge.openScriptConfig()
+        drain_events()
+        toast.assert_called_once()
+        self.assertIn("配置文件不存在", toast.call_args.args[0])
 
     def test_open_log_folder_starts_dir(self):
-        b = make_bridge()
-        with (
-            patch.object(
-                b.app_service,
-                "resolve_script_target",
-                return_value={"kind": "path", "value": "D:/Game/logs"},
-            ),
-            patch.object(links, "open_in_explorer") as start,
-        ):
-            b.openLogFolder()
+        bridge = make_bridge(
+            responses={"script.target": {"kind": "path", "value": "D:/Game/logs"}}
+        )
+        with patch.object(links, "open_in_explorer") as start:
+            bridge.openLogFolder()
+            drain_events()
         start.assert_called_once_with("D:/Game/logs")
 
     def test_open_log_folder_no_parser_toasts(self):
-        b = make_bridge()
-        spy = MagicMock()
-        b.toastRequested.connect(spy)
-        with (
-            patch.object(
-                b.app_service,
-                "resolve_script_target",
-                return_value={"kind": "unavailable", "reason": "暂不支持日志跳转"},
-            ),
-        ):
-            b.openLogFolder()
-        spy.assert_called_once()
+        bridge = make_bridge(
+            responses={
+                "script.target": {"kind": "unavailable", "reason": "暂不支持日志跳转"}
+            }
+        )
+        toast = MagicMock()
+        bridge.toastRequested.connect(toast)
+        bridge.openLogFolder()
+        drain_events()
+        toast.assert_called_once()
+        self.assertIn("暂不支持日志跳转", toast.call_args.args[0])
 
     def test_open_wallpaper_persists_and_switches(self):
-        """选壁纸经 service.set_wallpaper 落壁纸表并刷新背景。"""
-        b = make_bridge()
-        b.background.apply_current = MagicMock()
-        name = b.games[0]["script_name"]
-        with patch(
-            "PySide6.QtWidgets.QFileDialog.getOpenFileName",
-            return_value=("C:/w.mp4", ""),
-        ):
-            b.openWallpaper()
-        b.app_service.set_wallpaper.assert_called_once_with(name, "C:/w.mp4")
-        b.background.apply_current.assert_called_once()
+        bridge = make_bridge()
+        bridge.background.apply_current = MagicMock()
+        name = bridge.games[0]["script_name"]
+        with patch("gui.dialogs.pick_file", return_value="C:/w.mp4"):
+            bridge.openWallpaper()
+            drain_events()
+        self.assertEqual(
+            _requests(bridge, "wallpaper.set"),
+            [{"script_name": name, "file_path": "C:/w.mp4"}],
+        )
+        bridge.background.apply_current.assert_called_once()
 
     def test_add_script_emits_game_added(self):
-        b = make_bridge()
-        spy = MagicMock()
-        b.gameAdded.connect(spy)
-        with (
-            patch(
-                "PySide6.QtWidgets.QFileDialog.getOpenFileName",
-                return_value=("C:/scripts/new.py", ""),
-            ),
-            patch.object(
-                b.app_service,
-                "add_script",
-                return_value={"script_name": "新脚本", "display_name": "新脚本"},
-            ),
-        ):
-            b.addScript()
-            b.app_service.add_script.assert_called_once_with("C:/scripts/new.py")
-        spy.assert_called_once()
+        bridge = make_bridge()
+        added = MagicMock()
+        bridge.gameAdded.connect(added)
+        with patch("gui.dialogs.pick_file", return_value="C:/scripts/new.py"):
+            bridge.addScript()
+            drain_events()
+        self.assertEqual(
+            _requests(bridge, "script.add"), [{"file_path": "C:/scripts/new.py"}]
+        )
+        added.assert_called_once()
 
 
 class TestQmlApp(unittest.TestCase):
@@ -426,30 +402,17 @@ class TestQmlApp(unittest.TestCase):
             from PySide6.QtWidgets import QApplication
             from src.utils.utils_sub_config import resolve_script_path
             from gui import main_window
-            from src.service.app_service import AppService
             from gui.controllers.game_list import ScriptIconProvider
             from gui.icons import UiIconProvider
             from gui.main_window import QmlBridge
+            from tests.gui.helpers import drain_events, make_bridge, script_view
 
             app = QApplication([])
             scripts = [
                 {"display_name": "鸣潮", "script_path": "scripts/ok-ww/ok-ww.exe", "script_type": "external"},
                 {"display_name": "测试脚本", "script_path": "scripts/t.py", "script_type": "python"},
             ]
-            # 后端聚合视图与界面列表共用同一份隔离配置。
-            patch("src.utils.utils_config.load_config",
-                  return_value={"script_list": scripts}).start()
-            with (
-                patch.object(AppService, "load_config", return_value={"script_list": scripts}),
-                patch.object(
-                    AppService, "wallpaper_view",
-                    return_value={"script_name": "", "mode": "gradient", "source": "",
-                                  "token": None, "cache": None}),
-            ):
-                with (
-                    patch("src.service.daily_plan.load_schedule", return_value={}),
-                ):
-                    bridge = QmlBridge()
+            bridge = make_bridge(scripts=scripts)
             qmlRegisterSingletonInstance(QmlBridge, "OneDragonHelper", 1, 0, "Bridge", bridge)
             engine = QQmlApplicationEngine()
             engine.addImageProvider("scripticon", bridge.game_list.icon_provider)
@@ -515,7 +478,7 @@ class TestQmlApp(unittest.TestCase):
                 assert window.findChild(QQuickItem, name) is None
             # 主操作与脚本配置相邻，点配置不能误触启动。
             with (
-                patch.object(bridge.launch, "launchScript") as launch,
+                patch.object(bridge.links, "launchScript") as launch,
                 patch.object(bridge.game_list, "configCurrent") as settings,
             ):
                 for name in ("scriptSettingsButton", "launchScriptButton"):
@@ -589,9 +552,9 @@ class TestTaskCardPopupGeometry(unittest.TestCase):
             from PySide6.QtWidgets import QApplication
             from src.utils.utils_sub_config import resolve_script_path
             from gui import main_window
-            from src.service.app_service import AppService
             from gui.icons import UiIconProvider
             from gui.main_window import QmlBridge
+            from tests.gui.helpers import drain_events, make_bridge, script_view
 
             app = QApplication([])
             scripts = [{
@@ -610,50 +573,35 @@ class TestTaskCardPopupGeometry(unittest.TestCase):
                 "task": None,
                 "start_day": None,
             }]
-            # 后端聚合视图与界面列表共用同一份隔离配置。
-            patch("src.utils.utils_config.load_config",
-                  return_value={"script_list": scripts}).start()
-            with (
-                patch.object(AppService, "load_config",
-                             return_value={"script_list": scripts}),
-                patch.object(
-                    AppService, "wallpaper_view",
-                    return_value={"script_name": "", "mode": "gradient", "source": "",
-                                  "token": None, "cache": None}),
-                patch.object(AppService, "script_view",
-                             return_value={"script": {"adapted": True}, "dailies": [],
-                                           "weeklies": fake_weekly}),
-            ):
-                with (
-                    patch("src.service.daily_plan.load_schedule", return_value={}),
-                ):
-                    bridge = QmlBridge()
-                qmlRegisterSingletonInstance(
-                    QmlBridge, "OneDragonHelper", 1, 0, "Bridge", bridge)
-                engine = QQmlApplicationEngine()
-                engine.addImageProvider("uiicon", UiIconProvider())
-                engine.load(QUrl.fromLocalFile(resolve_script_path("python-gui/src/gui/qml/main.qml")))
-                win = engine.rootObjects()[0]
+            bridge = make_bridge(scripts=scripts, responses={
+                "script.view": lambda params: script_view(params["script_name"], adapted=True, weeklies=fake_weekly)
+            })
+            qmlRegisterSingletonInstance(
+                QmlBridge, "OneDragonHelper", 1, 0, "Bridge", bridge)
+            engine = QQmlApplicationEngine()
+            engine.addImageProvider("uiicon", UiIconProvider())
+            engine.load(QUrl.fromLocalFile(resolve_script_path("python-gui/src/gui/qml/main.qml")))
+            win = engine.rootObjects()[0]
 
-                def report(name):
-                    item = win.findChild(QQuickItem, name)
-                    top = item.mapToScene(QPointF(0, 0)).y()
-                    print(f"{name} TOP {top:.0f} H {item.height():.0f} "
-                          f"WIN {win.height()}", flush=True)
+            def report(name):
+                item = win.findChild(QQuickItem, name)
+                top = item.mapToScene(QPointF(0, 0)).y()
+                print(f"{name} TOP {top:.0f} H {item.height():.0f} "
+                      f"WIN {win.height()}", flush=True)
 
-                def measure():
-                    wk = win.findChild(QQuickItem, "weeklyPopup")
-                    wk.setProperty("weeklyName", "历战余响")
-                    wk.setProperty("visible", True)
-                    dg = win.findChild(QQuickItem, "dailyPopup")
-                    dg.setProperty("visible", True)
-                    QTimer.singleShot(200, lambda: (report("weeklyPopup"),
-                                                    report("dailyPopup"),
-                                                    app.quit()))
+            def measure():
+                wk = win.findChild(QQuickItem, "weeklyPopup")
+                wk.setProperty("weeklyName", "历战余响")
+                wk.setProperty("visible", True)
+                dg = win.findChild(QQuickItem, "dailyPopup")
+                dg.setProperty("visible", True)
+                QTimer.singleShot(200, lambda: (report("weeklyPopup"),
+                                                report("dailyPopup"),
+                                                app.quit()))
 
-                QTimer.singleShot(600, measure)
-                app.exec()
-                print("OPTS", len(bridge.weeklyOptions("历战余响")), flush=True)
+            QTimer.singleShot(600, measure)
+            app.exec()
+            print("OPTS", len(bridge.weeklyOptions("历战余响")), flush=True)
             """
         )
         proc = subprocess.run(
@@ -715,6 +663,7 @@ class TestTaskCardDailyChipOpensMenu(unittest.TestCase):
             from PySide6.QtTest import QTest
             from gui.icons import UiIconProvider
             from gui.main_window import QmlBridge
+            from tests.gui.helpers import drain_events, make_bridge, script_view
             from src.utils.utils_sub_config import resolve_script_path
             from tests.gui.helpers import make_bridge
             from unittest.mock import patch
@@ -723,11 +672,9 @@ class TestTaskCardDailyChipOpensMenu(unittest.TestCase):
             dailies = get_daily_map("March7th-Launcher")["March7th-Launcher"]["dailies"]
             record = {"name": "培养目标", "task": "培养目标", "sequence": True, "enabled": None}
             bridge = make_bridge()
-            bridge.app_service.script_view.return_value = {
-                "script": {"adapted": True},
-                "dailies": [{**record, "options": dailies[0]["options"]}],
-                "weeklies": [],
-            }
+            bridge.test_client.responses["script.view"] = lambda params: script_view(
+                params["script_name"], adapted=True, dailies=[{**record, "options": dailies[0]["options"]}]
+            )
             qmlRegisterSingletonInstance(
                 QmlBridge, "OneDragonHelper", 1, 0, "Bridge", bridge)
             engine = QQmlApplicationEngine()
@@ -773,14 +720,15 @@ class TestTaskCardDailyChipOpensMenu(unittest.TestCase):
                     break
                 pending.extend(item.childItems())
             assert second is not None
-            with patch.object(bridge.task_card._app_service, "set_script_daily_task") as save:
-                point = second.mapToScene(QPointF(second.width() / 2, second.height() / 2))
-                QTest.mouseClick(window, Qt.LeftButton, pos=point.toPoint())
-                QTest.qWait(100)
-                save.assert_called_once_with("ok-ww", daily_display_name="培养目标",
-                                             task_name="培养目标", sequence=False)
-                assert save.call_args.kwargs["sequence"] is False
-                assert not popup.isVisible()
+            bridge.test_client.requests.clear()
+            point = second.mapToScene(QPointF(second.width() / 2, second.height() / 2))
+            QTest.mouseClick(window, Qt.LeftButton, pos=point.toPoint())
+            QTest.qWait(100)
+            drain_events()
+            writes = [params for method, params in bridge.test_client.requests if method == "daily.select"]
+            assert writes == [{"script_name": "ok-ww", "daily_name": "培养目标", "task_name": "培养目标", "sequence": False}], writes
+            assert writes[0]["sequence"] is False
+            assert not popup.isVisible()
             """
         )
         proc = subprocess.run(
@@ -817,9 +765,9 @@ class TestTaskCardWeeklyHiddenForUnsupportedScript(unittest.TestCase):
             from unittest.mock import patch
             from src.utils.utils_sub_config import resolve_script_path
             from gui import main_window
-            from src.service.app_service import AppService
             from gui.icons import UiIconProvider
             from gui.main_window import QmlBridge
+            from tests.gui.helpers import drain_events, make_bridge, script_view
 
             app = QApplication([])
             # 异环 ok-nte：已适配（在 set_config 注册）但 weekly_list.yml 未声明周常
@@ -828,21 +776,15 @@ class TestTaskCardWeeklyHiddenForUnsupportedScript(unittest.TestCase):
                 "script_path": "scripts/ok-nte/ok-nte.exe",
                 "script_type": "external",
             }]
-            # 后端聚合视图与界面列表共用同一份隔离配置。
-            patch("src.utils.utils_config.load_config",
-                  return_value={"script_list": scripts}).start()
-            with (
-                patch.object(AppService, "load_config",
-                             return_value={"script_list": scripts}),
-                patch.object(
-                    AppService, "wallpaper_view",
-                    return_value={"script_name": "", "mode": "gradient", "source": "",
-                                  "token": None, "cache": None}),
-            ):
-                with (
-                    patch("src.service.daily_plan.load_schedule", return_value={}),
-                ):
-                    bridge = QmlBridge()
+            from src.config.set_config import get_daily_map, get_daily_readback
+            records = {row["name"]: row for row in get_daily_readback("ok-nte")}
+            daily_rows = [
+                {**records[row["display_name"]], "options": row["options"]}
+                for row in get_daily_map("ok-nte")["ok-nte"]["dailies"]
+            ]
+            bridge = make_bridge(scripts=scripts, responses={
+                "script.view": lambda params: script_view(params["script_name"], adapted=True, dailies=daily_rows)
+            })
             qmlRegisterSingletonInstance(
                 QmlBridge, "OneDragonHelper", 1, 0, "Bridge", bridge)
             engine = QQmlApplicationEngine()
@@ -920,9 +862,9 @@ class TestTaskCardWeeklyAreaHeightForSupportedScript(unittest.TestCase):
             from unittest.mock import patch
             from src.utils.utils_sub_config import resolve_script_path
             from gui import main_window
-            from src.service.app_service import AppService
             from gui.icons import UiIconProvider
             from gui.main_window import QmlBridge
+            from tests.gui.helpers import drain_events, make_bridge, script_view
 
             app = QApplication([])
             # 崩铁 March7th-Launcher：weekly_task_list.yml 声明 3 种周常
@@ -932,16 +874,6 @@ class TestTaskCardWeeklyAreaHeightForSupportedScript(unittest.TestCase):
                 "script_path": "scripts/March7th-Launcher/March7th-Launcher.exe",
                 "script_type": "external",
             }]
-            # patch 必须常驻到子进程结束：QML 属性在 600ms 后求值，届时 with 块早已退出。
-            # 后端聚合视图与界面列表共用同一份隔离配置。
-            patch("src.utils.utils_config.load_config",
-                  return_value={"script_list": scripts}).start()
-            patch.object(AppService, "load_config",
-                         return_value={"script_list": scripts}).start()
-            patch.object(
-                AppService, "wallpaper_view",
-                return_value={"script_name": "", "mode": "gradient", "source": "",
-                              "token": None, "cache": None}).start()
             patch("src.config.task.task_source.read_task_source",
                   return_value=["无", "坏灭的喜剧", "铁骸的锈冢", "晨昏的回眸",
                                 "心兽的战场", "尘梦的赞礼", "蛀星的旧靥",
@@ -973,11 +905,9 @@ class TestTaskCardWeeklyAreaHeightForSupportedScript(unittest.TestCase):
                 }
                 for d in get_weekly_map("March7th-Launcher")
             ]
-            patch.object(AppService, "script_view",
-                         return_value={"script": {"adapted": True}, "dailies": dailies_view,
-                                       "weeklies": weekly_view}).start()
-            patch("src.service.daily_plan.load_schedule", return_value={}).start()
-            bridge = QmlBridge()
+            bridge = make_bridge(scripts=scripts, responses={
+                "script.view": lambda params: script_view(params["script_name"], adapted=True, dailies=dailies_view, weeklies=weekly_view)
+            })
             qmlRegisterSingletonInstance(
                 QmlBridge, "OneDragonHelper", 1, 0, "Bridge", bridge)
             engine = QQmlApplicationEngine()
@@ -1058,9 +988,9 @@ class TestWeeklyRowChipGeometry(unittest.TestCase):
             from unittest.mock import patch
             from src.utils.utils_sub_config import resolve_script_path
             from gui import main_window
-            from src.service.app_service import AppService
             from gui.icons import UiIconProvider
             from gui.main_window import QmlBridge
+            from tests.gui.helpers import drain_events, make_bridge, script_view
 
             app = QApplication([])
             scripts = [{
@@ -1085,15 +1015,6 @@ class TestWeeklyRowChipGeometry(unittest.TestCase):
                     "start_day": None,
                 },
             ]
-            # 后端聚合视图与界面列表共用同一份隔离配置。
-            patch("src.utils.utils_config.load_config",
-                  return_value={"script_list": scripts}).start()
-            patch.object(AppService, "load_config",
-                         return_value={"script_list": scripts}).start()
-            patch.object(
-                AppService, "wallpaper_view",
-                return_value={"script_name": "", "mode": "gradient", "source": "",
-                              "token": None, "cache": None}).start()
             # 日常行用合成数据（本测试量的是周常 chip 几何），但必须有一行，
             # 否则 QML 不渲染 dailyButton，报表回调找不到节点即超时。
             fake_dailies = [{
@@ -1101,11 +1022,9 @@ class TestWeeklyRowChipGeometry(unittest.TestCase):
                 "options": {"values": [
                     {"display_name": "无", "physical_name": "无"}]},
             }]
-            patch.object(AppService, "script_view",
-                         return_value={"script": {"adapted": True}, "dailies": fake_dailies,
-                                       "weeklies": fake_weekly}).start()
-            patch("src.service.daily_plan.load_schedule", return_value={}).start()
-            bridge = QmlBridge()
+            bridge = make_bridge(scripts=scripts, responses={
+                "script.view": lambda params: script_view(params["script_name"], adapted=True, dailies=fake_dailies, weeklies=fake_weekly)
+            })
             qmlRegisterSingletonInstance(
                 QmlBridge, "OneDragonHelper", 1, 0, "Bridge", bridge)
             engine = QQmlApplicationEngine()
@@ -1231,8 +1150,8 @@ class TestScriptIconProvider(unittest.TestCase):
 
         provider = ScriptIconProvider(
             [
-                {"script_name": "a", "script_data": {}},
-                {"script_name": "b", "script_data": {}},
+                {"script_name": "a", "script_data": {}, "icon_path": "a.exe"},
+                {"script_name": "b", "script_data": {}, "icon_path": "b.exe"},
             ]
         )
         # 用确定性 Pixmap 替换真实提取，单独验证 cache key 是 script_name
@@ -1249,16 +1168,18 @@ class TestScriptIconProvider(unittest.TestCase):
         from PySide6.QtCore import QSize
         from PySide6.QtGui import QPixmap
 
-        provider = ScriptIconProvider([{"script_name": "a", "script_data": {}}])
+        provider = ScriptIconProvider(
+            [{"script_name": "a", "script_data": {}, "icon_path": "a.exe"}]
+        )
         provider._cache = {"a": QPixmap(1, 1)}
         # 全量重算：既有 a 也重新取图标（改路径后需即时刷新），而非仅新增 b
-        with patch.object(
-            ScriptIconProvider, "_load_icon", return_value=QPixmap(5, 5)
+        with patch(
+            "gui.controllers.game_list._render_icon", return_value=QPixmap(5, 5)
         ) as mock_load:
             provider.refresh(
                 [
-                    {"script_name": "a", "script_data": {}},
-                    {"script_name": "b", "script_data": {}},
+                    {"script_name": "a", "script_data": {}, "icon_path": "a.exe"},
+                    {"script_name": "b", "script_data": {}, "icon_path": "b.exe"},
                 ]
             )
         # a、b 都被重新提取（全量重算，不跳过既有项）

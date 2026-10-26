@@ -1,245 +1,199 @@
-import unittest
-from unittest.mock import MagicMock, patch
+"""脚本列表模型、内存勾选与 CLI 写入确认。"""
 
+import unittest
+from unittest.mock import Mock, patch
+
+from PySide6.QtCore import QObject, Signal
 from PySide6.QtWidgets import QMessageBox
 
+from gui.cli_client import CliFailure, CliSession
+from gui.controllers.cli_game_list import CliGameListController
 from gui.controllers.game_list import GameListController, ScriptIconProvider
-from src.service.script_service import InvalidScript
+from tests.gui.helpers import get_app
 
 
-class TestScriptIconProviderRefresh(unittest.TestCase):
-    """refresh 应全量重算，路径变更后即时刷新（不跳过已存在的 script_name）。"""
+class Transport(QObject):
+    succeeded = Signal(int, object)
+    failed = Signal(int, object)
 
-    def test_refresh_recomputes_existing_name(self):
-        """已存在的 script_name 也被重新取图标。
+    def __init__(self):
+        super().__init__()
+        self.usable = True
+        self.requests = []
 
-        旧实现 ``if name not in self._cache`` 会跳过已存在项，导致改路径
-        （script_name 不变）后图标不刷新，需重启才更新。
-        """
-        provider = ScriptIconProvider([])
-        provider._cache["x"] = MagicMock()  # 模拟既有缓存
-        games = [
+    def request(self, method, params):
+        self.requests.append((method, params))
+        return len(self.requests)
+
+    def close(self):
+        self.usable = False
+
+
+def snapshot(names):
+    return {
+        "default_icon_path": "",
+        "scripts": [
             {
-                "script_name": "x",
-                "script_data": {"script_type": "external", "script_path": "p"},
+                "script_name": name,
+                "display_name": name,
+                "script_path": f"{name}.py",
+                "adapted": False,
+                "icon_path": None,
+                "script_data": {"display_name": name, "script_path": f"{name}.py"},
             }
-        ]
-        with patch("gui.controllers.game_list.get_script_icon") as mock_icon:
-            mock_icon.return_value = MagicMock()
-            provider.refresh(games)
-        mock_icon.assert_called_once()
+            for name in names
+        ],
+    }
 
 
-class TestDeleteScriptConfirmCancel(unittest.TestCase):
-    """拖拽删除二次确认：取消必须保留数据，确认才落盘重载。
+class TestScriptList(unittest.TestCase):
+    def setUp(self):
+        get_app()
 
-    数据层正确性（对应 QML 取消后图标视觉复位 bug 的底层保障）：
-    cancel → 不调用 remove_script / on_reload；ok → 二者都被调用。
-    """
+    def controller(self, names=("A", "B")):
+        transport = Transport()
+        controller = CliGameListController(CliSession(transport, None), Mock(), Mock())
+        controller.reload_games()
+        with patch.object(controller.icon_provider, "refresh"):
+            transport.succeeded.emit(1, snapshot(names))
+        return controller, transport
 
-    def _make_ctrl(self) -> GameListController:
-        service = MagicMock()
-        ctrl = GameListController(service, MagicMock(), MagicMock())
-        ctrl._games = [
-            {
-                "display_name": "鸣潮",
-                "script_name": "wu",
-                "script_data": {"script_type": "external", "script_path": "C:/wu.exe"},
-                "char": "鸣",
-                "color": "#161C28",
-            },
-            {
-                "display_name": "测试脚本",
-                "script_name": "demo",
-                "script_data": {"script_type": "python", "script_path": "demo.py"},
-                "char": "测",
-                "color": "#161C28",
-            },
-        ]
-        return ctrl
+    def reply(self, transport, result):
+        transport.succeeded.emit(len(transport.requests), result)
 
-    @patch("gui.dialogs.styled_msg_box")
-    def test_cancel_keeps_data(self, mock_styled):
-        """取消确认时不删除、不重载（图标数据保留，仅视觉需复位）。"""
-        box = MagicMock()
-        box.exec.return_value = QMessageBox.Cancel
-        mock_styled.return_value = box
-        ctrl = self._make_ctrl()
-        ctrl.deleteScript(0)
-        ctrl._app_service.remove_script.assert_not_called()
-        ctrl._on_reload.assert_not_called()
+    def test_refresh_recomputes_existing_icon_name(self):
+        provider = ScriptIconProvider([])
+        provider._cache["A"] = Mock()
+        with patch("gui.controllers.game_list._exe_icon") as extract:
+            provider.refresh([{"script_name": "A", "icon_path": "C:/new.exe"}])
+        extract.assert_called_once_with("C:/new.exe")
 
-    @patch("gui.dialogs.styled_msg_box")
-    def test_ok_removes_and_reloads(self, mock_styled):
-        """确认删除时按 script_name 落盘移除并触发重载。"""
-        box = MagicMock()
-        box.exec.return_value = QMessageBox.Ok
-        mock_styled.return_value = box
-        ctrl = self._make_ctrl()
-        ctrl.deleteScript(0)
-        ctrl._app_service.remove_script.assert_called_once_with("wu")
-        ctrl._on_reload.assert_called_once()
+    def test_cancel_delete_keeps_data_without_request_or_reload(self):
+        controller, transport = self.controller()
+        with patch("gui.dialogs.styled_msg_box") as warning:
+            warning.return_value.exec.return_value = QMessageBox.Cancel
+            controller.deleteScript(0)
+        self.assertEqual(transport.requests, [("app.snapshot", {})])
+        self.assertEqual([game["script_name"] for game in controller.games], ["A", "B"])
+        controller._on_reload.assert_not_called()
 
-
-class TestScriptSelectionIsMemoryOnly(unittest.TestCase):
-    """勾选为纯内存态：不写 config.yml、重开回到全选、重排按身份跟随。"""
-
-    def _ctrl(self, names):
-        service = MagicMock()
-        service.load_config.return_value = {
-            "script_list": [
-                {"display_name": name, "script_path": f"{name}.py"} for name in names
-            ]
-        }
-        ctrl = GameListController(service, MagicMock(), MagicMock())
-        with patch.object(ctrl.icon_provider, "refresh"):
-            ctrl.reload_games()
-        return ctrl, service
+    def test_confirmed_delete_reloads_only_after_cli_ack(self):
+        controller, transport = self.controller()
+        with patch("gui.dialogs.styled_msg_box") as warning:
+            warning.return_value.exec.return_value = QMessageBox.Ok
+            controller.deleteScript(0)
+        self.assertEqual(
+            transport.requests[-1], ("script.remove", {"script_name": "A"})
+        )
+        controller._on_reload.assert_not_called()
+        self.reply(transport, None)
+        controller._on_reload.assert_called_once()
 
     def test_toggle_only_touches_memory(self):
-        """控制模式点图标只改内存勾选，不保存 config.yml。"""
-        ctrl, service = self._ctrl(["A", "B"])
-        ctrl.toggleMode()
-        ctrl.selectGame(0)
-        self.assertEqual(ctrl.enabled, [False, True])
-        service.save_config.assert_not_called()
+        controller, transport = self.controller()
+        controller.toggleMode()
+        controller.selectGame(0)
+        self.assertEqual(controller.enabled, [False, True])
+        self.assertEqual(transport.requests, [("app.snapshot", {})])
 
     def test_reopen_starts_with_all_selected(self):
-        """重开（重建控制器）不再回显上次勾选，一律全选。"""
-        ctrl, _service = self._ctrl(["A", "B"])
-        ctrl.deselectAll()
-        reopened, _service = self._ctrl(["A", "B"])
+        controller, _ = self.controller()
+        controller.deselectAll()
+        reopened, _ = self.controller()
         self.assertEqual(reopened.enabled, [True, True])
 
-    def test_reorder_keeps_selection_by_identity(self):
-        """拖拽重排后勾选跟随脚本身份移动，不会错位到位置上。"""
-        ctrl, _service = self._ctrl(["A", "B"])
-        ctrl.toggleMode()
-        ctrl.selectGame(1)
-        self.assertEqual(ctrl.enabled, [True, False])
-        ctrl.reorderGames(1, 0)
-        self.assertEqual([g["script_name"] for g in ctrl.games], ["B", "A"])
-        self.assertEqual(ctrl.enabled, [False, True])
+    def test_reorder_keeps_selection_by_identity_after_ack_and_readback(self):
+        controller, transport = self.controller()
+        controller.toggleMode()
+        controller.selectGame(1)
+        controller.reorderGames(1, 0)
+        self.assertEqual(controller.enabled, [True, False])
+        self.assertEqual(
+            transport.requests[-1], ("script.reorder", {"script_names": ["B", "A"]})
+        )
+        self.reply(transport, None)
+        controller._on_reload.assert_called_once()
+        controller.reload_games()
+        with patch.object(controller.icon_provider, "refresh"):
+            self.reply(transport, snapshot(["B", "A"]))
+        self.assertEqual([game["script_name"] for game in controller.games], ["B", "A"])
+        self.assertEqual(controller.enabled, [False, True])
 
     def test_stale_reorder_keeps_model_until_reload(self):
-        ctrl, service = self._ctrl(["A", "B"])
-        ctrl.selectGame(1)
-        ctrl._enabled = [False, True]
-        service.reorder_scripts.side_effect = InvalidScript("列表已变化")
-        with self.assertLogs("gui.controllers.game_list", level="WARNING"):
-            ctrl.reorderGames(0, 1)
-        self.assertEqual([g["script_name"] for g in ctrl.games], ["A", "B"])
-        self.assertEqual(ctrl.game_model.games, ctrl.games)
-        self.assertEqual(ctrl.enabled, [False, True])
-        self.assertEqual(ctrl.current_index, 1)
-        ctrl._on_reload.assert_called_once()
-        self.assertIn("列表已变化", ctrl._toast.call_args.args[0])
+        controller, transport = self.controller()
+        controller.selectGame(1)
+        controller._enabled = [False, True]
+        controller.reorderGames(0, 1)
+        transport.failed.emit(2, CliFailure(-32002, "列表已变化"))
+        self.assertEqual([game["script_name"] for game in controller.games], ["A", "B"])
+        self.assertEqual(controller.game_model.games, controller.games)
+        self.assertEqual(controller.enabled, [False, True])
+        self.assertEqual(controller.current_index, 1)
+        controller._on_reload.assert_called_once()
+        controller._toast.assert_called_once_with("列表已变化")
 
-    def test_reorder_write_error_propagates_before_ui_changes(self):
-        ctrl, service = self._ctrl(["A", "B"])
-        service.reorder_scripts.side_effect = OSError("拒绝写入")
-        with self.assertRaisesRegex(OSError, "拒绝写入"):
-            ctrl.reorderGames(0, 1)
-        self.assertEqual([g["script_name"] for g in ctrl.games], ["A", "B"])
-        self.assertEqual(ctrl.game_model.games, ctrl.games)
-        ctrl._on_reload.assert_not_called()
-        ctrl._toast.assert_not_called()
+    def test_unknown_reorder_result_keeps_ui_without_replay(self):
+        controller, transport = self.controller()
+        controller.reorderGames(0, 1)
+        transport.failed.emit(2, CliFailure("transport_failed", "拒绝写入"))
+        self.assertEqual([game["script_name"] for game in controller.games], ["A", "B"])
+        self.assertEqual(controller.game_model.games, controller.games)
+        self.assertEqual(len(transport.requests), 2)
+        controller._on_reload.assert_not_called()
+        controller._toast.assert_called_once_with("拒绝写入")
 
-    def test_reload_keeps_index_in_bounds_and_checked_states_by_identity(self):
+    def test_reload_keeps_selection_in_bounds_and_checked_by_identity(self):
         for names, index, enabled in (
-            (["C", "A", "B"], 1, [True, False, True]),
+            (["C", "A", "B"], 2, [True, False, True]),
             (["A"], 0, [False]),
             ([], 0, []),
         ):
             with self.subTest(names=names):
-                ctrl, service = self._ctrl(["A", "B"])
-                ctrl.selectGame(1)
-                ctrl._enabled = [False, True]
-                service.load_config.return_value = {
-                    "script_list": [
-                        {"display_name": name, "script_path": f"{name}.py"}
-                        for name in names
-                    ]
-                }
-                with patch.object(ctrl.icon_provider, "refresh"):
-                    ctrl.reload_games()
-                self.assertEqual(ctrl.enabled, enabled)
-                self.assertEqual(ctrl.current_index, index)
+                controller, transport = self.controller()
+                controller.selectGame(1)
+                controller._enabled = [False, True]
+                controller.reload_games()
+                with patch.object(controller.icon_provider, "refresh"):
+                    self.reply(transport, snapshot(names))
+                self.assertEqual(controller.enabled, enabled)
+                self.assertEqual(controller.current_index, index)
 
-    def test_delete_rechecks_last_script_and_reports_failure(self):
-        ctrl, service = self._ctrl(["A", "B"])
-        service.remove_script.side_effect = InvalidScript("至少保留一个脚本")
-        with self.assertLogs("gui.controllers.game_list", level="WARNING"):
-            ctrl._on_delete_script("A")
-        ctrl._on_reload.assert_called_once()
-        ctrl._toast.assert_called_once_with("删除脚本未完成：至少保留一个脚本")
+    def test_delete_rejection_reports_backend_message_and_refreshes(self):
+        controller, transport = self.controller()
+        controller._on_delete_script("A")
+        transport.failed.emit(2, CliFailure(-32002, "至少保留一个脚本"))
+        controller._on_reload.assert_called_once()
+        controller._toast.assert_called_once_with("至少保留一个脚本")
 
+    def test_last_script_delete_is_blocked_locally(self):
+        controller, transport = self.controller(["A"])
+        with patch("gui.dialogs.styled_msg_box") as warning:
+            controller.deleteScript(0)
+        warning.assert_not_called()
+        self.assertEqual(transport.requests, [("app.snapshot", {})])
+        controller._on_reload.assert_not_called()
+        controller._toast.assert_called_once_with("至少保留一个脚本，无法删除")
 
-class TestDeleteScriptLastGuard(unittest.TestCase):
-    """最后一个脚本不可删：删光会让列表/任务卡失去当前项，拦截并提示。"""
-
-    @patch("gui.dialogs.styled_msg_box")
-    def test_last_script_delete_blocked_with_toast(self, mock_styled):
-        ctrl = GameListController(MagicMock(), MagicMock(), MagicMock())
-        ctrl._games = [
-            {
-                "display_name": "鸣潮",
-                "script_name": "wu",
-                "script_data": {"script_type": "external", "script_path": "C:/wu.exe"},
-                "char": "鸣",
-                "color": "#161C28",
-            }
-        ]
-        ctrl.deleteScript(0)
-        # 不弹确认框、不落盘、不重载，仅 toast 提示
-        mock_styled.assert_not_called()
-        ctrl._app_service.remove_script.assert_not_called()
-        ctrl._on_reload.assert_not_called()
-        ctrl._toast.assert_called_once()
-
-
-class TestReloadGamesIconOrder(unittest.TestCase):
-    """reload_games 必须在 set_games 之前刷新图标缓存，否则新脚本首帧空白。
-
-    旧顺序：set_games（触发 delegate 重建并立即请求 pixmap）→ refresh 才填缓存，
-    导致首帧取到空/陈旧缓存、刷新后不自动重取，须重启才显示。本测试钉死顺序。
-    """
-
-    def test_refresh_before_set_games(self):
-        ctrl = GameListController(MagicMock(), MagicMock(), MagicMock())
-        ctrl._app_service.load_config.return_value = {
-            "script_list": [
-                {
-                    "display_name": "鸣潮",
-                    "script_type": "external",
-                    "script_path": "C:/wuthering.exe",
-                }
-            ]
-        }
-        order: list[str] = []
+    def test_icons_refresh_before_model_reset(self):
+        controller = GameListController(Mock(), Mock())
+        order = []
         with (
             patch.object(
-                ctrl._game_model,
+                controller._game_model,
                 "set_games",
-                side_effect=lambda g: order.append("set_games"),
+                side_effect=lambda games: order.append("set_games"),
             ),
             patch.object(
-                ctrl.icon_provider,
+                controller.icon_provider,
                 "refresh",
-                side_effect=lambda g: order.append("refresh"),
+                side_effect=lambda games: order.append("refresh"),
             ),
         ):
-            ctrl.reload_games()
+            controller._set_games([{"script_name": "A", "display_name": "甲"}])
         self.assertEqual(order, ["refresh", "set_games"])
 
-
-class TestReloadGamesEmpty(unittest.TestCase):
-    """config.yml 无脚本（手改删空）属可恢复外部输入：降级空列表，不崩。"""
-
-    def test_empty_config_downgrades_gracefully(self):
-        ctrl = GameListController(MagicMock(), MagicMock(), MagicMock())
-        ctrl._app_service.load_config.return_value = {"script_list": []}
-        ctrl.reload_games()  # 不应抛出
-        self.assertEqual(ctrl.games, [])
-        self.assertEqual(ctrl.current_index, 0)
-        self.assertIsNone(ctrl.current_game)
+    def test_empty_snapshot_downgrades_gracefully(self):
+        controller, _ = self.controller([])
+        self.assertEqual(controller.games, [])
+        self.assertEqual(controller.current_index, 0)
+        self.assertIsNone(controller.current_game)

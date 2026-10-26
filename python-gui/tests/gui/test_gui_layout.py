@@ -26,7 +26,7 @@ class TestSharedLayout(unittest.TestCase):
             from gui.icons import UiIconProvider
             from gui.main_window import QmlBridge
             from src.utils.utils_sub_config import resolve_script_path
-            from tests.gui.helpers import make_bridge
+            from tests.gui.helpers import drain_events, make_bridge, script_view
 
             with tempfile.TemporaryDirectory() as directory:
                 qml_dir = Path(directory) / "qml"
@@ -46,8 +46,8 @@ class TestSharedLayout(unittest.TestCase):
                     layout = layout.replace(old, new)
                 layout_path.write_text(layout, encoding="utf-8")
                 bridge = make_bridge()
-                bridge.app_service.script_view.return_value = {
-                    "script": {"adapted": True},
+                bridge.test_client.responses["script.view"] = lambda params: {
+                    "script": {"script_name": params["script_name"], "adapted": True},
                     "dailies": [],
                     "weeklies": [{
                         "name": "周常",
@@ -59,6 +59,8 @@ class TestSharedLayout(unittest.TestCase):
                         "start_day": None,
                     }],
                 }
+                bridge.task_card.refresh()
+                drain_events()
                 qmlRegisterSingletonInstance(
                     QmlBridge, "OneDragonHelper", 1, 0, "Bridge", bridge)
                 engine = QQmlApplicationEngine()
@@ -127,7 +129,7 @@ class TestSharedLayout(unittest.TestCase):
             from gui.icons import UiIconProvider
             from gui.main_window import QmlBridge
             from src.utils.utils_sub_config import resolve_script_path
-            from tests.gui.helpers import make_bridge
+            from tests.gui.helpers import drain_events, make_bridge, script_view
 
             ROW_H = 56
             TOP = 68           # 首行 y（标题行 + 分隔线之下）
@@ -138,7 +140,7 @@ class TestSharedLayout(unittest.TestCase):
 
             def fake_view(*_args, **_kwargs):
                 return {
-                    "script": {"adapted": True},
+                    "script": {"script_name": _args[0]["script_name"], "adapted": True},
                     "dailies": [
                         {"name": f"日常{i}", "task": None, "sequence": None,
                          "enabled": True, "options": {"values": []}}
@@ -148,7 +150,7 @@ class TestSharedLayout(unittest.TestCase):
                 }
 
             bridge = make_bridge()
-            bridge.app_service.script_view.side_effect = fake_view
+            bridge.test_client.responses["script.view"] = fake_view
             qmlRegisterSingletonInstance(
                 QmlBridge, "OneDragonHelper", 1, 0, "Bridge", bridge)
             engine = QQmlApplicationEngine()

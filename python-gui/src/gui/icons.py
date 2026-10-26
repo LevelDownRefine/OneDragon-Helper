@@ -178,8 +178,8 @@ def _render_icon(
 class GameIconProvider(QQuickImageProvider):
     """QML 游戏图标源：`image://gameicon/<script_name>`。
 
-    按 script_name 经 AppService.game_icon_path（与 Rust 的 ``script.icon_path``
-    同一接口）解析游戏 exe 路径并取内嵌图标，预渲染 256 档（命中 exe 原生最高档）
+    按 script_name 从注入路径表读取 CLI 返回的游戏 exe 路径并取内嵌图标，
+    预渲染 256 档（命中 exe 原生最高档）
     并裁成圆角，交由 QML 在 `mipmap` 下抗混叠下采样到显示尺寸；渲染与
     ScriptIconProvider 共用 `_render_icon`，按 script_name 路由随当前游戏切换即时
     刷新；图标缺失时返回空 pixmap 由 QML 回退文字。
@@ -190,19 +190,13 @@ class GameIconProvider(QQuickImageProvider):
     # 显示端圆角 = 128 / 8 = 16，与底板 24 = 16 + 留白 8 同心；源端同比例取 256 / 8。
     _CORNER_RADIUS = _SOURCE_SIZE // 8
 
-    def __init__(self, app_service):
+    def __init__(self, paths=None):
         super().__init__(QQuickImageProvider.Pixmap)
-        self.paths = None
-        self._app_service = app_service
+        self.paths = {} if paths is None else paths
 
     def requestPixmap(self, id: str, size, requestedSize):
         id = id.split("?", 1)[0]
-        if self.paths is not None:
-            exe_path = self.paths[id] if id in self.paths else None  # noqa: SIM401
-        else:
-            icon = self._app_service.game_icon_path(id)
-            assert "path" in icon
-            exe_path = icon["path"]
+        exe_path = self.paths[id] if id in self.paths else None  # noqa: SIM401
         return _render_icon(
             get_exe_icon(exe_path) if exe_path else None,
             self._SOURCE_SIZE,

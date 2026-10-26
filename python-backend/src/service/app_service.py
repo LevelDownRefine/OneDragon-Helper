@@ -1,4 +1,4 @@
-"""AppService：组合根（composition root），GUI/CLI 唯一服务入口。
+"""AppService：后端业务组合入口。
 
 持有平级 peer 并薄委托，使各 peer 互不越界——链编排归 :mod:`src.service.chain_service` 模块函数（生成/运行/调度/校验），本类只组合它。
 
@@ -14,8 +14,8 @@ peer：
 - 配置备份与恢复（各子脚本 config 打包为 ZIP / 按目录原样回写）：归 :mod:`src.service.backup_service` 模块函数
 - 助手手动更新（检查 / 下载 / 安装交接）：归 :class:`src.update.UpdateService`
 
-两套 GUI 的正常入口经 CLI 调用本类，CLI 在传输边界转换数据。
-旧 Qt 包的部分非运行交互保留直连兼容；手动运行只走统一 CLI 协议。
+两套 GUI 仅通过 CLI 调用本类，CLI 在传输边界转换数据；
+本类仅在后端进程装配，前端不构造或持有服务对象。
 """
 
 import logging

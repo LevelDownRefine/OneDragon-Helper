@@ -1,96 +1,99 @@
-"""测试 src/gui/controllers/links.py：LinksController 各跳转动作。"""
+"""CLI 资源目标查询、本机打开动作及图标刷新。"""
 
 import unittest
-from unittest.mock import MagicMock, patch
+from types import SimpleNamespace
+from unittest.mock import Mock, patch
 
+from gui.controllers.cli_links import CliLinksController
 from gui.controllers.links import LinksController
 from tests.gui.helpers import get_app
 
 
-class _FakeGameList:
-    """极简 game_list 替身：仅提供 current_game。"""
+class Session:
+    def __init__(self, result):
+        self.result = result
+        self.calls = []
 
-    def __init__(self, game):
-        self.current_game = game
+    def call(self, method, params, loaded, failed):
+        self.calls.append((method, params))
+        loaded(self.result(params) if callable(self.result) else self.result)
 
 
-class TestLinksGameIcon(unittest.TestCase):
+class TestLinks(unittest.TestCase):
     def setUp(self):
-        self.games = _FakeGameList({"script_name": "ok-ww"})
-        self.toast = MagicMock()
-        self.ctrl = LinksController(self.games, self.toast, MagicMock())
+        get_app()
 
-    def test_reads_current_game_exe_each_time(self):
-        with patch.object(
-            self.ctrl._app_service,
-            "game_icon_path",
-            side_effect=[{"path": "C:/鸣潮/Game.exe"}, {"path": "D:/Game2.exe"}],
-        ) as read_path:
-            self.assertEqual(self.ctrl.gameIconSource(), "image://gameicon/ok-ww")
-            self.games.current_game = {"script_name": "second"}
-            self.assertEqual(self.ctrl.gameIconSource(), "image://gameicon/second")
-        self.assertEqual(
-            read_path.call_args_list,
-            [unittest.mock.call("ok-ww"), unittest.mock.call("second")],
+    def controller(self, result, game=None):
+        games = SimpleNamespace(
+            current_game=game or {"script_name": "ok-ww", "display_name": "鸣潮"},
+            game_icon_provider=SimpleNamespace(paths={}),
         )
-        self.toast.assert_not_called()
+        session, toast = Session(result), Mock()
+        return CliLinksController(games, session, toast), session, toast
 
-    def test_falsy_path_returns_empty_without_toast(self):
+    def test_icon_refresh_queries_current_identity_and_discards_old_source(self):
+        controller, session, toast = self.controller(
+            lambda params: {"script_name": params["script_name"], "path": "C:/game.exe"}
+        )
+        controller.refresh()
+        self.assertEqual(controller.gameIconSource(), "image://gameicon/ok-ww?v=1")
+        controller._game_list.current_game = {"script_name": "second"}
+        controller.refresh()
+        self.assertEqual(controller.gameIconSource(), "image://gameicon/second?v=2")
+        self.assertEqual(
+            session.calls,
+            [
+                ("script.icon_path", {"script_name": "ok-ww"}),
+                ("script.icon_path", {"script_name": "second"}),
+            ],
+        )
+        toast.assert_not_called()
+
+    def test_missing_icon_path_uses_text_without_toast(self):
         for path in (None, ""):
-            with (
-                self.subTest(path=path),
-                patch.object(
-                    self.ctrl._app_service,
-                    "game_icon_path",
-                    return_value={"path": path},
-                ),
-            ):
-                self.assertEqual(self.ctrl.gameIconSource(), "")
-        self.toast.assert_not_called()
+            with self.subTest(path=path):
+                controller, _, toast = self.controller(
+                    {"script_name": "ok-ww", "path": path}
+                )
+                controller.refresh()
+                self.assertEqual(controller.gameIconSource(), "")
+                toast.assert_not_called()
 
-    def test_no_current_game_does_not_read_or_toast(self):
-        self.games.current_game = None
-        with patch.object(self.ctrl._app_service, "game_icon_path") as read_path:
-            self.assertEqual(self.ctrl.gameIconSource(), "")
-        read_path.assert_not_called()
-        self.toast.assert_not_called()
+    def test_empty_current_icon_does_not_query_or_toast(self):
+        controller, session, toast = self.controller(None)
+        controller._game_list.current_game = None
+        controller.refresh()
+        self.assertEqual(controller.gameIconSource(), "")
+        self.assertEqual(session.calls, [])
+        toast.assert_not_called()
 
-
-class TestGameArgumentsLaunch(unittest.TestCase):
-    def test_launch_passes_raw_arguments_to_system_opener(self):
-        service = MagicMock()
+    def test_game_arguments_reach_system_opener_unchanged(self):
         arguments = '--profile "中文 空格" --literal "a&b"'
-        service.resolve_launch_target.return_value = {
-            "kind": "association",
-            "path": "C:/Game/game.exe",
-            "arguments": arguments,
-        }
-        toast = MagicMock()
-        controller = LinksController(
-            _FakeGameList({"script_name": "demo", "display_name": "示例"}),
-            toast,
-            service,
+        controller, session, toast = self.controller(
+            {
+                "kind": "association",
+                "path": "C:/Game/game.exe",
+                "arguments": arguments,
+            }
         )
         with patch("gui.controllers.links.open_in_explorer") as opener:
             controller.launchGame()
         opener.assert_called_once_with("C:/Game/game.exe", arguments)
-        toast.assert_called_once_with("正在启动 示例…")
+        self.assertEqual(
+            session.calls,
+            [("script.launch_target", {"script_name": "ok-ww", "target": "game"})],
+        )
+        toast.assert_called_once_with("正在启动 鸣潮…")
 
-    def test_game_cli_success_is_reaped_without_an_error_toast(self):
-        get_app()
-        service = MagicMock()
-        service.resolve_launch_target.return_value = {
-            "kind": "command",
-            "program": "C:/Helper/CLI.exe",
-            "args": ["--launch-game=demo", "--game-arguments="],
-            "cwd": "C:/Helper",
-            "env": {},
-        }
-        toast = MagicMock()
-        controller = LinksController(
-            _FakeGameList({"script_name": "demo", "display_name": "示例"}),
-            toast,
-            service,
+    def test_successful_game_cli_is_reaped_without_error_or_blocking_wait(self):
+        controller, _, toast = self.controller(
+            {
+                "kind": "command",
+                "program": "C:/Helper/CLI.exe",
+                "args": ["--launch-game=demo"],
+                "cwd": "C:/Helper",
+                "env": {},
+            }
         )
         with patch("gui.controllers.links.subprocess.Popen") as spawn:
             spawn.return_value.poll.return_value = 0
@@ -100,138 +103,93 @@ class TestGameArgumentsLaunch(unittest.TestCase):
         self.assertFalse(controller._game_launch_timer.isActive())
         self.assertEqual(controller._game_launches, [])
         spawn.return_value.wait.assert_not_called()
-        spawn.return_value.terminate.assert_not_called()
         spawn.return_value.kill.assert_not_called()
-        toast.assert_called_once_with("正在启动 示例…")
+        toast.assert_called_once_with("正在启动 鸣潮…")
 
-
-class TestLinksOpenScriptConfig(unittest.TestCase):
-    """openScriptConfig：委托 AppService.resolve_script_target 打开当前脚本配置文件。"""
-
-    def _make_controller(self, config_return):
-        game = {
-            "script_name": "ok-ww",
-            "display_name": "鸣潮",
-            "script_data": {"script_path": "C:/games/run.exe"},
-        }
-        svc = MagicMock()
-        svc.resolve_script_target.return_value = config_return
-        toast = MagicMock()
-        ctrl = LinksController(
-            game_list=_FakeGameList(game), toast=toast, app_service=svc
-        )
-        return ctrl, svc, toast
-
-    def test_opens_resolved_config(self):
-        """service 返回 config 路径：以 open_in_explorer 打开，toast 成功。"""
-        ctrl, svc, toast = self._make_controller(
+    def test_config_target_opens_path_from_cli(self):
+        controller, session, toast = self.controller(
             {"kind": "path", "value": "C:/games/config/DailyTask.json"}
         )
-        with patch("gui.controllers.links.open_in_explorer") as mock_open:
-            ctrl.openScriptConfig()
-        mock_open.assert_called_once_with("C:/games/config/DailyTask.json")
-        svc.resolve_script_target.assert_called_once_with("ok-ww", "configfile")
+        with patch("gui.controllers.links.open_in_explorer") as opener:
+            controller.openScriptConfig()
+        opener.assert_called_once_with("C:/games/config/DailyTask.json")
+        self.assertEqual(
+            session.calls,
+            [("script.target", {"script_name": "ok-ww", "target": "configfile"})],
+        )
         toast.assert_called_once_with("已打开 鸣潮 配置文件")
 
-    def test_missing_shows_toast(self):
-        """service 返回错误：不打开文件，toast 透传错误文案。"""
-        ctrl, svc, toast = self._make_controller(
+    def test_unavailable_target_only_toasts(self):
+        controller, _, toast = self.controller(
             {"kind": "unavailable", "reason": "该脚本暂未适配配置文件，无法打开"}
         )
-        with patch("gui.controllers.links.open_in_explorer") as mock_open:
-            ctrl.openScriptConfig()
-        mock_open.assert_not_called()
+        with patch("gui.controllers.links.open_in_explorer") as opener:
+            controller.openScriptConfig()
+        opener.assert_not_called()
         toast.assert_called_once_with("鸣潮：该脚本暂未适配配置文件，无法打开")
 
-    def test_all_toolbar_paths_use_the_same_resolver(self):
+    def test_toolbar_paths_query_cli_and_keep_unicode(self):
         for action, target in (
             ("openScriptFolder", "folder"),
             ("openLogFolder", "log"),
             ("openScriptConfig", "configfile"),
         ):
             with self.subTest(action=action):
-                ctrl, service, toast = self._make_controller(
+                controller, session, toast = self.controller(
                     {"kind": "path", "value": "C:/中文 100%/data"}
                 )
-                with patch("gui.controllers.links.open_in_explorer") as open_path:
-                    getattr(ctrl, action)()
-                service.resolve_script_target.assert_called_once_with("ok-ww", target)
-                open_path.assert_called_once_with("C:/中文 100%/data")
+                with patch("gui.controllers.links.open_in_explorer") as opener:
+                    getattr(controller, action)()
+                self.assertEqual(
+                    session.calls,
+                    [("script.target", {"script_name": "ok-ww", "target": target})],
+                )
+                opener.assert_called_once_with("C:/中文 100%/data")
                 toast.assert_called_once()
 
     def test_browser_refusal_is_reported(self):
-        ctrl, service, toast = self._make_controller(
+        controller, session, toast = self.controller(
             {"kind": "url", "value": "https://example.org"}
         )
-        with patch("gui.controllers.links.webbrowser.open", return_value=False):
-            ctrl.openGithub()
-        service.resolve_script_target.assert_called_once_with("ok-ww", "github")
+        with patch("gui.controllers.cli_links.webbrowser.open", return_value=False):
+            controller.openGithub()
+        self.assertEqual(
+            session.calls,
+            [("script.target", {"script_name": "ok-ww", "target": "github"})],
+        )
         toast.assert_called_once_with("无法打开GitHub：https://example.org")
 
-
-class TestOpenPathOSError(unittest.TestCase):
-    """_open_path：无关联程序等 OSError 转 toast，不逃逸出 QML 槽。"""
-
-    def _make(self):
-        game = {
-            "script_name": "ok-ww",
-            "display_name": "鸣潮",
-            "script_data": {"script_path": "C:/games/run.exe"},
-        }
-        toast = MagicMock()
-        ctrl = LinksController(
-            game_list=_FakeGameList(game), toast=toast, app_service=MagicMock()
-        )
-        return ctrl, toast
-
-    def test_oserror_toasts_failure_only(self):
-        ctrl, toast = self._make()
+    def test_os_open_error_is_reported_without_success(self):
+        toast = Mock()
+        controller = LinksController(SimpleNamespace(current_game=None), toast)
         with patch(
             "gui.controllers.links.open_in_explorer",
             side_effect=OSError("no association"),
         ):
-            ok = ctrl._open_path("C:/x/settings.yml")
-        self.assertFalse(ok)
+            self.assertFalse(controller._open_path("C:/x/settings.yml"))
         toast.assert_called_once()
-        self.assertIn("无法打开", toast.call_args[0][0])
+        self.assertIn("无法打开", toast.call_args.args[0])
 
-    def test_success_returns_true(self):
-        ctrl, toast = self._make()
+    def test_os_open_success_leaves_feedback_to_caller(self):
+        toast = Mock()
+        controller = LinksController(SimpleNamespace(current_game=None), toast)
         with patch("gui.controllers.links.open_in_explorer"):
-            ok = ctrl._open_path("C:/games")
-        self.assertTrue(ok)
-        toast.assert_not_called()  # 成功提示由调用方给文案
+            self.assertTrue(controller._open_path("C:/games"))
+        toast.assert_not_called()
 
-
-class TestLinksEmptyCurrent(unittest.TestCase):
-    """config 删空（current_game 为 None）时各槽只 toast，不越界触发，不崩。
-
-    旧实现直接 ``current_game["script_name"]`` 取键，空列表会抛 KeyError 逃出槽。
-    """
-
-    ACTIONS = [
-        "launchGame",
-        "openHome",
-        "openBilibili",
-        "openGithub",
-        "openScriptFolder",
-        "openLogFolder",
-        "openScriptConfig",
-    ]
-
-    def _make_ctrl(self) -> LinksController:
-        toast = MagicMock()
-        return LinksController(
-            game_list=_FakeGameList(None), toast=toast, app_service=MagicMock()
-        )
-
-    def test_each_action_degrades_with_toast(self):
-        for action in self.ACTIONS:
+    def test_empty_current_actions_toast_without_query(self):
+        for action in (
+            "launchGame",
+            "openHome",
+            "openBilibili",
+            "openGithub",
+            "openScriptFolder",
+            "openLogFolder",
+            "openScriptConfig",
+        ):
             with self.subTest(action=action):
-                ctrl = self._make_ctrl()
-                getattr(ctrl, action)()
-                ctrl._toast.assert_called_once_with("尚无脚本")
-
-
-if __name__ == "__main__":
-    unittest.main()
+                controller, session, toast = self.controller(None)
+                controller._game_list.current_game = None
+                getattr(controller, action)()
+                toast.assert_called_once_with("尚无脚本")
+                self.assertEqual(session.calls, [])

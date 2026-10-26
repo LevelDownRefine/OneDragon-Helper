@@ -399,7 +399,7 @@ class WorkflowTests(TestCase):
         self.assertFalse(controller.active)
 
     def test_restore_requires_confirmation_before_start(self):
-        controller = CliSettingsController(Mock(), self.session, Mock())
+        controller = CliSettingsController(self.session, Mock())
         controller._pick_zip = Mock(return_value="backup.zip")
         with patch("gui.controllers.cli_backup.styled_msg_box") as box:
             box.return_value.exec.return_value = 0
@@ -407,7 +407,7 @@ class WorkflowTests(TestCase):
         self.assertEqual(self.transport.requests, [])
 
     def test_confirmed_restore_passes_same_wire_parameters_as_rust(self):
-        controller = CliSettingsController(Mock(), self.session, Mock())
+        controller = CliSettingsController(self.session, Mock())
         controller._pick_zip = Mock(return_value="backup.zip")
         controller._backup_job = Mock()
         with patch("gui.controllers.cli_backup.styled_msg_box") as box:

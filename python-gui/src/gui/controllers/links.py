@@ -1,26 +1,23 @@
 """悬浮条控制器：主页 / B站 / GitHub / 脚本目录 / 设置 / 启动游戏。
 
-独立 QObject，依赖 game_list（读当前游戏）。资源与启动目标解析统一委托 AppService。
+只处理当前项、本机打开动作和启动结果反馈；资源目标由 CLI 控制器取得。
 """
 
 import os
 import subprocess
-import webbrowser
 
 from PySide6.QtCore import QObject, QTimer, Signal, Slot
 
-from src.service.app_service import AppService
 from src.utils import open_in_explorer
 
 
 class LinksController(QObject):
     toastRequested = Signal(str)
 
-    def __init__(self, game_list, toast, app_service=None, parent=None):
+    def __init__(self, game_list, toast, parent=None):
         super().__init__(parent)
         self._game_list = game_list
         self._toast = toast
-        self._app_service = app_service or AppService()
         self._game_launches = []
         self._game_launch_timer = QTimer(self)
         self._game_launch_timer.setInterval(250)
@@ -105,61 +102,6 @@ class LinksController(QObject):
         return game
 
     @Slot()
-    def launchGame(self):
-        """启动游戏：读取当前游戏 exe 路径并打开（未适配时提示）。"""
-        game = self._current_or_toast()
-        if game is None:
-            return
-        target = self._app_service.resolve_launch_target(game["script_name"], "game")
-        assert "kind" in target
-        if target["kind"] == "unavailable":
-            assert "reason" in target
-            self._toast(f"{game['display_name']}：{target['reason']}")
-            return
-        if self._open_launch_target(target, game=True):
-            self._toast(f"正在启动 {game['display_name']}…")
-
-    @Slot(result=str)
-    def gameIconSource(self) -> str:
-        """悬停时返回当前游戏图标源；缺路径或无图标时由 QML 提示启动游戏。
-
-        返回 ``image://gameicon/<script_name>``：图标由 GameIconProvider 按 script_name
-        解析游戏 exe 并取内嵌图标（近显示分辨率），避免 data URL 直给 256 档被 QML
-        下采样混叠。
-        """
-        game = self._current()
-        if game is None:
-            return ""
-        assert "script_name" in game
-        icon = self._app_service.game_icon_path(game["script_name"])
-        assert "path" in icon
-        return f"image://gameicon/{game['script_name']}" if icon["path"] else ""
-
-    def _open_resource(self, target_name: str, label: str):
-        game = self._current_or_toast()
-        if game is None:
-            return
-        target = self._app_service.resolve_script_target(
-            game["script_name"], target_name
-        )
-        assert "kind" in target
-        if target["kind"] == "unavailable":
-            assert "reason" in target
-            self._toast(f"{game['display_name']}：{target['reason']}")
-            return
-        assert "value" in target
-        value = target["value"]
-        if target["kind"] == "url":
-            opened = webbrowser.open(value)
-            self._toast(
-                f"打开{label}：{value}" if opened else f"无法打开{label}：{value}"
-            )
-        else:
-            assert target["kind"] == "path"
-            if self._open_path(value):
-                self._toast(f"已打开 {game['display_name']} {label}")
-
-    @Slot()
     def openHome(self):
         self._open_resource("home", "主页")
 
@@ -178,16 +120,6 @@ class LinksController(QObject):
     @Slot()
     def openLogFolder(self):
         self._open_resource("log", "日志目录")
-
-    @Slot()
-    def openSettings(self):
-        """打开总配置文件 config.yml（系统默认程序），缺失时提示。"""
-        config_path = self._app_service.config_yml_path()
-        if not os.path.isfile(config_path):
-            self._toast("未找到 config/config.yml")
-            return
-        if self._open_path(config_path):
-            self._toast("已打开总配置文件 config.yml")
 
     @Slot()
     def openScriptConfig(self):

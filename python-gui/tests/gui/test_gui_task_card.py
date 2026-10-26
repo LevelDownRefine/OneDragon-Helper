@@ -1,16 +1,20 @@
 """测试 src/gui/controllers/task_card.py：script_view 聚合视图 → 任务卡行。
 
-数据源已收敛为 AppService.script_view（与 Rust 前端同一视图）：本文件用视图
+数据源为 CLI script.view（与 Rust 前端同一视图）：本文件用视图
 替身验证控制器的展示衍生（chip 文案 / 行字段 / 下拉 / 视图缓存失效）与写穿透；
 声明的物化与反读真相的聚合归后端 test_task_service 覆盖。
 """
 
 import unittest
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, call
 
+from gui.cli_client import CliFailure
 from gui.controllers import task_card as task_card_mod
+from gui.controllers.cli_task_card import CliTaskCardController
 from gui.controllers.task_card import TaskCardController
 from src.utils.utils_weekly import DISABLED_START_DAY
+from tests.gui.helpers import get_app
+from tests.gui.test_cli_client import FakeClient
 
 
 class _FakeGameList:
@@ -51,102 +55,83 @@ def _view(dailies=(), weeklies=(), adapted=False):
 
 def _make_controller(script_name="March7th-Launcher", display_name="崩铁", view=None):
     games = [{"script_name": script_name, "display_name": display_name}]
-    service = MagicMock()
-    service.script_view.return_value = view if view is not None else _view()
-    return TaskCardController(_FakeGameList(games), service, MagicMock())
+    ctrl = TaskCardController(_FakeGameList(games), MagicMock())
+    ctrl._fetch_view = MagicMock(return_value=view if view is not None else _view())
+    return ctrl
+
+
+def _make_cli_controller(script_name="March7th-Launcher"):
+    get_app()
+    games = [{"script_name": script_name, "display_name": script_name}]
+    client = FakeClient()
+    return CliTaskCardController(_FakeGameList(games), client, MagicMock()), client
+
+
+def _reply_view(ctrl, client, view):
+    view["script"]["script_name"] = ctrl._current["script_name"]
+    client.succeeded.emit(len(client.requests), view)
 
 
 class TestViewCache(unittest.TestCase):
-    """聚合视图按脚本缓存：同一脚本一次取全，失效点（refresh/重载）后重取。"""
+    """纯视图缓存按当前身份复用，刷新后从新的响应重建。"""
 
     def test_switch_fetches_per_script_and_reuses_within(self):
         games = [
             {"script_name": name, "display_name": name} for name in ("first", "second")
         ]
-        service = MagicMock()
         views = {
             name: _view(dailies=[_daily("日常", values=[{"display_name": name}])])
             for name in ("first", "second")
         }
-        service.script_view.side_effect = lambda name: views[name]
-        ctrl = TaskCardController(_FakeGameList(games), service, MagicMock())
+        ctrl = TaskCardController(_FakeGameList(games), MagicMock())
+        ctrl._fetch_view = MagicMock(side_effect=lambda name: views[name])
         ctrl.build_daily_cache()
         self.assertEqual(ctrl.daily_options("日常"), [{"display_name": "first"}])
-        self.assertEqual(
-            ctrl.daily_options("日常"), [{"display_name": "first"}]
-        )  # 同脚本复用
-        service.script_view.assert_called_once_with("first")
-        games_list = ctrl._game_list
-        games_list.current_game = games[1]
-        self.assertEqual(ctrl.daily_options("日常"), [{"display_name": "second"}])
-        games_list.current_game = games[0]
         self.assertEqual(ctrl.daily_options("日常"), [{"display_name": "first"}])
-        # 只缓存当前脚本的视图：切走再切回会重取（QML 一次求值一个脚本，无需驻留）。
+        ctrl._fetch_view.assert_called_once_with("first")
+        ctrl._game_list.current_game = games[1]
+        self.assertEqual(ctrl.daily_options("日常"), [{"display_name": "second"}])
+        ctrl._game_list.current_game = games[0]
+        self.assertEqual(ctrl.daily_options("日常"), [{"display_name": "first"}])
         self.assertEqual(
-            service.script_view.call_args_list,
+            ctrl._fetch_view.call_args_list,
             [call("first"), call("second"), call("first")],
         )
-
-        # 重载后两个脚本都须重新取视图，不能沿用旧资源。
         for name in views:
             views[name] = _view(
                 dailies=[_daily("日常", values=[{"display_name": f"new-{name}"}])]
             )
         ctrl.build_daily_cache()
         self.assertEqual(ctrl.daily_options("日常"), [{"display_name": "new-first"}])
-        games_list.current_game = games[1]
+        ctrl._game_list.current_game = games[1]
         self.assertEqual(ctrl.daily_options("日常"), [{"display_name": "new-second"}])
-        self.assertEqual(
-            service.script_view.call_args_list,
-            [
-                call("first"),
-                call("second"),
-                call("first"),
-                call("first"),
-                call("second"),
-            ],
-        )
+        self.assertEqual(ctrl._fetch_view.call_count, 5)
 
     def test_refresh_invalidates_for_next_evaluation(self):
-        """写操作后的 refresh 失效缓存：QML 重读拿到新视图。"""
-        service = MagicMock()
-        service.script_view.return_value = _view(
-            dailies=[_daily("每日任务", task="旧副本")]
-        )
-        ctrl = _make_controller_view(service)
+        ctrl = _make_controller(view=_view(dailies=[_daily("每日任务", task="旧副本")]))
         self.assertEqual(ctrl.daily_items[0]["task_label"], "旧副本")
-        service.script_view.return_value = _view(
+        ctrl._fetch_view.return_value = _view(
             dailies=[_daily("每日任务", task="新副本")]
         )
         ctrl.refresh()
         self.assertEqual(ctrl.daily_items[0]["task_label"], "新副本")
-        self.assertEqual(service.script_view.call_count, 2)
+        self.assertEqual(ctrl._fetch_view.call_count, 2)
 
     def test_empty_script_never_fetches(self):
-        """config 删空（哨兵空项）：不求视图，属性安全收缩。"""
-        service = MagicMock()
-        ctrl = TaskCardController(_EmptyGameList(), service, MagicMock())
+        ctrl = TaskCardController(_EmptyGameList(), MagicMock())
+        ctrl._fetch_view = MagicMock()
         self.assertEqual(ctrl.daily_items, [])
         self.assertEqual(ctrl.daily_options("日常"), [])
         self.assertEqual(ctrl.weekly_items, [])
         self.assertFalse(ctrl.weekly_supported)
-        service.script_view.assert_not_called()
+        ctrl._fetch_view.assert_not_called()
 
-    def test_removed_script_shrinks_card(self):
-        """脚本已被移除（script_view 抛 InvalidTaskSelection）→ 空视图收缩。"""
-        from src.service.task_service import InvalidTaskSelection
-
-        service = MagicMock()
-        service.script_view.side_effect = InvalidTaskSelection("脚本不存在: gone")
-        ctrl = _make_controller_view(service, script_name="gone")
+    def test_missing_view_shrinks_card(self):
+        ctrl = _make_controller(script_name="gone")
+        ctrl._fetch_view.return_value = None
         self.assertEqual(ctrl.daily_items, [])
         self.assertEqual(ctrl.weekly_items, [])
-        service.script_view.assert_called_once_with("gone")
-
-
-def _make_controller_view(service, script_name="demo", display_name="示例"):
-    games = [{"script_name": script_name, "display_name": display_name}]
-    return TaskCardController(_FakeGameList(games), service, MagicMock())
+        ctrl._fetch_view.assert_called_once_with("gone")
 
 
 class TestDailyItems(unittest.TestCase):
@@ -421,42 +406,73 @@ class TestWeeklyItems(unittest.TestCase):
 
 
 class TestSelectWrites(unittest.TestCase):
-    """写穿透：日常/周常选择与开关、周几起均经 service，随后失效视图。"""
+    """选择发送 CLI 请求，成功回执后失效视图并反读。"""
 
-    def test_select_daily_task_writes_subscript_config(self):
-        """选中日常副本：实时经 service 落盘子脚本 config，并带上该行所属日常。"""
-        ctrl = _make_controller("ok-ww", "鸣潮")
+    def test_select_daily_sends_explicit_row_and_sequence(self):
+        ctrl, client = _make_cli_controller("ok-ww")
         ctrl.selectDaily("每日任务", "凝素领域", "5")
-        ctrl._app_service.set_script_daily_task.assert_called_once_with(
-            "ok-ww",
-            task_name="凝素领域",
-            sequence="5",
-            daily_display_name="每日任务",
+        self.assertEqual(
+            client.requests,
+            [
+                (
+                    "daily.select",
+                    {
+                        "script_name": "ok-ww",
+                        "daily_name": "每日任务",
+                        "task_name": "凝素领域",
+                        "sequence": "5",
+                    },
+                )
+            ],
         )
 
-    def test_set_daily_enabled_writes_through_service(self):
-        ctrl = _make_controller("ok-nte", "异环")
+    def test_daily_enabled_sends_boolean_without_dungeon_selection(self):
+        ctrl, client = _make_cli_controller("ok-nte")
         ctrl.setDailyEnabled("追猎目标", False)
-        ctrl._app_service.set_script_daily_enabled.assert_called_once_with(
-            "ok-nte", "追猎目标", False
+        self.assertEqual(
+            client.requests,
+            [
+                (
+                    "daily.enable",
+                    {
+                        "script_name": "ok-nte",
+                        "daily_name": "追猎目标",
+                        "enabled": False,
+                    },
+                )
+            ],
         )
 
-    def test_select_weekly_task_writes_config(self):
-        """选副本：经 service 写脚本自身 config（周常侧无 no-op 脚本）。"""
-        ctrl = _make_controller()
+    def test_weekly_selection_sends_its_row_identity(self):
+        ctrl, client = _make_cli_controller()
         ctrl.selectWeekly("历战余响", "铁骸的锈冢")
-        ctrl._app_service.set_script_weekly_task.assert_called_once_with(
-            "March7th-Launcher", "历战余响", "铁骸的锈冢"
+        self.assertEqual(
+            client.requests,
+            [
+                (
+                    "weekly.select",
+                    {
+                        "script_name": "March7th-Launcher",
+                        "weekly_name": "历战余响",
+                        "task_name": "铁骸的锈冢",
+                    },
+                )
+            ],
         )
 
-    def test_write_then_refresh_refetches(self):
-        """写操作后 refresh 清缓存：QML 重读时重新取视图（不沿用旧值）。"""
-        ctrl = _make_controller(view=_view(dailies=[_daily("每日任务", task="旧")]))
-        self.assertEqual(ctrl.daily_items[0]["task_label"], "旧")  # 首次求值
+    def test_write_ack_refreshes_and_replaces_view_from_readback(self):
+        ctrl, client = _make_cli_controller()
+        ctrl.refresh()
+        _reply_view(ctrl, client, _view(dailies=[_daily("每日任务", task="旧")]))
+        self.assertEqual(ctrl.daily_items[0]["task_label"], "旧")
         ctrl.selectDaily("每日任务", "新副本", None)
-        self.assertIsNone(ctrl._view)  # refresh 已失效
-        self.assertEqual(ctrl.daily_items[0]["task_label"], "旧")  # mock 未变，仅证重取
-        self.assertEqual(ctrl._app_service.script_view.call_count, 2)
+        self.assertEqual(ctrl.daily_items[0]["task_label"], "旧")
+        client.succeeded.emit(2, None)
+        self.assertEqual(
+            client.requests[-1], ("script.view", {"script_name": "March7th-Launcher"})
+        )
+        _reply_view(ctrl, client, _view(dailies=[_daily("每日任务", task="新副本")]))
+        self.assertEqual(ctrl.daily_items[0]["task_label"], "新副本")
 
 
 class TestWeeklyStartChip(unittest.TestCase):
@@ -502,29 +518,32 @@ class TestWeeklyStartChip(unittest.TestCase):
             ],
         )
 
-    def test_select_weekly_start_writes_through_service(self):
-        """选择周几起经 service 写 weekly.yml（只动该条周常）。"""
-        ctrl = _make_controller()
+    def test_select_weekly_start_sends_integer_for_one_row(self):
+        ctrl, client = _make_cli_controller()
         ctrl.selectWeeklyStart("历战余响", 5)
-        ctrl._app_service.set_weekly_start_for.assert_called_once_with(
-            "March7th-Launcher", "历战余响", 5
+        self.assertEqual(
+            client.requests,
+            [
+                (
+                    "weekly.start",
+                    {
+                        "script_name": "March7th-Launcher",
+                        "weekly_name": "历战余响",
+                        "start_day": 5,
+                    },
+                )
+            ],
         )
 
-    def test_select_weekly_start_survives_game_side_failure(self):
-        """游戏侧写不进去（原生 config 缺失/损坏/只读）→ 提示 + 仍刷新，不抛给 QML。
-
-        不抛是关键：抛回 QML 会跳过 onClicked 里后续的关下拉，且界面静默
-        （意图已落 weekly.yml，下次任何刷新即按新值显示）。
-        """
-        for exc in (AssertionError("config 文件不存在"), OSError("拒绝访问")):
-            with self.subTest(exc=type(exc).__name__):
-                ctrl = _make_controller()
-                ctrl._app_service.set_weekly_start_for.side_effect = exc
-                with patch.object(ctrl, "refresh") as mock_refresh:
-                    ctrl.selectWeeklyStart("历战余响", 3)  # 不应抛出
-                mock_refresh.assert_called_once()
-                ctrl._toast.assert_called_once()
-                self.assertIn("历战余响", ctrl._toast.call_args[0][0])
+    def test_partial_weekly_write_reports_error_and_only_refreshes(self):
+        ctrl, client = _make_cli_controller()
+        ctrl.selectWeeklyStart("历战余响", 3)
+        message = "历战余响 已记录，但未能写入游戏配置：拒绝访问"
+        client.failed.emit(1, CliFailure(-32002, message))
+        ctrl._toast.assert_called_once_with(message)
+        self.assertEqual(
+            [method for method, _ in client.requests], ["weekly.start", "script.view"]
+        )
 
     def test_invalid_start_day_raises(self):
         """weekly.yml 被手工改坏（越界值）→ assert 暴露，不静默当未设置。"""
@@ -536,7 +555,7 @@ class TestEmptyCurrentSentinel(unittest.TestCase):
     """config 删空（current_game None）时回退哨兵空项：各 QML 属性安全求值。"""
 
     def test_properties_degrade_without_raising(self):
-        ctrl = TaskCardController(_EmptyGameList(), MagicMock(), MagicMock())
+        ctrl = TaskCardController(_EmptyGameList(), MagicMock())
         self.assertIs(ctrl._current, task_card_mod._EMPTY_GAME)
         self.assertEqual(ctrl.task_title, "")
         self.assertFalse(ctrl.task_adapted)

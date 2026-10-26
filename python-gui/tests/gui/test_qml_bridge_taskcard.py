@@ -1,296 +1,268 @@
-"""测试 QmlBridge 任务卡后端（日常副本 / 周常周几）。
-
-复用 gui_helpers.make_bridge：任务卡经 AppService.script_view 聚合视图取数
-（与 Rust 前端同一视图），桥测试按用例设置视图替身；写回行为验证 QML 任务卡
-所需的数据与落盘。
-"""
+"""QmlBridge 通过 CLI 响应呈现任务卡并发送写请求。"""
 
 import unittest
-from unittest.mock import MagicMock, patch
+from dataclasses import asdict
+from unittest.mock import Mock, patch
 
 from PySide6.QtWidgets import QDialog
 
-from src.service import app_service
+from gui.cli_client import CliFailure
 from src.service.script_service import ScriptEdit
-from tests.gui.helpers import make_bridge
+from tests.gui.helpers import drain_events, make_bridge, script_view
 
 
-def _daily(name, task=None, sequence=None, enabled=None, values=None):
+def daily(name, task=None, sequence=None, enabled=None, values=None):
     return {
         "name": name,
         "task": task,
         "sequence": sequence,
         "enabled": enabled,
-        "options": {"values": values or []},
+        "options": {"values": [] if values is None else values},
     }
 
 
-def _view(dailies=(), weeklies=(), adapted=False):
-    return {
-        "script": {"script_name": "demo", "display_name": "demo", "adapted": adapted},
-        "dailies": list(dailies),
-        "weeklies": list(weeklies),
-    }
+def set_view(bridge, *, dailies=None, weeklies=None, adapted=False):
+    name = bridge.game_list.current_game["script_name"]
+    bridge.test_client.responses["script.view"] = script_view(
+        name, adapted=adapted, dailies=dailies, weeklies=weeklies
+    )
+    bridge.task_card.refresh()
+    drain_events()
+
+
+def writes(bridge, method):
+    return [params for name, params in bridge.test_client.requests if name == method]
 
 
 class TestTaskCard(unittest.TestCase):
-    """任务卡数据 / 写回：与旧 task_card.py 对齐。"""
-
-    def test_restore_refreshes_task_properties(self):
+    def test_completed_restore_refreshes_task_properties(self):
         bridge = make_bridge()
-        bridge.app_service.script_view.return_value = _view(
-            dailies=[
-                _daily(
-                    "每日任务",
-                    task="副本A",
-                    values=[{"display_name": "副本A", "physical_name": "副本A"}],
-                )
-            ]
+        values = [{"display_name": "副本A", "physical_name": "副本A"}]
+        set_view(bridge, dailies=[daily("每日任务", "副本A", values=values)])
+        self.assertEqual(bridge.dailyItems[0]["task_label"], "副本A")
+        name = bridge.games[0]["script_name"]
+        bridge.test_client.responses["script.view"] = script_view(
+            name, dailies=[daily("每日任务", "副本B", values=values)]
         )
-        changed = MagicMock()
+        changed = Mock()
         bridge.taskStateChanged.connect(changed)
-        bridge.app_service.restore_backup = MagicMock(
-            return_value={"restored": 1, "skipped_scripts": []}
-        )
-        with patch.object(bridge.backup, "_pick_zip", return_value="backup.zip"):
-            self.assertEqual(bridge.dailyItems[0]["task_label"], "副本A")
-            bridge.app_service.script_view.return_value = _view(
-                dailies=[
-                    _daily(
-                        "每日任务",
-                        task="副本B",
-                        values=[{"display_name": "副本B", "physical_name": "副本B"}],
-                    )
-                ]
-            )
-            bridge.restoreConfig()
-            changed.assert_called_once_with()
-            self.assertEqual(bridge.dailyItems[0]["task_label"], "副本B")
+        before = len(writes(bridge, "script.view"))
+        bridge.backup.restoreCompleted.emit()
+        drain_events()
+        self.assertGreater(changed.call_count, 0)
+        self.assertEqual(len(writes(bridge, "script.view")), before + 1)
+        self.assertEqual(bridge.dailyItems[0]["task_label"], "副本B")
 
     def test_daily_items_default_is_empty(self):
-        b = make_bridge()
-        self.assertEqual(b.dailyItems, [])
+        self.assertEqual(make_bridge().dailyItems, [])
 
-    def test_set_daily_enabled_writes_through_service(self):
-        """日常开关经 Bridge → service 落盘（开关无副本名可反查，显式带日常）。"""
-        b = make_bridge()
-        name = b.games[0]["script_name"]
-        b.app_service.set_script_daily_enabled = MagicMock()
-        b.setDailyEnabled("追猎目标", False)
-        b.app_service.set_script_daily_enabled.assert_called_once_with(
-            name, "追猎目标", False
+    def test_daily_enable_sends_explicit_row_and_boolean(self):
+        bridge = make_bridge()
+        bridge.setDailyEnabled("追猎目标", False)
+        drain_events()
+        self.assertEqual(
+            writes(bridge, "daily.enable"),
+            [
+                {
+                    "script_name": "ok-ww",
+                    "daily_name": "追猎目标",
+                    "enabled": False,
+                }
+            ],
         )
 
-    def test_task_adapted_reflects_view(self):
-        b = make_bridge()
-        self.assertFalse(b.taskAdapted)  # make_bridge 默认视图 adapted=False
-        b.app_service.script_view.return_value = _view(adapted=True)
-        b.task_card.refresh()
-        self.assertTrue(b.taskAdapted)
+    def test_adapted_flag_follows_cli_view(self):
+        bridge = make_bridge()
+        self.assertFalse(bridge.taskAdapted)
+        set_view(bridge, adapted=True)
+        self.assertTrue(bridge.taskAdapted)
 
-    @patch("src.service.app_service.set_config")  # 实时落盘子脚本 config（经 service）
-    def test_select_daily_task_writes_config(self, *_):
-        b = make_bridge()
-        name = b.games[0]["script_name"]
-        # 反读无真相 → chip 回退声明的首个选项
-        b.app_service.script_view.return_value = _view(
+    def test_daily_selection_sends_sequence_and_refreshes_view(self):
+        bridge = make_bridge()
+        set_view(
+            bridge,
             dailies=[
-                _daily(
+                daily(
                     "每日任务",
-                    values=[{"display_name": "副本A", "physical_name": "副本A"}],
+                    values=[
+                        {"display_name": "副本A", "physical_name": "副本A"},
+                    ],
                 )
-            ]
+            ],
         )
-        b.selectDaily("每日任务", "副本A", "seq1")
-        self.assertEqual(b.dailyItems[0]["task_label"], "副本A")
-        # 实时落盘子脚本 config（日常副本编辑期即生效，不再依赖运行全体），经 service 入口；
-        # 日常名由该行（GUI 手上就有）带出
-        app_service.set_config.assert_called_once_with(
-            name,
-            task_name="副本A",
-            sequence="seq1",
-            daily_display_name="每日任务",
+        bridge.selectDaily("每日任务", "副本A", "seq1")
+        drain_events()
+        self.assertEqual(bridge.dailyItems[0]["task_label"], "副本A")
+        self.assertEqual(
+            writes(bridge, "daily.select"),
+            [
+                {
+                    "script_name": "ok-ww",
+                    "daily_name": "每日任务",
+                    "task_name": "副本A",
+                    "sequence": "seq1",
+                }
+            ],
         )
 
-    def test_nte_menu_yields_two_daily_rows(self):
-        """多日常（异环形态）：视图两行，且下拉数据按日常取。"""
-        b = make_bridge()
-        b.app_service.script_view.return_value = _view(
+    def test_nte_shape_keeps_two_independent_daily_rows(self):
+        bridge = make_bridge()
+        set_view(
+            bridge,
             dailies=[
-                _daily(
+                daily(
                     "异象界域",
-                    task="空幕",
+                    "空幕",
                     enabled=True,
                     values=[{"display_name": "空幕", "physical_name": "空幕"}],
                 ),
-                _daily(
+                daily(
                     "追猎目标",
-                    task="追猎目标",
+                    "追猎目标",
                     enabled=False,
-                    values=[
-                        {
-                            "display_name": "追猎目标",
-                            "physical_name": "追猎目标",
-                        }
-                    ],
+                    values=[{"display_name": "追猎目标", "physical_name": "追猎目标"}],
                 ),
-            ]
+            ],
         )
         self.assertEqual(
-            [item["name"] for item in b.dailyItems], ["异象界域", "追猎目标"]
+            [row["name"] for row in bridge.dailyItems], ["异象界域", "追猎目标"]
         )
+        self.assertEqual([row["disabled"] for row in bridge.dailyItems], [False, True])
         self.assertEqual(
-            b.dailyOptions("追猎目标"),
+            bridge.dailyOptions("追猎目标"),
             [{"display_name": "追猎目标", "physical_name": "追猎目标"}],
         )
 
-    def test_daily_options_shape(self):
-        b = make_bridge()
-        b.app_service.script_view.return_value = _view(
-            dailies=[
-                _daily(
-                    "每日任务",
-                    values=[
-                        {
-                            "display_name": "副本A",
-                            "physical_name": "副本A",
-                            "options": {
-                                "values": [
-                                    {"display_name": "难1", "physical_name": "s1"}
-                                ]
-                            },
-                        }
-                    ],
-                )
-            ]
-        )
-        opts = b.dailyOptions("每日任务")
-        self.assertEqual(opts[0]["display_name"], "副本A")
-        self.assertEqual(
-            opts[0]["options"]["values"],
-            [{"display_name": "难1", "physical_name": "s1"}],
-        )
+    def test_daily_options_preserve_recursive_physical_values(self):
+        bridge = make_bridge()
+        values = [
+            {
+                "display_name": "副本A",
+                "physical_name": "副本A",
+                "options": {
+                    "values": [{"display_name": "难1", "physical_name": "s1"}],
+                },
+            }
+        ]
+        set_view(bridge, dailies=[daily("每日任务", values=values)])
+        self.assertEqual(bridge.dailyOptions("每日任务"), values)
 
-    def test_daily_options_empty_when_no_cfg(self):
-        b = make_bridge()
-        self.assertEqual(b.dailyOptions("每日任务"), [])
+    def test_unknown_daily_has_no_options(self):
+        self.assertEqual(make_bridge().dailyOptions("每日任务"), [])
 
-    @patch("gui.dialogs.SingleScriptConfigDialog")
-    def test_config_current_accept_saves_and_reloads(self, mock_dialog_cls):
-        b = make_bridge()
-        calls = MagicMock()
-        toasts = []
-        b.toastRequested.connect(lambda t: toasts.append(t))
-        dlg = mock_dialog_cls.return_value
-        dlg.exec.return_value = QDialog.Accepted
-        dlg.pending_changes = ScriptEdit(
+    def edit_bridge(self):
+        bridge = make_bridge()
+        bridge.test_client.responses["script.edit_view"] = {
+            "script_name": "ok-ww",
+            "script": {
+                "display_name": "鸣潮",
+                "script_path": "scripts/ok-ww/ok-ww.exe",
+            },
+            "weekly_timeouts": [60] * 7,
+            "switches": [],
+            "task_options": [],
+        }
+        return bridge
+
+    def test_config_save_waits_for_ack_before_reload_and_accept(self):
+        bridge = self.edit_bridge()
+        edit = ScriptEdit(
             "ok-ww", "鸣潮", {"block": True}, [60] * 7, {"领取邮件": True}
         )
-        with (
-            patch.object(
-                b.app_service, "update_script", return_value="hhw"
-            ) as mock_update,
-            patch.object(b, "_reload_games") as mock_reload,
-        ):
-            for name, mocked in (
-                ("save", mock_update),
-                ("reload", mock_reload),
-            ):
-                calls.attach_mock(mocked, name)
-            b.configCurrent()
-        mock_update.assert_called_once_with(dlg.pending_changes)
-        self.assertEqual(
-            [call[0] for call in calls.mock_calls],
-            ["save", "reload"],
+        dialog = Mock()
+        reload = Mock()
+        bridge.game_list._on_reload = reload
+
+        def response(params):
+            dialog.accept.assert_not_called()
+            reload.assert_not_called()
+            self.assertEqual(params, asdict(edit))
+            return {"script_name": "hhw"}
+
+        bridge.test_client.responses["script.edit_save"] = response
+
+        def build(*args, **kwargs):
+            assert "submit" in kwargs
+            dialog.exec.side_effect = lambda: kwargs["submit"](edit)
+            return dialog
+
+        with patch("gui.dialogs.SingleScriptConfigDialog", side_effect=build):
+            bridge.configCurrent()
+            drain_events()
+        dialog.accept.assert_called_once()
+        reload.assert_called_once()
+        self.assertEqual(writes(bridge, "script.edit_save"), [asdict(edit)])
+
+    def test_config_cancel_does_not_save_or_reload(self):
+        bridge = self.edit_bridge()
+        bridge.game_list._on_reload = Mock()
+        with patch("gui.dialogs.SingleScriptConfigDialog") as dialog:
+            dialog.return_value.exec.return_value = QDialog.Rejected
+            bridge.configCurrent()
+            drain_events()
+        self.assertEqual(writes(bridge, "script.edit_save"), [])
+        bridge.game_list._on_reload.assert_not_called()
+
+    def test_config_failure_keeps_form_without_following_actions(self):
+        bridge = self.edit_bridge()
+        bridge.game_list._on_reload = Mock()
+        bridge.test_client.responses["script.edit_save"] = CliFailure(
+            -32002, "拒绝写入"
         )
-        mock_reload.assert_called_once()
-        self.assertTrue(any("已保存" in s for s in toasts))
+        edit = ScriptEdit("ok-ww", "鸣潮", {}, [60] * 7, {})
+        dialog = Mock()
+        dialog.isVisible.return_value = True
 
-    @patch("gui.dialogs.SingleScriptConfigDialog")
-    def test_config_current_cancel_does_not_save(self, mock_dialog_cls):
-        b = make_bridge()
-        dlg = mock_dialog_cls.return_value
-        dlg.exec.return_value = QDialog.Rejected
-        with (
-            patch.object(b.app_service, "update_script") as mock_update,
-            patch.object(b, "_reload_games") as mock_reload,
-        ):
-            b.configCurrent()
-        mock_update.assert_not_called()
-        mock_reload.assert_not_called()
+        def build(*args, **kwargs):
+            assert "submit" in kwargs
+            dialog.exec.side_effect = lambda: kwargs["submit"](edit)
+            return dialog
 
-    @patch("gui.dialogs.SingleScriptConfigDialog")
-    def test_config_current_save_failure_stops_following_actions(self, mock_dialog_cls):
-        b = make_bridge()
-        toasts = []
-        b.toastRequested.connect(toasts.append)
-        dlg = mock_dialog_cls.return_value
-        dlg.exec.return_value = QDialog.Accepted
-        dlg.pending_changes = ScriptEdit("ok-ww", "鸣潮", {}, [60] * 7, {})
         with (
-            patch.object(
-                b.app_service, "update_script", side_effect=OSError("拒绝写入")
-            ),
-            patch.object(b, "_reload_games") as reload,
-            self.assertRaisesRegex(OSError, "拒绝写入"),
+            patch("gui.dialogs.SingleScriptConfigDialog", side_effect=build),
+            patch("gui.dialogs.show_warning") as warning,
         ):
-            b.configCurrent()
-        reload.assert_not_called()
-        self.assertEqual(toasts, [])
+            bridge.configCurrent()
+            drain_events()
+        warning.assert_called_once_with(dialog, "拒绝写入")
+        dialog.accept.assert_not_called()
+        bridge.game_list._on_reload.assert_not_called()
 
 
 class TestWeeklyStartBridge(unittest.TestCase):
-    """「周几起」经 Bridge 暴露：候选列表与按条写回（weekly.yml 的 weekly_start 段）。"""
-
-    def test_weekly_start_options_forwarded(self):
-        """候选为「不启用 + 周一~周日」八项，value 即写回用的起始日。"""
-        b = make_bridge()
+    def test_weekly_start_options_are_disabled_plus_seven_days(self):
+        bridge = make_bridge()
         self.assertEqual(
-            [option["value"] for option in b.weeklyStartOptions()],
-            [0, 1, 2, 3, 4, 5, 6, 7],
+            [row["value"] for row in bridge.weeklyStartOptions()], list(range(8))
         )
 
-    def test_select_weekly_start_writes_intent_and_game_side(self):
-        """写某条周常的起始日：weekly.yml 按条覆盖（其它条目不动）+ 该条游戏侧字面字段。"""
-        b = make_bridge()
-        script_name = b.games[0]["script_name"]
-        written = {}
-        with (
-            patch(
-                "src.service.app_service.get_weekly_start_map",
-                return_value={script_name: {"货币战争": 2, "历战余响": 2}},
-            ),
-            patch(
-                "src.service.app_service.set_weekly_start",
-                side_effect=lambda script, start_days: written.update(
-                    {script: start_days}
-                ),
-            ),
-            patch("src.service.app_service.set_weekly_start_day") as game_side,
-        ):
-            b.selectWeeklyStart("历战余响", 5)
-        self.assertEqual(written, {script_name: {"货币战争": 2, "历战余响": 5}})
-        # 游戏侧字面起始日只在编辑期落盘该条（是否真有字面字段由 weekly 模块判定）
-        game_side.assert_called_once_with(script_name, "历战余响", 5)
+    def test_weekly_start_request_identifies_only_the_selected_row(self):
+        bridge = make_bridge()
+        bridge.selectWeeklyStart("历战余响", 5)
+        drain_events()
+        self.assertEqual(
+            writes(bridge, "weekly.start"),
+            [
+                {
+                    "script_name": "ok-ww",
+                    "weekly_name": "历战余响",
+                    "start_day": 5,
+                }
+            ],
+        )
 
-    def test_select_weekly_start_creates_entry_for_first_time(self):
-        """该脚本尚无 weekly_start 条目时，只写被选中的那一条。"""
-        b = make_bridge()
-        script_name = b.games[0]["script_name"]
-        written = {}
-        with (
-            patch("src.service.app_service.get_weekly_start_map", return_value={}),
-            patch(
-                "src.service.app_service.set_weekly_start",
-                side_effect=lambda script, start_days: written.update(
-                    {script: start_days}
-                ),
-            ),
-            patch("src.service.app_service.set_weekly_start_day"),
-        ):
-            b.selectWeeklyStart("货币战争", 4)
-        self.assertEqual(written, {script_name: {"货币战争": 4}})
-
-
-if __name__ == "__main__":
-    unittest.main()
+    def test_first_weekly_start_can_be_selected_without_prior_entry(self):
+        bridge = make_bridge()
+        self.assertEqual(bridge.weeklyItems, [])
+        bridge.selectWeeklyStart("货币战争", 4)
+        drain_events()
+        self.assertEqual(
+            writes(bridge, "weekly.start"),
+            [
+                {
+                    "script_name": "ok-ww",
+                    "weekly_name": "货币战争",
+                    "start_day": 4,
+                }
+            ],
+        )

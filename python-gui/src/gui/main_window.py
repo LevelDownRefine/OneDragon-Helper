@@ -7,15 +7,15 @@
 
 from PySide6.QtCore import Property, QCoreApplication, QObject, Signal, Slot
 
-from gui.controllers.background import BackgroundController
-from gui.controllers.backup import BackupController
-from gui.controllers.game_list import GameListController
-from gui.controllers.launch import LaunchController
-from gui.controllers.links import LinksController
-from gui.controllers.task_card import TaskCardController
+from gui.cli_client import CliSession
+from gui.controllers.cli_background import CliBackgroundController
+from gui.controllers.cli_game_list import CliGameListController
+from gui.controllers.cli_launch import CliLaunchController
+from gui.controllers.cli_links import CliLinksController
+from gui.controllers.cli_settings import CliSettingsController
+from gui.controllers.cli_task_card import CliTaskCardController
 from gui.controllers.window import WindowController
 from gui.icons import UiIconProvider
-from src.service.app_service import AppService
 
 
 class QmlBridge(QObject):
@@ -30,91 +30,38 @@ class QmlBridge(QObject):
     gameAdded = Signal()
     gameIconChanged = Signal()
 
-    def __init__(self, cli_client=None, cli_client_factory=None):
+    def __init__(self, cli_client, cli_client_factory=None):
         super().__init__()
-        self.app_service = AppService()
-        self._cli_session = None
+        assert cli_client is not None
+        self._cli_session = CliSession(cli_client, cli_client_factory, self)
+        app = QCoreApplication.instance()
+        assert app is not None
+        app.aboutToQuit.connect(self._cli_session.detach)
         self._auto_launch_pending = False
         self._games_loaded = False
         self._startup_load_failed = False
-        if cli_client is not None:
-            from gui.cli_client import CliSession
-
-            self._cli_session = CliSession(cli_client, cli_client_factory, self)
-            QCoreApplication.instance().aboutToQuit.connect(self._cli_session.detach)
-        # 组合各职责控制器：每个自管状态 + 信号；经构造注入显式依赖
-        if self._cli_session is None:
-            self.game_list = GameListController(
-                app_service=self.app_service,
-                toast=self.toastRequested.emit,
-                on_reload=lambda: self._reload_games(),
-            )
-        else:
-            from gui.controllers.cli_game_list import CliGameListController
-
-            self.game_list = CliGameListController(
-                self._cli_session, self.toastRequested.emit, self._reload_games, self
-            )
-        if cli_client is None:
-            self.task_card = TaskCardController(
-                game_list=self.game_list,
-                app_service=self.app_service,
-                toast=self.toastRequested.emit,
-            )
-        else:
-            from gui.controllers.cli_task_card import CliTaskCardController
-
-            self.task_card = CliTaskCardController(
-                self.game_list,
-                self._cli_session,
-                self.toastRequested.emit,
-                self,
-            )
-        if self._cli_session is None:
-            self.launch = LaunchController(
-                game_list=self.game_list,
-                app_service=self.app_service,
-                toast=self.toastRequested.emit,
-            )
-        else:
-            from gui.controllers.cli_launch import CliLaunchController
-
-            self.launch = CliLaunchController(
-                self.game_list, self._cli_session, self.toastRequested.emit, self
-            )
-        if self._cli_session is None:
-            self.background = BackgroundController(
-                game_list=self.game_list,
-                app_service=self.app_service,
-                toast=self.toastRequested.emit,
-            )
-            self.links = LinksController(
-                game_list=self.game_list,
-                toast=self.toastRequested.emit,
-                app_service=self.app_service,
-            )
-            self.backup = BackupController(
-                app_service=self.app_service,
-                toast=self.toastRequested.emit,
-            )
-        else:
-            from gui.controllers.cli_background import CliBackgroundController
-            from gui.controllers.cli_links import CliLinksController
-            from gui.controllers.cli_settings import CliSettingsController
-
-            self.background = CliBackgroundController(
-                self.game_list, self._cli_session, self.toastRequested.emit, self
-            )
-            self.links = CliLinksController(
-                self.game_list, self._cli_session, self.toastRequested.emit, self
-            )
-            self.backup = CliSettingsController(
-                self.app_service, self._cli_session, self.toastRequested.emit, self
-            )
-            self.links.iconChanged.connect(self.gameIconChanged.emit)
-            self.game_list.loaded.connect(self._cli_games_loaded)
-            self.game_list.loadFailed.connect(self._cli_games_failed)
-            self._cli_session.recovered.connect(self._reload_games)
+        self.game_list = CliGameListController(
+            self._cli_session, self.toastRequested.emit, self._reload_games, self
+        )
+        self.task_card = CliTaskCardController(
+            self.game_list, self._cli_session, self.toastRequested.emit, self
+        )
+        self.launch = CliLaunchController(
+            self.game_list, self._cli_session, self.toastRequested.emit, self
+        )
+        self.background = CliBackgroundController(
+            self.game_list, self._cli_session, self.toastRequested.emit, self
+        )
+        self.links = CliLinksController(
+            self.game_list, self._cli_session, self.toastRequested.emit, self
+        )
+        self.backup = CliSettingsController(
+            self._cli_session, self.toastRequested.emit, self
+        )
+        self.links.iconChanged.connect(self.gameIconChanged.emit)
+        self.game_list.loaded.connect(self._cli_games_loaded)
+        self.game_list.loadFailed.connect(self._cli_games_failed)
+        self._cli_session.recovered.connect(self._reload_games)
         self.window = WindowController()
         # UI 矢量图标提供器（无状态，门面持有）
         self._ui_icon_provider = UiIconProvider()
@@ -134,10 +81,6 @@ class QmlBridge(QObject):
         self.links.toastRequested.connect(self.toastRequested.emit)
         self.backup.toastRequested.connect(self.toastRequested.emit)
         self.backup.restoreCompleted.connect(self.task_card.refresh)
-        # 首次加载固化旧计划名单，之后的手动勾选不影响每日计划。
-        if self._cli_session is None:
-            self.game_list.gamesChanged.connect(self.backup.daily_plan.refresh)
-
         # 编排启动：重建列表 → 构建副本缓存 → 刷新当前（_reload_games 收尾即刷）
         self._reload_games()
 
@@ -260,10 +203,7 @@ class QmlBridge(QObject):
         self.launch.launchAll()
 
     def maybe_auto_launch(self) -> None:
-        """经 CLI 确认自动运行；冻结包缺少后端时提示修复安装包。"""
-        if self._cli_session is None:
-            self.launch.launchAll(confirm=False)
-            return
+        """经同一 CLI 会话读取启动设置并确认自动运行。"""
         if self._startup_load_failed:
             return
         if not self._games_loaded:
@@ -294,14 +234,15 @@ class QmlBridge(QObject):
 
     @Slot()
     def launchScript(self):
-        if self._cli_session is None:
-            self.launch.launchScript()
-        else:
-            self.links.launchScript()
+        self.links.launchScript()
 
     @Slot()
     def launchGame(self):
         self.links.launchGame()
+
+    @Slot()
+    def refreshGameIcon(self):
+        self.links.refresh()
 
     @Slot(result=str)
     def gameIconSource(self):
@@ -328,10 +269,6 @@ class QmlBridge(QObject):
         self.links.openLogFolder()
 
     @Slot()
-    def openSettings(self):
-        self.links.openSettings()
-
-    @Slot()
     def openScriptConfig(self):
         self.links.openScriptConfig()
 
@@ -350,9 +287,7 @@ class QmlBridge(QObject):
 
     @Slot(result=bool)
     def canClose(self):
-        if self._cli_session is not None and (
-            self._cli_session.busy or self.launch.active
-        ):
+        if self._cli_session.busy or self.launch.active:
             self.toastRequested.emit("后台操作正在进行，请完成后关闭窗口")
             return False
         return True
@@ -417,17 +352,12 @@ class QmlBridge(QObject):
         必须强制刷新背景与任务卡，否则 UI 停在旧数据直到重新点选。
         """
         self.game_list.reload_games()
-        if self._cli_session is not None:
-            return
-        self.task_card.build_daily_cache()
-        self._on_current_changed()
 
     def _on_current_changed(self):
         """当前选中变化 → 刷新背景 + 任务卡（编排集中于此）。"""
         self._apply_current()
         self.task_card.refresh()
-        if self._cli_session is not None:
-            self.links.refresh()
+        self.links.refresh()
 
     def _cli_games_loaded(self):
         self._games_loaded = True

@@ -32,17 +32,15 @@ class TestGameIconProvider(unittest.TestCase):
     """GameIconProvider：按 script_name 解析游戏 exe 图标，近显示分辨率预渲染。"""
 
     def test_missing_path_or_icon_returns_null_pixmap(self):
-        provider = GameIconProvider(MagicMock())
-        provider._app_service.game_icon_path.return_value = {"path": ""}
+        provider = GameIconProvider()
+        provider.paths["ok-ww"] = ""
         self.assertTrue(provider.requestPixmap("ok-ww", None, QSize()).isNull())
         with patch("gui.icons.get_exe_icon", return_value=None):
-            provider._app_service.game_icon_path.return_value = {"path": "C:/g.exe"}
+            provider.paths["ok-ww"] = "C:/g.exe"
             self.assertTrue(provider.requestPixmap("ok-ww", None, QSize()).isNull())
 
     def test_resolves_game_exe_and_requests_256px_pixmap(self):
-        app_service = MagicMock()
-        app_service.game_icon_path.return_value = {"path": "C:/g.exe"}
-        provider = GameIconProvider(app_service)
+        provider = GameIconProvider({"ok-ww": "C:/g.exe"})
         source = QPixmap(256, 256)
         source.fill(QColor("#348FCA"))
         icon = MagicMock()

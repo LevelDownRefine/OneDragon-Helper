@@ -1,16 +1,20 @@
 """壁纸目标和映射经 CLI 获取，Qt 负责显示与视频帧编码。"""
 
 import base64
+import logging
 
 from PySide6.QtCore import QBuffer, QIODevice, Qt, QUrl
 from PySide6.QtGui import QImage, QImageReader, QTransform
+from PySide6.QtMultimedia import QVideoSink
 
 from gui.controllers.background import WALLPAPER_MAX_SIDE, BackgroundController
+
+logger = logging.getLogger(__name__)
 
 
 class CliBackgroundController(BackgroundController):
     def __init__(self, game_list, session, toast, parent=None):
-        super().__init__(game_list, None, toast, parent)
+        super().__init__(game_list, toast, parent)
         self._session = session
         self._view = None
 
@@ -21,9 +25,12 @@ class CliBackgroundController(BackgroundController):
         self._bg_mode = "gradient"
         self._bg_url = self._bg_preview_url = ""
         self._video_preview_attempted = False
+        assert all(key in game for key in ("script_name", "color", "char"))
         self._grad_color, self._grad_char = game["color"], game["char"]
         self.backgroundChanged.emit()
         name = game["script_name"]
+        if not name:
+            return
 
         def loaded(view):
             if version != self._bg_version:
@@ -36,6 +43,8 @@ class CliBackgroundController(BackgroundController):
             if view["mode"] == "image" and view["cache"]:
                 if QImageReader(view["cache"]).canRead():
                     path = view["cache"]
+                else:
+                    logger.warning("[bg] 图片缓存损坏，将重新生成：%s", view["cache"])
             if view["mode"] != "gradient":
                 self._bg_url = QUrl.fromLocalFile(path).toString()
             if (
@@ -44,16 +53,28 @@ class CliBackgroundController(BackgroundController):
                 and QImageReader(view["cache"]).canRead()
             ):
                 self._bg_preview_url = QUrl.fromLocalFile(view["cache"]).toString()
+            if view["mode"] == "video" and view["cache"] and not self._bg_preview_url:
+                logger.warning("[bg] 视频预览损坏，将重新生成：%s", view["cache"])
             self.backgroundChanged.emit()
             if view["mode"] == "image" and path == view["source"]:
-                reader = QImageReader(path)
-                size = reader.size()
-                if max(size.width(), size.height()) > WALLPAPER_MAX_SIDE:
-                    scale = WALLPAPER_MAX_SIDE / max(size.width(), size.height())
-                    reader.setScaledSize(size * scale)
-                    image = reader.read()
-                    if not image.isNull():
-                        self._save_cache(image, view, version)
+                try:
+                    reader = QImageReader(path)
+                    size = reader.size()
+                    if size.width() <= 0 or size.height() <= 0:
+                        logger.warning("[bg] 壁纸解码失败，跳过缓存：%s", path)
+                        return
+                    if max(size.width(), size.height()) > WALLPAPER_MAX_SIDE:
+                        scale = WALLPAPER_MAX_SIDE / max(size.width(), size.height())
+                        reader.setScaledSize(size * scale)
+                        image = reader.read()
+                        if image.isNull():
+                            logger.warning("[bg] 壁纸解码失败，跳过缓存：%s", path)
+                        else:
+                            self._save_cache(image, view, version)
+                except (OSError, MemoryError) as exc:
+                    logger.warning(
+                        "[bg] 壁纸缓存生成失败（%s），回退原图", type(exc).__name__
+                    )
 
         def failed(failure):
             if version == self._bg_version:
@@ -98,22 +119,28 @@ class CliBackgroundController(BackgroundController):
             or self._view is None
         ):
             return False
+        assert isinstance(sink, QVideoSink)
         frame = sink.videoFrame()
         if not frame.isValid():
             return False
         if self._bg_preview_url or self._video_preview_attempted:
             return True
         self._video_preview_attempted = True
-        img = frame.toImage()
-        if img.isNull():
-            return True
-        img = img.transformed(QTransform().rotate(frame.rotation().value))
-        if frame.mirrored():
-            img = img.mirrored(True, False)
-        self._save_cache(img, self._view, version)
+        try:
+            img = frame.toImage()
+            if img.isNull():
+                logger.warning("[bg] 视频首帧转图片失败，跳过缓存")
+                return True
+            img = img.transformed(QTransform().rotate(frame.rotation().value))
+            if frame.mirrored():
+                img = img.mirrored(True, False)
+            self._save_cache(img, self._view, version)
+        except MemoryError as exc:
+            logger.warning("[bg] 视频首帧缓存失败（%s），继续播放", type(exc).__name__)
         return True
 
     def _save_cache(self, img, view, version):
+        assert all(key in view for key in ("script_name", "mode", "token"))
         if max(img.width(), img.height()) > WALLPAPER_MAX_SIDE:
             img = img.scaled(
                 WALLPAPER_MAX_SIDE,
@@ -132,7 +159,10 @@ class CliBackgroundController(BackgroundController):
         def saved(result):
             if type(result) is not bool:
                 raise ValueError("缓存保存响应无效")
-            if result and version == self._bg_version:
+            if not result:
+                logger.warning("[bg] 壁纸缓存写入被拒，源已变化或保存失败")
+                return
+            if version == self._bg_version:
                 self._session.call(
                     "wallpaper.current",
                     {"script_name": view["script_name"]},

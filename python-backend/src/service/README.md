@@ -1,6 +1,6 @@
 # 服务层
 
-`AppService` 是 GUI/CLI 的统一入口：装配平级服务并薄委托，无 Qt 依赖。配置适配归 set_config，执行归 runner，展示状态归前端。
+`AppService` 是后端统一业务入口，由 CLI 装配和调用；两套 GUI 只消费 CLI 协议。它装配平级服务并薄委托，无 Qt 依赖。配置适配归 set_config，执行归 runner，展示状态归前端。
 
 ## 模块职责
 

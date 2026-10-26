@@ -2,10 +2,9 @@
 
 from dataclasses import asdict
 
-from PySide6.QtCore import QObject
+from PySide6.QtCore import QObject, Signal
 
 from gui.config_dialog import ConfigDialog
-from gui.controllers.backup import BackupController
 from gui.controllers.cli_backup import CliBackupMixin
 from gui.dialogs import show_warning
 from gui.run_confirm_dialog import RunConfirmDialog
@@ -50,9 +49,12 @@ def parse_settings(value):
     return StartupOptions(**startup), parse_run_options(value["run_options"])
 
 
-class CliSettingsController(CliBackupMixin, BackupController):
-    def __init__(self, app_service, session, toast, parent=None):
-        QObject.__init__(self, parent)
+class CliSettingsController(CliBackupMixin, QObject):
+    toastRequested = Signal(str)
+    restoreCompleted = Signal()
+
+    def __init__(self, session, toast, parent=None):
+        super().__init__(parent)
         self._toast = toast
         self._session = session
         self._opening = False
