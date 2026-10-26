@@ -1,10 +1,13 @@
 """背景控制器：背景模式（视频/图片/渐变）/ 壁纸 / 视频错误回退。
 
 独立 QObject，自管状态（_bg_mode / _bg_url / _grad_color / _grad_char）。
-壁纸表（wallpaper.json）读写与缓存路径/新鲜度/落盘均经 service（AppService），
-本控制器只管缓存图的解码缩放（Qt 渲染关注点）与背景解析（resolve_bg）。
+数据源为 ``AppService.wallpaper_view``（与 Rust 前端 ``wallpaper.view`` 同一
+视图）：解析优先级（自定义 → 脚本声明 → 渐变）、图/视频判定、缓存落点与
+token 全由后端给出；本控制器只做 Qt 渲染关注点——缓存图的解码缩放、JPEG
+编码与首帧预览，写盘经 ``save_wallpaper_cache`` / ``save_video_preview``。
 """
 
+import base64
 import logging
 import os
 
@@ -14,18 +17,21 @@ from PySide6.QtGui import QImage, QImageReader, QTransform
 # QML 首次传入对象前注册包装类型，否则 QVideoSink 会被包装成普通 QObject。
 from PySide6.QtMultimedia import QVideoSink
 
-from src.utils.utils_sub_config import get_script_root_dir, resolve_script_path
+from src.utils.utils_wallpaper import InvalidWallpaper
 
 logger = logging.getLogger(__name__)
 
-# 自定义壁纸按最长边压到 WALLPAPER_MAX_SIDE 后交 service 落盘缓存，
-# resolve_bg 优先返回缓存，避免大图直接进 GPU 纹理（与 main.qml 的 sourceSize 互补）。
+# 壁纸按最长边压到 WALLPAPER_MAX_SIDE 后交 service 落盘缓存，避免大图直接进
+# GPU 纹理（与 main.qml 的 sourceSize 互补）；视频首帧复用此尺寸上限。
 WALLPAPER_MAX_SIDE = 1920
 
-
-def is_video(path: str) -> bool:
-    """判断路径是否为视频背景（其余按图片处理）。"""
-    return os.path.splitext(path)[1].lower() in {".mp4", ".webm", ".mkv", ".mov"}
+# 脚本为空或已被移除时的收缩视图（与 wallpaper_view 的 gradient 形态一致）。
+_GRADIENT_VIEW = {
+    "mode": "gradient",
+    "source": "",
+    "token": None,
+    "cache": None,
+}
 
 
 class BackgroundController(QObject):
@@ -72,93 +78,41 @@ class BackgroundController(QObject):
     def background_version(self) -> int:
         return self._bg_version
 
-    def resolve_bg(self, game: dict) -> str | None:
-        """返回该脚本应使用的背景路径（自定义壁纸缓存 → 自定义壁纸 → 脚本背景）。
+    def _wallpaper_view(self, script_name: str) -> dict:
+        """取当前脚本的壁纸视图；脚本为空/已移除时收缩为渐变。"""
+        if not script_name:
+            return _GRADIENT_VIEW
+        try:
+            view = self._app_service.wallpaper_view(script_name)
+            assert all(
+                key in view
+                for key in ("script_name", "mode", "source", "token", "cache")
+            )
+            return view
+        except InvalidWallpaper:
+            logger.debug("[bg] 脚本已移除，背景回退渐变：%s", script_name)
+            return _GRADIENT_VIEW
 
-        文件不存在返回 None（走渐变兜底）。
+    def _build_image_cache(self, view: dict) -> str | None:
+        """为大图生成压缩缓存（小图跳过）；成功返回缓存路径。
 
-        Args:
-            game: 当前脚本数据。
+        缓存落点与新鲜度（token）由视图给出：源已变化时后端拒收，不会写串。
         """
-        path = self._wallpaper_for(game)
-        if not path:
-            return None
-        resolved = resolve_script_path(path)
-        if not os.path.isfile(resolved):
-            return None
-        return resolved
-
-    def _script_background(self, script_name: str) -> str:
-        """读取脚本默认背景图绝对路径（来自资源声明，相对脚本根目录）。
-
-        Args:
-            script_name: 脚本标识名。
-
-        Returns:
-            背景图绝对路径；未适配/未声明/文件缺失 → 空字符串（使用渐变背景）。
-        """
-        rel = self._app_service.get_background_rel_path(script_name)
-        if not rel:
-            return ""
-        root = get_script_root_dir(script_name)
-        if not root:
-            return ""
-        path = os.path.join(root, rel)
-        return path if os.path.isfile(path) else ""
-
-    def _wallpaper_for(self, game: dict) -> str:
-        """解析某脚本应使用的背景路径：定位源（自定义壁纸 → 脚本背景图），
-        并判定图像/视频。图像交给 _build_wallpaper_cache 确保缓存，视频直接用源路径。
-        resolve_bg 负责 resolve + isfile 守卫。
-
-        Args:
-            game: 当前脚本数据。
-        """
-        script_name = game["script_name"]
-        wallpapers = self.read_wallpapers()
-        if script_name not in wallpapers:
-            return self._script_background(script_name)
-        src_path = wallpapers[script_name]
-        if not os.path.isfile(src_path):
-            return src_path  # 源图缺失：交回 resolve_bg 的 isfile 守卫，走渐变兜底
-        if is_video(src_path):
-            return src_path  # 视频源交 QML 播放，首帧预览另存
-        return self._build_wallpaper_cache(src_path, script_name) or src_path
-
-    def _build_wallpaper_cache(
-        self, src_path: str, script_name: str, force: bool = False
-    ) -> str | None:
-        """确保某自定义壁纸（调用方已确认是图像且存在）的缓存可用。
-
-        force=False（解析 / 复用路径）：缓存存在且较新直接返回，避免重复压缩大图。
-        force=True（用户刚更换壁纸）：源文件已变，service 先删旧缓存再重建。
-        缓存路径、新鲜度判定与落盘归 service；本控制器只做解码缩放与 JPEG 编码。
-
-        Args:
-            src_path: 用户原图路径（图像）。
-            script_name: 脚本标识（缓存文件名）。
-            force: 是否强制重建（换壁纸时 True）。
-        """
-        if not os.path.isfile(src_path):
-            return None
-        cache = self._app_service.wallpaper_cache_ready(
-            src_path, script_name, force=force
-        )
-        if cache:
-            return cache
+        assert all(key in view for key in ("script_name", "source", "token"))
+        source = view["source"]
         try:
             # 只读图像头判断尺寸：长边未超上限时无需生成缓存，跳过整图解码。
-            dims = QImageReader(src_path).size()
+            dims = QImageReader(source).size()
             if dims.width() <= 0 or dims.height() <= 0:
-                logger.warning("[bg] 壁纸解码失败，跳过缓存：%s", src_path)
+                logger.warning("[bg] 壁纸解码失败，跳过缓存：%s", source)
                 return None
             longest = max(dims.width(), dims.height())
             if longest <= WALLPAPER_MAX_SIDE:
                 return None
             scale = WALLPAPER_MAX_SIDE / longest
-            img = QImage(src_path)
+            img = QImage(source)
             if img.isNull():
-                logger.warning("[bg] 壁纸解码失败，跳过缓存：%s", src_path)
+                logger.warning("[bg] 壁纸解码失败，跳过缓存：%s", source)
                 return None
             scaled = img.scaled(
                 max(1, round(dims.width() * scale)),
@@ -168,22 +122,28 @@ class BackgroundController(QObject):
             ).convertToFormat(QImage.Format_RGB888)
             buffer = QBuffer()
             buffer.open(QIODevice.WriteOnly)
-            scaled.save(buffer, "JPG", quality=90)
-            cache_path = self._app_service.wallpaper_cache_path(script_name)
-            if not self._app_service.save_wallpaper_cache_bytes(
-                cache_path, bytes(buffer.data())
-            ):
-                logger.warning("[bg] 壁纸缓存写入失败：%s", cache_path)
+            if not scaled.save(buffer, "JPG", quality=90):
+                logger.warning("[bg] 壁纸缓存编码失败，回退原图")
                 return None
-        except (OSError, MemoryError) as e:
+            saved = self._app_service.save_wallpaper_cache(
+                view["script_name"],
+                view["token"],
+                base64.b64encode(bytes(buffer.data())).decode("ascii"),
+            )
+        except (InvalidWallpaper, OSError, MemoryError) as e:
             logger.warning(
                 "[bg] 壁纸缓存生成失败（%s），回退原图", type(e).__name__, exc_info=True
             )
             return None
-        return cache_path
+        if not saved:
+            logger.warning("[bg] 壁纸缓存写入被拒（源已变化？）：%s", source)
+            return None
+        current = self._wallpaper_view(view["script_name"])
+        assert "token" in current and "cache" in current
+        return current["cache"] if current["token"] == view["token"] else None
 
     def apply_current(self, game: dict):
-        """按当前选中脚本刷新背景（路径经 resolve_bg 解析）。
+        """按当前选中脚本的壁纸视图刷新背景（解码缩放留在 Qt，策略归后端）。
 
         Args:
             game: 当前脚本数据（提供颜色与首字）。
@@ -191,15 +151,20 @@ class BackgroundController(QObject):
         self._bg_version += (
             1  # 即便 source 路径不变（换壁纸复用同缓存），也强制 QML 重载
         )
-        bg_path = self.resolve_bg(game)
+        view = self._wallpaper_view(game["script_name"])
+        mode = view["mode"]
         self._bg_preview_url = ""
         self._video_cache_path = None
         self._video_preview_attempted = False
-        if bg_path and is_video(bg_path) and os.path.isfile(bg_path):
+        if mode == "video":
+            assert isinstance(view["source"], str) and view["source"]
             self._bg_mode = "video"
-            self._bg_url = QUrl.fromLocalFile(bg_path).toString()
-            self._video_cache_path = self._app_service.video_preview_path(bg_path)
-            if self._video_cache_path and os.path.isfile(self._video_cache_path):
+            self._bg_url = QUrl.fromLocalFile(view["source"]).toString()
+            # cache 只表示已存在的预览；首次播放也须由 service 给出保存位置。
+            self._video_cache_path = view[
+                "cache"
+            ] or self._app_service.video_preview_path(view["source"])
+            if view["cache"] and os.path.isfile(view["cache"]):
                 if QImageReader(self._video_cache_path).canRead():
                     self._bg_preview_url = QUrl.fromLocalFile(
                         self._video_cache_path
@@ -208,7 +173,13 @@ class BackgroundController(QObject):
                     logger.warning(
                         "[bg] 视频预览损坏，将重新生成：%s", self._video_cache_path
                     )
-        elif bg_path and os.path.isfile(bg_path):
+        elif mode == "image":
+            # 后端 mode=image 已保证源存在；缓存就绪用缓存，小图跳过缓存用源。
+            cache = view["cache"]
+            if cache and not QImageReader(cache).canRead():
+                logger.warning("[bg] 图片缓存损坏，将重新生成：%s", cache)
+                cache = None
+            bg_path = cache or self._build_image_cache(view) or view["source"]
             self._bg_mode = "image"
             self._bg_url = QUrl.fromLocalFile(bg_path).toString()
         else:
@@ -267,7 +238,7 @@ class BackgroundController(QObject):
 
     @Slot()
     def open_wallpaper(self):
-        """更换当前脚本壁纸：弹文件选择 → 写壁纸表 → 刷新背景。"""
+        """更换当前脚本壁纸：弹文件选择 → 经 service 写壁纸表 → 刷新背景。"""
         game = self._game_list.current_game
         if game is None:
             self._toast("尚无脚本")
@@ -281,23 +252,10 @@ class BackgroundController(QObject):
         )
         if not path:
             return
-        wallpapers = self.read_wallpapers()
-        wallpapers[game["script_name"]] = path
-        self.write_wallpapers(wallpapers)
-        if not is_video(path):
-            self._build_wallpaper_cache(
-                path, game["script_name"], force=True
-            )  # 换壁纸：强制重建覆盖旧缓存
+        # 新源 → 新 token → 新缓存落点，无需强制清旧缓存（后端按内容身份管理）。
+        self._app_service.set_wallpaper(game["script_name"], path)
         self.apply_current(game)
         self._toast(f"已更换 {game['display_name']} 壁纸")
-
-    def read_wallpapers(self) -> dict:
-        """读取壁纸表（脚本 → 壁纸路径），缺失/损坏返回空。委托 service。"""
-        return self._app_service.load_wallpapers()
-
-    def write_wallpapers(self, wallpapers: dict):
-        """写回壁纸表（委托 service，原子写）。"""
-        self._app_service.save_wallpapers(wallpapers)
 
     @Slot(str)
     def videoError(self, reason: str):

@@ -1073,6 +1073,54 @@ class RunRequestTests(unittest.TestCase):
             {"script_names": ["test"], "options": asdict(options)},
         )
 
+    def test_saved_run_rejects_unusable_saved_options_before_launch(self):
+        for options, message in (
+            (RunOptions(shutdown_enabled=True, shutdown_delay=45), "关机确认入口"),
+            (RunOptions(shutdown_delay=86401), "关机延迟"),
+            (RunOptions(smtp_port="65536"), "SMTP 端口"),
+        ):
+            with (
+                self.subTest(options=options),
+                patch.object(self.service, "load_run_options", return_value=options),
+                patch.object(self.service, "apply_run_options") as save,
+                patch("src.service.chain_service.schedule_run") as run,
+                patch(
+                    "src.utils.utils_shutdown.shutdown_ui_supported", return_value=False
+                ),
+            ):
+                response = handle_request(
+                    self.service, request("run.saved", {"script_names": ["test"]})
+                )
+            self.assertEqual(response["error"]["code"], -32602)
+            self.assertIn(message, response["error"]["message"])
+            save.assert_not_called()
+            run.assert_not_called()
+
+    def test_direct_prepare_validates_before_saving_or_loading(self):
+        from src.service.chain_service import InvalidRunRequest
+
+        for options in (
+            RunOptions(mute_enabled=1),
+            RunOptions(shutdown_enabled=True, shutdown_delay=45),
+            RunOptions(shutdown_delay=86401),
+            RunOptions(smtp_port="bad"),
+            RunOptions(auth_code="test-secret"),
+        ):
+            with (
+                self.subTest(options=options),
+                patch.object(self.service, "apply_run_options") as save,
+                patch.object(self.service, "load_run_options") as load,
+                patch("src.service.chain_service.run_target") as target,
+                patch(
+                    "src.utils.utils_shutdown.shutdown_ui_supported", return_value=False
+                ),
+                self.assertRaises(InvalidRunRequest),
+            ):
+                self.service.prepare_run(["demo"], options, confirm_invalid=False)
+            save.assert_not_called()
+            load.assert_not_called()
+            target.assert_not_called()
+
     def test_invalid_script_warning_requires_confirmation(self):
         self.invalid.return_value = [("demo", "missing")]
         for confirmed in (False, 1):

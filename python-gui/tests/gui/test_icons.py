@@ -33,15 +33,15 @@ class TestGameIconProvider(unittest.TestCase):
 
     def test_missing_path_or_icon_returns_null_pixmap(self):
         provider = GameIconProvider(MagicMock())
-        provider._app_service.get_game_exe_path.return_value = ""
+        provider._app_service.game_icon_path.return_value = {"path": ""}
         self.assertTrue(provider.requestPixmap("ok-ww", None, QSize()).isNull())
         with patch("gui.icons.get_exe_icon", return_value=None):
-            provider._app_service.get_game_exe_path.return_value = "C:/g.exe"
+            provider._app_service.game_icon_path.return_value = {"path": "C:/g.exe"}
             self.assertTrue(provider.requestPixmap("ok-ww", None, QSize()).isNull())
 
     def test_resolves_game_exe_and_requests_256px_pixmap(self):
         app_service = MagicMock()
-        app_service.get_game_exe_path.return_value = "C:/g.exe"
+        app_service.game_icon_path.return_value = {"path": "C:/g.exe"}
         provider = GameIconProvider(app_service)
         source = QPixmap(256, 256)
         source.fill(QColor("#348FCA"))

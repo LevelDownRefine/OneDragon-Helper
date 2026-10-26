@@ -26,7 +26,6 @@ os.environ.setdefault("QML_DISABLE_DISK_CACHE", "1")
 
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
-from gui import main_window  # noqa: E402
 from gui.controllers import launch, links  # noqa: E402
 from gui.controllers.game_list import ScriptIconProvider  # noqa: E402
 from gui.icons import UiIconProvider  # noqa: E402
@@ -78,31 +77,31 @@ class TestBridge(unittest.TestCase):
         mock_line_edit.return_value.deleteLater.assert_called_once_with()
 
     def test_background_mode_default_gradient(self):
-        # 脚本无 bg 配置且 DEFAULT_BG 不存在时走渐变兜底
-        with patch.object(
-            main_window.BackgroundController, "resolve_bg", return_value=None
-        ):
-            b = make_bridge()
+        # 壁纸视图默认渐变（make_bridge 注入），无可用背景时走渐变兜底
+        b = make_bridge()
         self.assertEqual(b.backgroundMode, "gradient")
         self.assertEqual(b.gradientChar, "鸣")
 
     def test_background_mode_matches_resolved_media(self):
         for path, mode in (("C:/fake/clip.mp4", "video"), ("C:/fake/img.jpg", "image")):
-            with (
-                self.subTest(path=path),
-                patch.object(
-                    main_window.BackgroundController, "resolve_bg", return_value=path
-                ),
-                patch.object(os.path, "isfile", return_value=True),
-            ):
+            with self.subTest(path=path):
                 bridge = make_bridge()
+                bridge.app_service.wallpaper_view.return_value = {
+                    "script_name": "",
+                    "display_name": "",
+                    "mode": mode,
+                    "source": path,
+                    "custom_path": None,
+                    "token": "t",
+                    "cache": None,
+                }
+                bridge.background.apply_current(bridge.game_list.current_game)
                 self.assertEqual(bridge.backgroundMode, mode)
                 self.assertTrue(bridge.backgroundUrl.endswith(path.rsplit("/", 1)[1]))
 
     def test_select_game_switches_background(self):
         b = make_bridge()
-        with patch.object(b.background, "resolve_bg", return_value=None):
-            b.selectGame(1)
+        b.selectGame(1)
         self.assertEqual(b.currentIndex, 1)
         self.assertEqual(b.gradientChar, "测")
 
@@ -172,7 +171,7 @@ class TestLeftRail(unittest.TestCase):
     def test_launch_all_no_enabled_toasts(self):
         b = make_bridge()
         b.deselectAll()
-        with patch.object(b.launch, "_confirm_run") as confirm:
+        with patch.object(b.launch, "_confirm_and_prepare") as confirm:
             b.launchAll()
         confirm.assert_not_called()
 
@@ -367,15 +366,16 @@ class TestFloatBar(unittest.TestCase):
         spy.assert_called_once()
 
     def test_open_wallpaper_persists_and_switches(self):
+        """选壁纸经 service.set_wallpaper 落壁纸表并刷新背景。"""
         b = make_bridge()
-        b.background.write_wallpapers = MagicMock()
         b.background.apply_current = MagicMock()
+        name = b.games[0]["script_name"]
         with patch(
             "PySide6.QtWidgets.QFileDialog.getOpenFileName",
             return_value=("C:/w.mp4", ""),
         ):
             b.openWallpaper()
-        b.background.write_wallpapers.assert_called_once()
+        b.app_service.set_wallpaper.assert_called_once_with(name, "C:/w.mp4")
         b.background.apply_current.assert_called_once()
 
     def test_add_script_emits_game_added(self):
@@ -432,7 +432,10 @@ class TestQmlApp(unittest.TestCase):
             ]
             with (
                 patch.object(AppService, "load_config", return_value={"script_list": scripts}),
-                patch.object(main_window.BackgroundController, "resolve_bg", return_value=None),
+                patch.object(
+                    AppService, "wallpaper_view",
+                    return_value={"script_name": "", "mode": "gradient", "source": "",
+                                  "token": None, "cache": None}),
             ):
                 with (
                     patch("src.service.daily_plan.load_schedule", return_value={}),
@@ -600,10 +603,12 @@ class TestTaskCardPopupGeometry(unittest.TestCase):
             with (
                 patch.object(AppService, "load_config",
                              return_value={"script_list": scripts}),
-                patch.object(main_window.BackgroundController, "resolve_bg",
-                             return_value=None),
+                patch.object(
+                    AppService, "wallpaper_view",
+                    return_value={"script_name": "", "mode": "gradient", "source": "",
+                                  "token": None, "cache": None}),
                 patch.object(AppService, "script_view",
-                             return_value={"script": {}, "dailies": [],
+                             return_value={"script": {"adapted": True}, "dailies": [],
                                            "weeklies": fake_weekly}),
             ):
                 with (
@@ -704,7 +709,7 @@ class TestTaskCardDailyChipOpensMenu(unittest.TestCase):
             record = {"name": "培养目标", "task": "培养目标", "sequence": True, "enabled": None}
             bridge = make_bridge()
             bridge.app_service.script_view.return_value = {
-                "script": {},
+                "script": {"adapted": True},
                 "dailies": [{**record, "options": dailies[0]["options"]}],
                 "weeklies": [],
             }
@@ -810,8 +815,10 @@ class TestTaskCardWeeklyHiddenForUnsupportedScript(unittest.TestCase):
             with (
                 patch.object(AppService, "load_config",
                              return_value={"script_list": scripts}),
-                patch.object(main_window.BackgroundController, "resolve_bg",
-                             return_value=None),
+                patch.object(
+                    AppService, "wallpaper_view",
+                    return_value={"script_name": "", "mode": "gradient", "source": "",
+                                  "token": None, "cache": None}),
             ):
                 with (
                     patch("src.service.daily_plan.load_schedule", return_value={}),
@@ -907,8 +914,10 @@ class TestTaskCardWeeklyAreaHeightForSupportedScript(unittest.TestCase):
             # patch 必须常驻到子进程结束：QML 属性在 600ms 后求值，届时 with 块早已退出。
             patch.object(AppService, "load_config",
                          return_value={"script_list": scripts}).start()
-            patch.object(main_window.BackgroundController, "resolve_bg",
-                         return_value=None).start()
+            patch.object(
+                AppService, "wallpaper_view",
+                return_value={"script_name": "", "mode": "gradient", "source": "",
+                              "token": None, "cache": None}).start()
             patch("src.config.task.task_source.read_task_source",
                   return_value=["无", "坏灭的喜剧", "铁骸的锈冢", "晨昏的回眸",
                                 "心兽的战场", "尘梦的赞礼", "蛀星的旧靥",
@@ -941,7 +950,7 @@ class TestTaskCardWeeklyAreaHeightForSupportedScript(unittest.TestCase):
                 for d in get_weekly_map("March7th-Launcher")
             ]
             patch.object(AppService, "script_view",
-                         return_value={"script": {}, "dailies": dailies_view,
+                         return_value={"script": {"adapted": True}, "dailies": dailies_view,
                                        "weeklies": weekly_view}).start()
             patch("src.service.daily_plan.load_schedule", return_value={}).start()
             bridge = QmlBridge()
@@ -1052,8 +1061,10 @@ class TestWeeklyRowChipGeometry(unittest.TestCase):
             ]
             patch.object(AppService, "load_config",
                          return_value={"script_list": scripts}).start()
-            patch.object(main_window.BackgroundController, "resolve_bg",
-                         return_value=None).start()
+            patch.object(
+                AppService, "wallpaper_view",
+                return_value={"script_name": "", "mode": "gradient", "source": "",
+                              "token": None, "cache": None}).start()
             # 日常行用合成数据（本测试量的是周常 chip 几何），但必须有一行，
             # 否则 QML 不渲染 dailyButton，报表回调找不到节点即超时。
             fake_dailies = [{
@@ -1062,7 +1073,7 @@ class TestWeeklyRowChipGeometry(unittest.TestCase):
                     {"display_name": "无", "physical_name": "无"}]},
             }]
             patch.object(AppService, "script_view",
-                         return_value={"script": {}, "dailies": fake_dailies,
+                         return_value={"script": {"adapted": True}, "dailies": fake_dailies,
                                        "weeklies": fake_weekly}).start()
             patch("src.service.daily_plan.load_schedule", return_value={}).start()
             bridge = QmlBridge()

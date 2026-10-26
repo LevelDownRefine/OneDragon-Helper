@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from src.headless import _run_target
+from src.service.chain_service import run_target as _run_target
 from src.service.schedule import RunOptions
 from src.utils import get_root_dir
 from src.utils.utils_runner import build_script_command

@@ -1,6 +1,8 @@
-"""启动 / 运行控制器：启动全部 / 启动当前脚本 / 运行前校验 / 生成并运行链。
+"""启动 / 运行控制器：启动全部 / 启动当前脚本 / 运行前确认。
 
-独立 QObject，依赖 game_list / task_card / service（落盘与生成链）。
+「启动全部」与 Rust 前端同一协议：``run.view``（校验与选项回显）→
+``run.prepare`` / ``run.saved``（返回独立运行命令，选项经 stdin 交付）→
+复用 ``RunStarter`` 以独立控制台 Popen 并写入载荷。GUI 只做确认交互与启动。
 """
 
 import os
@@ -9,10 +11,12 @@ import subprocess
 from PySide6.QtCore import QObject, Signal, Slot
 from PySide6.QtWidgets import QDialog, QMessageBox
 
+from gui.controllers.cli_launch import RunStarter, validate_run_target
+from gui.controllers.cli_settings import parse_run_options
 from gui.dialogs import styled_msg_box
 from gui.run_confirm_dialog import RunConfirmDialog
+from src.service.chain_service import InvalidRunRequest
 from src.utils import open_in_explorer
-from src.utils.utils_sub_config import get_script_name
 
 
 class LaunchController(QObject):
@@ -24,18 +28,21 @@ class LaunchController(QObject):
         self._task_card = task_card
         self._app_service = app_service
         self._toast = toast
+        self._starter = RunStarter(self)
+        self._starter.started.connect(self._started)
+        self._starter.failed.connect(self._failed_start)
 
     @Slot()
     def launchAll(self, confirm: bool = True):
-        """启动全部：先校验，再经 service 以 now 起独立控制台进程运行。
+        """启动全部：确认后经 run.prepare / run.saved 取运行命令并交付 stdin。
 
-        service 的 ``spawn_run`` 按 schedule.yml 运行选项拼装并以 now 起
-        独立控制台进程，``chain_service.schedule_run`` 处理生成→运行→重跑→
-        邮件/关机。每日触发由系统计划独立负责，手动启动不等待。GUI 退出不影响运行。
+        运行在新控制台进程（``RunStarter`` 以 ``CREATE_NEW_CONSOLE`` 起）中进行，
+        ``chain_service.schedule_run`` 处理生成→运行→重跑→邮件/关机。GUI 退出
+        不影响运行，关闭控制台即取消。
 
         Args:
             confirm: 是否弹运行前确认窗（含不合法告警与调度配置回显）。GUI 打开后的
-                无人值守启动传 ``False``，直接按上次落盘的 schedule/config 启动全部。
+                无人值守启动传 ``False``，直接按上次落盘的选项启动全部。
         """
         enabled_script_names = {
             g["script_name"]
@@ -47,16 +54,50 @@ class LaunchController(QObject):
         if not enabled_script_names:
             self._toast("没有勾选手动运行的脚本")
             return
-        if confirm and not self._confirm_run(enabled_script_names):
+        try:
+            if confirm:
+                target = self._confirm_and_prepare(enabled_script_names)
+                if target is None:
+                    return
+            else:
+                target = self._app_service.saved_run(sorted(enabled_script_names))
+        except InvalidRunRequest as exc:
+            # 名单校验失败（脚本已被移除等），刷新列表即可恢复
+            self._toast(str(exc))
             return
-        proc = self._app_service.spawn_run(enabled_script_names)
-        if proc is None:
-            # 起进程失败（Popen 异常已被 spawn 记日志）：不报成功，引导看日志。
-            self._toast("启动失败，详见 logs/ 当日日志")
-            return
-        self._toast(
-            f"手动运行：已在新控制台窗口生成并运行链 "
-            f"({len(enabled_script_names)} 个脚本)（关闭控制台即取消）"
+        validate_run_target(target)
+        self._starter.start(target)
+
+    def _confirm_and_prepare(self, enabled_keys: set) -> dict | None:
+        """运行前校验并确认；确认后保存选项并返回运行命令（取消返回 None）。"""
+        names = sorted(enabled_keys)
+        view = self._app_service.run_view(names)
+        if view["invalid"]:
+            details = "\n".join(
+                f"· {row['name']}：{row['reason']}" for row in view["invalid"]
+            )
+            box = styled_msg_box(
+                None,
+                QMessageBox.Warning,
+                "脚本配置不合法",
+                f"以下脚本配置不合法，运行时会被跳过：\n{details}\n\n是否仍然运行？",
+            )
+            box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+            box.setDefaultButton(QMessageBox.No)
+            if box.exec() != QMessageBox.Yes:
+                return None
+
+        # 回显 schedule 当前运行选项到确认弹窗（RunOptions 为单一 schema）。
+        options = parse_run_options(view["options"])
+        dialog = RunConfirmDialog(len(enabled_keys), options)
+        if dialog.exec() != QDialog.Accepted:
+            return None
+
+        # 勾选项经 prepare_run 整体落盘（schedule.yml + 授权码凭据）并取运行命令。
+        res = dialog.run_options
+        assert res is not None, "[launch] 弹窗 accept 但 run_options 为 None"
+        return self._app_service.prepare_run(
+            names, res, confirm_invalid=bool(view["invalid"])
         )
 
     @Slot()
@@ -86,34 +127,8 @@ class LaunchController(QObject):
             open_in_explorer(target["path"])  # noqa: S606 启动脚本本体
         self._toast(f"已启动 {game['display_name']}")
 
-    def _confirm_run(self, enabled_keys: set) -> bool:
-        """运行前校验并确认。Returns: True 继续，False 取消。"""
-        config_data = self._app_service.load_config()
-        enabled_scripts = [
-            s for s in config_data["script_list"] if get_script_name(s) in enabled_keys
-        ]
-        invalid = self._app_service.collect_invalid_scripts(enabled_scripts)
-        if invalid:
-            details = "\n".join(f"· {name}：{msg}" for name, msg in invalid)
-            box = styled_msg_box(
-                None,
-                QMessageBox.Warning,
-                "脚本配置不合法",
-                f"以下脚本配置不合法，运行时会被跳过：\n{details}\n\n是否仍然运行？",
-            )
-            box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
-            box.setDefaultButton(QMessageBox.No)
-            if box.exec() != QMessageBox.Yes:
-                return False
+    def _started(self):
+        self._toast("手动运行：已在独立控制台启动，关闭控制台即取消")
 
-        # 回显 schedule 当前运行选项到确认弹窗（RunOptions 为单一 schema）。
-        options = self._app_service.load_run_options()
-        dialog = RunConfirmDialog(len(enabled_keys), options)
-        if dialog.exec() != QDialog.Accepted:
-            return False
-
-        # 弹窗勾选项的落盘（schedule.yml + 授权码凭据）整体经 service。
-        res = dialog.run_options
-        assert res is not None, "[launch] 弹窗 accept 但 run_options 为 None"
-        self._app_service.apply_run_options(res)
-        return True
+    def _failed_start(self, message: str):
+        self._toast(message)

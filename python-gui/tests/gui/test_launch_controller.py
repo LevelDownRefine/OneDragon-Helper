@@ -1,10 +1,14 @@
 """测试 src/gui/controllers/launch.py：LaunchController 手动运行流程。
 
-验证：立即运行、参数回显与启动失败反馈；每日时间独立于手动运行。
+「启动全部」与 Rust 前端同一协议：run.view（校验回显）→ run.prepare /
+run.saved（独立运行命令，选项经 stdin 交付）→ RunStarter 启动。验证：
+确认流（告警 / 回显 / 选项经 prepare_run 落盘）、无人值守直启、名单失效
+提示与启动失败反馈。
 """
 
 import os
 import unittest
+from dataclasses import asdict
 from unittest import mock
 
 # 在导入 PySide6 之前设置 offscreen 平台插件（CI 无显示器环境）
@@ -13,6 +17,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtWidgets import QApplication, QDialog, QMessageBox
 
 from gui.controllers.launch import LaunchController
+from src.service.chain_service import InvalidRunRequest
 from src.service.schedule import RunOptions
 
 # widget（RunConfirmDialog）需要一个 QApplication 实例；模块级单例，
@@ -21,187 +26,166 @@ if QApplication.instance() is None:
     _APP = QApplication([])
 
 
+def _target(name="demo"):
+    return {
+        "kind": "command",
+        "program": "python",
+        "args": ["run"],
+        "cwd": "cwd",
+        "env": {},
+        "console": True,
+        "input": f'{{"script_names": ["{name}"]}}',
+    }
+
+
 def _make_controller():
-    """构造 LaunchController，注入 mock 依赖及运行选项。"""
+    """构造 LaunchController，注入 mock 依赖与运行视图。"""
     game_list = mock.MagicMock()
     # launchAll 依赖 game_list.games/enabled 计算启用脚本集合，提供一个启用项。
     game_list.games = [{"script_name": "demo"}]
     game_list.enabled = [True]
     task_card = mock.MagicMock()
     service = mock.MagicMock()
-    service.load_config.return_value = {"script_list": []}
-    # launchAll 经 load_run_options 读取运行选项（RunOptions 为单一 schema）。
-    service.load_run_options.return_value = RunOptions()
+    service.run_view.return_value = {
+        "script_names": ["demo"],
+        "invalid": [],
+        "options": _options_dict(),
+    }
     toast = mock.MagicMock()
     ctrl = LaunchController(game_list, task_card, service, toast)
     return ctrl, service, toast
 
 
-class TestLaunchAllImmediate(unittest.TestCase):
-    """launchAll：始终即时运行，并向独立进程传递当前选项。"""
-
-    def _run_launch(self, ctrl):
-        """让真实 launchAll 跑通到 service 层（不 mock service）。"""
-        ctrl._confirm_run = mock.MagicMock(return_value=True)
-        ctrl.launchAll()
-
-    def test_runs_immediately(self):
-        ctrl, service, toast = _make_controller()
-        self._run_launch(ctrl)
-        # 启动经 service.spawn_run（按 schedule.yml 运行选项起独立控制台进程，
-        # 即时不等待），不直连 service.run_chain_once / schedule_run。
-        service.spawn_run.assert_called_once_with({"demo"})
-        service.run_chain_once.assert_not_called()
-        service.schedule_run.assert_not_called()
-
-    def test_spawn_failure_toasts_error(self):
-        """起进程失败（spawn_run 返回 None）：报失败引导看日志，不报成功。"""
-        ctrl, service, toast = _make_controller()
-        service.spawn_run.return_value = None
-        ctrl._confirm_run = mock.MagicMock(return_value=True)
-        ctrl.launchAll()
-        service.spawn_run.assert_called_once_with({"demo"})
-        self.assertTrue(any("启动失败" in c[0][0] for c in toast.call_args_list))
-
-
-class TestConfirmRunDialog(unittest.TestCase):
-    """_confirm_run：不合法脚本告警 + 回显当前运行选项 + 勾选项整体经 service 落盘。
-
-    选项的合并写回与授权码注册已下沉 src.service.schedule（RunOptions 单一 schema），
-    行为由 test_schedule.TestLoadRunOptions / TestApplyRunOptions 覆盖；此处只钉
-    「控制器透传 RunOptions、取消不落盘、回显初始值」三个契约。
-    """
-
-    def _make_ctrl(self, options: RunOptions | None = None):
-        """构造 controller，注入 mock 依赖（load_run_options 可指定回显值）。"""
-        game_list = mock.MagicMock()
-        game_list.games = [{"script_name": "demo"}]
-        game_list.enabled = [True]
-        task_card = mock.MagicMock()
-        service = mock.MagicMock()
-        service.load_config.return_value = {"script_list": []}
-        service.load_run_options.return_value = options or RunOptions()
-        # 避免 collect_invalid_scripts 默认返回 truthy 的 MagicMock，误触发真实
-        # QMessageBox.warning（offscreen 下会阻塞/崩溃）。
-        service.collect_invalid_scripts.return_value = []
-        toast = mock.MagicMock()
-        return LaunchController(game_list, task_card, service, toast), service
-
-    def _patch_run_confirm(self):
-        """patch RunConfirmDialog，返回可控的 dialog mock（exec/run_options）。"""
-        return mock.patch("gui.controllers.launch.RunConfirmDialog")
-
-    def test_cancel_returns_false(self):
-        ctrl, service = self._make_ctrl()
-        with self._patch_run_confirm() as dlg_cls:
-            dlg = dlg_cls.return_value
-            # exec 返回非 Accepted（模拟 cancel/reject）
-            dlg.exec.return_value = QDialog.Rejected
-            out = ctrl._confirm_run({"demo"})
-        self.assertFalse(out)
-        service.apply_run_options.assert_not_called()
-
-    def test_accept_forwards_result_to_service(self):
-        """确认运行：弹窗 run_options（RunOptions）整体透传 service.apply_run_options。"""
-        res = RunOptions(shutdown_enabled=True, shutdown_delay=120)
-        ctrl, service = self._make_ctrl()
-        with self._patch_run_confirm() as dlg_cls:
-            dlg = dlg_cls.return_value
-            dlg.exec.return_value = QDialog.Accepted
-            dlg.run_options = res
-            out = ctrl._confirm_run({"demo"})
-
-        self.assertTrue(out)
-        service.apply_run_options.assert_called_once_with(res)
-
-    def test_accept_echoes_current_options_to_dialog(self):
-        """确认弹窗以 load_run_options 的当前值初始化（含关闭时的延迟数值回显）。"""
-        options = RunOptions(
-            shutdown_enabled=True,
-            shutdown_delay=45,
-        )
-        ctrl, _service = self._make_ctrl(options)
-        with self._patch_run_confirm() as dlg_cls:
-            dlg = dlg_cls.return_value
-            dlg.exec.return_value = QDialog.Rejected
-            ctrl._confirm_run({"demo"})
-        dlg_cls.assert_called_once()
-        self.assertEqual(dlg_cls.call_args.args[0], 1)  # 启用脚本数
-        self.assertIs(dlg_cls.call_args.args[1], options)  # 回显原对象
-
-
-class TestConfirmRunInvalidScripts(unittest.TestCase):
-    """_confirm_run 不合法脚本告警：深色 Yes/No 确认，Yes 继续 / No 取消。"""
-
-    def _make_ctrl(self, invalid):
-        """构造 controller，collect_invalid_scripts 返回指定的不合法脚本列表。"""
-        game_list = mock.MagicMock()
-        game_list.games = [{"script_name": "demo"}]
-        game_list.enabled = [True]
-        task_card = mock.MagicMock()
-        service = mock.MagicMock()
-        service.load_config.return_value = {"script_list": []}
-        service.collect_invalid_scripts.return_value = invalid
-        service.load_run_options.return_value = RunOptions()
-        toast = mock.MagicMock()
-        return LaunchController(game_list, task_card, service, toast), service
-
-    def test_yes_continues(self):
-        """用户点 Yes：仍照常弹确认窗并落盘选项（运行时跳过不合法脚本）。"""
-        ctrl, service = self._make_ctrl([("demo", "exe 不存在")])
-        with (
-            mock.patch("gui.controllers.launch.styled_msg_box") as msg_cls,
-            mock.patch("gui.controllers.launch.RunConfirmDialog") as dlg_cls,
-        ):
-            box = msg_cls.return_value
-            box.exec.return_value = QMessageBox.Yes
-            dlg = dlg_cls.return_value
-            dlg.exec.return_value = QDialog.Accepted
-            out = ctrl._confirm_run({"demo"})
-        self.assertTrue(out)
-        service.apply_run_options.assert_called_once()
-
-    def test_no_cancels(self):
-        """用户点 No：取消整个运行，不弹确认窗、不落盘。"""
-        ctrl, service = self._make_ctrl([("demo", "exe 不存在")])
-        with (
-            mock.patch("gui.controllers.launch.styled_msg_box") as msg_cls,
-            mock.patch("gui.controllers.launch.RunConfirmDialog") as dlg_cls,
-        ):
-            box = msg_cls.return_value
-            box.exec.return_value = QMessageBox.No
-            out = ctrl._confirm_run({"demo"})
-        self.assertFalse(out)
-        dlg_cls.assert_not_called()
-        service.apply_run_options.assert_not_called()
-
-    def test_no_invalid_skips_warning(self):
-        """无不合法脚本：不弹告警，直接进确认窗。"""
-        ctrl, service = self._make_ctrl([])
-        with (
-            mock.patch("gui.controllers.launch.styled_msg_box") as msg_cls,
-            mock.patch("gui.controllers.launch.RunConfirmDialog") as dlg_cls,
-        ):
-            dlg = dlg_cls.return_value
-            dlg.exec.return_value = QDialog.Accepted
-            out = ctrl._confirm_run({"demo"})
-        self.assertTrue(out)
-        msg_cls.assert_not_called()
+def _options_dict():
+    return asdict(RunOptions())
 
 
 class TestLaunchAllUnattended(unittest.TestCase):
-    """launchAll(confirm=False)：跳过运行前确认窗，按上次配置直接启动全部。"""
+    """launchAll(confirm=False)：跳过确认，按上次选项经 saved_run 直启。"""
 
-    def test_unattended_skips_confirm_and_spawns(self):
+    def test_unattended_starts_saved_target(self):
         ctrl, service, toast = _make_controller()
-        # 无人值守：确认窗不应被弹出（不告警、不回显调度配置）。
-        ctrl._confirm_run = mock.MagicMock()
-        ctrl.launchAll(confirm=False)
-        ctrl._confirm_run.assert_not_called()
-        # 仍按上次配置经 service.spawn_run 启动（即时）。
-        service.spawn_run.assert_called_once_with({"demo"})
-        toast.assert_called_once()
-        self.assertIn("手动运行", toast.call_args[0][0])
+        service.saved_run.return_value = _target()
+        with (
+            mock.patch.object(ctrl, "_confirm_and_prepare") as confirm,
+            mock.patch.object(ctrl._starter, "start") as start,
+        ):
+            ctrl.launchAll(confirm=False)
+        confirm.assert_not_called()
+        service.saved_run.assert_called_once_with(["demo"])
+        start.assert_called_once_with(_target())
+        toast.assert_not_called()  # 启动成功回执走 started 信号
+
+    def test_invalid_selection_toasts(self):
+        """名单失效（脚本被移除）→ 提示后不启动。"""
+        ctrl, service, toast = _make_controller()
+        service.saved_run.side_effect = InvalidRunRequest("脚本不存在: demo")
+        with mock.patch.object(ctrl._starter, "start") as start:
+            ctrl.launchAll(confirm=False)
+        start.assert_not_called()
+        toast.assert_called_once_with("脚本不存在: demo")
+
+    def test_empty_selection_toasts(self):
+        ctrl, service, toast = _make_controller()
+        ctrl._game_list.enabled = [False]
+        with mock.patch.object(ctrl._starter, "start") as start:
+            ctrl.launchAll(confirm=False)
+        start.assert_not_called()
+        toast.assert_called_once_with("没有勾选手动运行的脚本")
+
+    def test_starter_failure_toasts(self):
+        """交付失败经 RunStarter.failed 信号回报 → toast。"""
+        ctrl, _service, toast = _make_controller()
+        ctrl._failed_start("运行配置交付超时")
+        toast.assert_called_once_with("运行配置交付超时")
+
+    def test_started_toasts(self):
+        ctrl, _service, toast = _make_controller()
+        ctrl._started()
+        toast.assert_called_once_with("手动运行：已在独立控制台启动，关闭控制台即取消")
+
+
+class TestConfirmAndPrepare(unittest.TestCase):
+    """确认流：run.view 回显 → 弹窗 → 选项经 prepare_run 落盘并取运行命令。"""
+
+    def _ctrl(self, invalid, options=None):
+        ctrl, service, _toast = _make_controller()
+        service.run_view.return_value = {
+            "script_names": ["demo"],
+            "invalid": invalid,
+            "options": asdict(options) if options is not None else _options_dict(),
+        }
+        return ctrl, service
+
+    def _patch_dialog(self):
+        return mock.patch("gui.controllers.launch.RunConfirmDialog")
+
+    def test_cancel_returns_none_without_prepare(self):
+        ctrl, service = self._ctrl([])
+        with self._patch_dialog() as dlg_cls:
+            dlg_cls.return_value.exec.return_value = QDialog.Rejected
+            self.assertIsNone(ctrl._confirm_and_prepare({"demo"}))
+        service.prepare_run.assert_not_called()
+
+    def test_accept_forwards_options_to_prepare_run(self):
+        """确认：弹窗选项整体经 prepare_run 落盘，confirm_invalid 随告警传递。"""
+        res = RunOptions(shutdown_enabled=True, shutdown_delay=120)
+        ctrl, service = self._ctrl([{"name": "demo", "reason": "exe 不存在"}])
+        with (
+            mock.patch("gui.controllers.launch.styled_msg_box") as msg_cls,
+            self._patch_dialog() as dlg_cls,
+        ):
+            msg_cls.return_value.exec.return_value = QMessageBox.Yes
+            dlg = dlg_cls.return_value
+            dlg.exec.return_value = QDialog.Accepted
+            dlg.run_options = res
+            out = ctrl._confirm_and_prepare({"demo"})
+        service.prepare_run.assert_called_once_with(["demo"], res, confirm_invalid=True)
+        self.assertEqual(out, service.prepare_run.return_value)
+
+    def test_invalid_warning_yes_continues(self):
+        """有不合法脚本：先告警，Yes 才进确认弹窗。"""
+        ctrl, _service = self._ctrl([{"name": "demo", "reason": "exe 不存在"}])
+        with (
+            mock.patch("gui.controllers.launch.styled_msg_box") as msg_cls,
+            self._patch_dialog() as dlg_cls,
+        ):
+            msg_cls.return_value.exec.return_value = QMessageBox.Yes
+            dlg_cls.return_value.exec.return_value = QDialog.Rejected
+            ctrl._confirm_and_prepare({"demo"})
+        dlg_cls.assert_called_once()
+
+    def test_invalid_warning_no_cancels(self):
+        ctrl, service = self._ctrl([{"name": "demo", "reason": "exe 不存在"}])
+        with (
+            mock.patch("gui.controllers.launch.styled_msg_box") as msg_cls,
+            self._patch_dialog() as dlg_cls,
+        ):
+            msg_cls.return_value.exec.return_value = QMessageBox.No
+            self.assertIsNone(ctrl._confirm_and_prepare({"demo"}))
+        dlg_cls.assert_not_called()
+        service.prepare_run.assert_not_called()
+
+    def test_no_invalid_skips_warning(self):
+        ctrl, _service = self._ctrl([])
+        with (
+            mock.patch("gui.controllers.launch.styled_msg_box") as msg_cls,
+            self._patch_dialog() as dlg_cls,
+        ):
+            dlg_cls.return_value.exec.return_value = QDialog.Rejected
+            ctrl._confirm_and_prepare({"demo"})
+        msg_cls.assert_not_called()
+
+    def test_accept_echoes_saved_options_to_dialog(self):
+        """确认弹窗以 run_view 的当前值初始化（含关闭时的延迟数值回显）。"""
+        options = RunOptions(shutdown_enabled=True, shutdown_delay=45)
+        ctrl, _service = self._ctrl([], options)
+        with self._patch_dialog() as dlg_cls:
+            dlg_cls.return_value.exec.return_value = QDialog.Rejected
+            ctrl._confirm_and_prepare({"demo"})
+        dlg_cls.assert_called_once()
+        self.assertEqual(dlg_cls.call_args.args[0], 1)  # 启用脚本数
+        self.assertEqual(dlg_cls.call_args.args[1].shutdown_delay, 45)  # 回显
 
 
 if __name__ == "__main__":

@@ -525,7 +525,7 @@ class TestLoadRunOptions(unittest.TestCase):
 
 
 class TestRunLaunchKwargs(unittest.TestCase):
-    """run_launch_kwargs：RunOptions → 调度启动 kwargs，spawn 壳与每日计划共用。"""
+    """run_launch_kwargs：每日计划的 RunOptions → 调度启动参数。"""
 
     def test_defaults_map_to_immediate_clean_run(self):
         self.assertEqual(

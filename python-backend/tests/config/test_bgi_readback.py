@@ -110,17 +110,20 @@ class TestBgiReadback(unittest.TestCase):
         code = textwrap.dedent(
             """
             from unittest.mock import patch
-            from PySide6.QtCore import QUrl, qInstallMessageHandler
-            from PySide6.QtQml import QQmlComponent, QQmlEngine, qmlRegisterSingletonInstance
+            from PySide6.QtCore import QCoreApplication, QEvent, QUrl, qInstallMessageHandler
+            from PySide6.QtQml import (
+                QQmlComponent, QQmlEngine, qmlClearTypeRegistrations, qmlRegisterSingletonInstance,
+            )
             from PySide6.QtWidgets import QApplication
             from src.config.task.daily import Daily
-            from gui.controllers.background import BackgroundController
             from gui.main_window import QmlBridge
             from src.service.app_service import AppService
 
             app = QApplication([])
             messages = []
-            qInstallMessageHandler(lambda kind, context, message: messages.append(message))
+            previous_handler = qInstallMessageHandler(
+                lambda kind, context, message: messages.append(message)
+            )
             scripts = [
                 {"display_name": "其他脚本", "script_path": "other.py"},
                 {"display_name": "原神", "script_path": "BetterGI.exe"},
@@ -136,7 +139,10 @@ class TestBgiReadback(unittest.TestCase):
                 patch.object(AppService, "load_config", return_value={"script_list": scripts}),
                 patch.object(AppService, "get_daily_map", return_value={}),
                 patch("src.service.daily_plan.load_schedule", return_value={}),
-                patch.object(BackgroundController, "resolve_bg", return_value=None),
+                patch.object(AppService, "wallpaper_view", return_value={
+                    "script_name": "", "mode": "gradient", "source": "",
+                    "token": None, "cache": None,
+                }),
                 patch.object(Daily, "_load_daily_config", return_value=native),
                 # 幽境危战的开关在另一份文件：判为无真相，避免读进真实安装目录。
                 patch.object(Daily, "_load_routine_config", return_value=None),
@@ -145,26 +151,43 @@ class TestBgiReadback(unittest.TestCase):
                 qmlRegisterSingletonInstance(QmlBridge, "OneDragonHelper", 1, 0, "Bridge", bridge)
                 engine = QQmlEngine()
                 component = QQmlComponent(engine)
-                component.setData(b'''import QtQuick
-            import OneDragonHelper 1.0
-            Item { property var rows: Bridge.dailyItems }
-            ''', QUrl())
-                root = component.create()
-                assert root is not None, component.errors()
-                assert root.property("rows") == []
-                bridge.selectGame(1)
-                app.processEvents()
-                rows = root.property("rows")
-                assert len(rows) == 4, rows
-                assert rows[0]["task_label"] == "铭记之谷", rows
-                assert rows[3]["name"] == "幽境危战", rows
-                assert [row["can_disable"] for row in rows] == [True, False, False, False], rows
+                root = None
+                try:
+                    component.setData(b'''import QtQuick
+                import OneDragonHelper 1.0
+                Item { property var rows: Bridge.dailyItems }
+                ''', QUrl())
+                    root = component.create()
+                    assert root is not None, component.errors()
+                    assert root.property("rows") == []
+                    bridge.selectGame(1)
+                    app.processEvents()
+                    rows = root.property("rows")
+                    assert len(rows) == 4, rows
+                    assert rows[0]["task_label"] == "铭记之谷", rows
+                    assert rows[3]["name"] == "幽境危战", rows
+                    assert [row["can_disable"] for row in rows] == [True, False, False, False], rows
+                finally:
+                    # Singleton 必须比 QML engine 活得更久，不能依赖解释器退出顺序。
+                    if root is not None:
+                        root.deleteLater()
+                    component.deleteLater()
+                    QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
+                    engine.deleteLater()
+                    QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
+                    qmlClearTypeRegistrations()
+                    qInstallMessageHandler(previous_handler)
                 assert not any("metacall" in m or "<NULL>" in m for m in messages), messages
             """
         )
         result = subprocess.run(
             [sys.executable, "-c", code],
-            env=dict(os.environ, QT_QPA_PLATFORM="offscreen", PYTHONUTF8="1"),
+            env=dict(
+                os.environ,
+                QT_QPA_PLATFORM="offscreen",
+                PYTHONUTF8="1",
+                PYTHONFAULTHANDLER="1",
+            ),
             capture_output=True,
             text=True,
             encoding="utf-8",

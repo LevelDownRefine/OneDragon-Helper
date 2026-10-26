@@ -21,7 +21,6 @@ from src.utils.utils_runner import (
     kill_processes,
     run_chain_command,
     script_invalid_message,
-    spawn_schedule_run,
 )
 from src.utils.utils_weekly import next_target_datetime
 from tests.support.process_sim import SimProcess
@@ -517,55 +516,3 @@ class TestNextTargetDatetime(unittest.TestCase):
     def test_invalid_segment_count(self):
         with self.assertRaises(AssertionError):
             next_target_datetime("08:00:30:00")
-
-
-class TestSpawnScheduleRun(unittest.TestCase):
-    """开发与冻结入口均使用 launcher；时刻经 --schedule-run 传入。"""
-
-    def _capture_command(self, *, enabled_keys, frozen=False, **kwargs):
-        """调用 spawn_schedule_run 并返回实际拼出的命令列表。"""
-        with (
-            mock.patch("subprocess.Popen", return_value=mock.MagicMock()) as popen_mock,
-            mock.patch.object(sys, "frozen", frozen, create=True),
-        ):
-            spawn_schedule_run(enabled_keys, "08:00", **kwargs)
-        return popen_mock.call_args.args[0]
-
-    def test_schedule_command_preserves_entrypoint_and_options(self):
-        cases = (
-            ("named", {"chain_name": "weekend"}, "weekend", ["--close-running"]),
-            (
-                "actions",
-                {"mute": True, "unmute": True, "shutdown_delay": 60},
-                "today",
-                ["--mute", "--unmute", "--close-running", "--shutdown", "60"],
-            ),
-            ("keep_running", {"close_running": False}, "today", []),
-        )
-        for frozen in (False, True):
-            for name, options, chain_name, flags in cases:
-                with self.subTest(frozen=frozen, name=name):
-                    cmd = self._capture_command(
-                        frozen=frozen, enabled_keys={"b", "a", "c"}, **options
-                    )
-                    entry = (
-                        [sys.executable]
-                        if frozen
-                        else [sys.executable, "-m", "gui.launcher"]
-                    )
-                    self.assertEqual(
-                        cmd,
-                        entry
-                        + ["--schedule-run", "08:00", "--name", chain_name]
-                        + flags
-                        + ["--enable", "a,b,c"],
-                    )
-
-    def test_enable_none_raises(self):
-        """enabled_keys 必须显式传入具体集合；None 是契约错误（不再表示『全部』）。"""
-        with self.assertRaises(AssertionError):
-            self._capture_command(frozen=False, enabled_keys=None)
-
-
-if __name__ == "__main__":
-    unittest.main()

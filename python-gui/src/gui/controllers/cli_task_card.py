@@ -63,13 +63,6 @@ class CliTaskCardController(TaskCardController):
         if script_name:
             self._request("script.view", {"script_name": script_name}, "read")
 
-    @property
-    def task_adapted(self) -> bool:
-        """CLI 模式下适配状态来自视图（script.adapted），无本地注册表可查。"""
-        if not self._view or "script" not in self._view:
-            return False  # 尚未取到视图（含空视图缓存）
-        return bool(self._view["script"]["adapted"])
-
     def _write(self, method, **params):
         script_name = self._current["script_name"]
         if script_name:

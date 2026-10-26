@@ -1,9 +1,13 @@
 """链生成、运行与调度编排；外部进程和通知使用替身。"""
 
+import json
 import os
 import subprocess
+import tempfile
 import unittest
+from dataclasses import asdict
 from datetime import datetime
+from pathlib import Path
 from unittest.mock import patch
 
 import src.service.chain_service as chain_service
@@ -70,48 +74,77 @@ class TestBatchRun(unittest.TestCase):
             )
 
 
-class TestSpawnRunFromOptions(unittest.TestCase):
-    """spawn_run_from_options：GUI「启动全部」按 schedule.yml 选项起独立进程。"""
+class TestRunTarget(unittest.TestCase):
+    def test_source_target_uses_headless_and_keeps_names_in_stdin(self):
+        names = ["中文,逗号 & 空格"]
+        options = RunOptions(mute_enabled=True, close_running_enabled=False)
+        with tempfile.TemporaryDirectory() as temporary:
+            for executable in ("python.exe", "pythonw.exe"):
+                with (
+                    self.subTest(executable=executable),
+                    patch("sys.frozen", False, create=True),
+                    patch("sys.executable", str(Path(temporary) / executable)),
+                    patch("src.utils.get_root_dir", return_value=temporary),
+                    patch.dict(os.environ, {}, clear=True),
+                ):
+                    target = chain_service.run_target(names, options)
+                self.assertEqual(target["program"], str(Path(temporary) / "python.exe"))
+                self.assertEqual(target["args"], ["-m", "src.headless", "run"])
+                self.assertEqual(target["cwd"], str(Path(temporary) / "python-backend"))
+                self.assertTrue(target["console"])
+                self.assertEqual(target["env"], {})
+                self.assertEqual(
+                    json.loads(target["input"]),
+                    {"script_names": names, "options": asdict(options)},
+                )
 
-    def test_options_map_to_spawn_kwargs(self):
-        options = RunOptions(
-            mute_enabled=True,
-            unmute_enabled=True,
-            shutdown_enabled=True,
-            shutdown_delay=45,
-            close_running_enabled=False,
-        )
-        with (
-            patch.object(chain_service, "load_run_options", return_value=options),
-            patch.object(chain_service, "spawn_schedule_run") as spawn,
-        ):
-            chain_service.spawn_run_from_options({"demo"})
-        spawn.assert_called_once_with(
-            {"demo"},
-            "now",
-            chain_name="today",
-            mute=True,
-            unmute=True,
-            shutdown_delay=45,
-            close_running=False,
-        )
+    def test_frozen_cli_reuses_its_entry(self):
+        from src.update import CLI_EXE, QT_CLI_EXE
 
-    def test_shutdown_disabled_maps_to_none(self):
-        options = RunOptions(shutdown_enabled=False, shutdown_delay=45)
+        with tempfile.TemporaryDirectory() as temporary:
+            for entry in (CLI_EXE, QT_CLI_EXE):
+                executable = Path(temporary) / entry
+                with (
+                    self.subTest(entry=entry),
+                    patch("sys.frozen", True, create=True),
+                    patch("sys.executable", str(executable)),
+                    patch("src.utils.get_root_dir", return_value=temporary),
+                ):
+                    target = chain_service.run_target(["demo"], RunOptions())
+                self.assertEqual(target["program"], str(executable))
+                self.assertEqual(target["args"], ["run"])
+                self.assertEqual(target["cwd"], temporary)
+
+    def test_frozen_gui_selects_packaged_cli(self):
+        from src.update import APP_EXE, CLI_EXE, QT_CLI_EXE
+
+        for entry in (CLI_EXE, QT_CLI_EXE):
+            with (
+                self.subTest(entry=entry),
+                tempfile.TemporaryDirectory() as temporary,
+                patch("sys.frozen", True, create=True),
+                patch("src.utils.get_root_dir", return_value=temporary),
+                patch("sys.executable", str(Path(temporary) / APP_EXE)),
+            ):
+                executable = Path(temporary) / entry
+                executable.parent.mkdir(parents=True, exist_ok=True)
+                executable.touch()
+                target = chain_service.run_target(["demo"], RunOptions())
+                self.assertEqual(target["program"], str(executable))
+                self.assertEqual(target["args"], ["run"])
+                self.assertEqual(target["cwd"], temporary)
+
+    def test_frozen_gui_without_cli_reports_missing_package(self):
+        from src.update import APP_EXE
+
         with (
-            patch.object(chain_service, "load_run_options", return_value=options),
-            patch.object(chain_service, "spawn_schedule_run") as spawn,
+            tempfile.TemporaryDirectory() as temporary,
+            patch("sys.frozen", True, create=True),
+            patch("src.utils.get_root_dir", return_value=temporary),
+            patch("sys.executable", str(Path(temporary) / APP_EXE)),
+            self.assertRaisesRegex(chain_service.InvalidRunRequest, "独立 CLI"),
         ):
-            chain_service.spawn_run_from_options({"demo"}, chain_name="plan")
-        spawn.assert_called_once_with(
-            {"demo"},
-            "now",
-            chain_name="plan",
-            mute=False,
-            unmute=False,
-            shutdown_delay=None,
-            close_running=True,
-        )
+            chain_service.run_target(["demo"], RunOptions())
 
 
 class TestRunChainOnce(unittest.TestCase):
@@ -306,6 +339,7 @@ class TestScheduleRun(unittest.TestCase):
                 return_value={"rerun": [], "notify": [], "report": "", "entries": []},
             ),
             patch("src.service.chain_service._run_chain_once_impl"),
+            patch("src.service.schedule.build_post_run_pipeline", return_value=[]),
             patch("src.service.schedule.shutdown_sys"),
         ):
             chain_service.schedule_run({"demo"}, "now")

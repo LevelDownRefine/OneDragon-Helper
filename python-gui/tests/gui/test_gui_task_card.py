@@ -41,9 +41,9 @@ def _weekly(name, options=None, task=None, start_day=None):
     return {"name": name, "options": options, "task": task, "start_day": start_day}
 
 
-def _view(dailies=(), weeklies=()):
+def _view(dailies=(), weeklies=(), adapted=False):
     return {
-        "script": {"script_name": "demo", "display_name": "demo"},
+        "script": {"script_name": "demo", "display_name": "demo", "adapted": adapted},
         "dailies": list(dailies),
         "weeklies": list(weeklies),
     }
@@ -53,7 +53,6 @@ def _make_controller(script_name="March7th-Launcher", display_name="崩铁", vie
     games = [{"script_name": script_name, "display_name": display_name}]
     service = MagicMock()
     service.script_view.return_value = view if view is not None else _view()
-    service.is_adapted.return_value = False
     return TaskCardController(_FakeGameList(games), service, MagicMock())
 
 
@@ -537,9 +536,7 @@ class TestEmptyCurrentSentinel(unittest.TestCase):
     """config 删空（current_game None）时回退哨兵空项：各 QML 属性安全求值。"""
 
     def test_properties_degrade_without_raising(self):
-        service = MagicMock()
-        service.is_adapted.return_value = False
-        ctrl = TaskCardController(_EmptyGameList(), service, MagicMock())
+        ctrl = TaskCardController(_EmptyGameList(), MagicMock(), MagicMock())
         self.assertIs(ctrl._current, task_card_mod._EMPTY_GAME)
         self.assertEqual(ctrl.task_title, "")
         self.assertFalse(ctrl.task_adapted)

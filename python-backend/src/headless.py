@@ -6,7 +6,7 @@ import logging
 import os
 import sys
 from contextlib import contextmanager, nullcontext, redirect_stderr, redirect_stdout
-from dataclasses import asdict, fields
+from dataclasses import fields
 from functools import wraps
 from pathlib import Path
 
@@ -40,68 +40,18 @@ def _parse_json(payload: str):
 
 def _parse_run_options(values: dict, *, require_shutdown_ui: bool = True):
     """将完整 JSON 表单转换为 RunOptions，检查类型、范围和前端能力。"""
-    from src.service.schedule import RunOptions
-    from src.utils.utils_shutdown import shutdown_ui_supported
+    from src.service.schedule import RunOptions, validate_run_options
 
     if not isinstance(values, dict) or set(values) != {
         field.name for field in fields(RunOptions)
     }:
         raise InvalidParams("运行选项字段不完整或包含未知字段")
-    for key, default in asdict(RunOptions()).items():
-        assert key in values
-        if type(values[key]) is not type(default):
-            raise InvalidParams(f"运行选项 {key} 类型无效")
-    options = RunOptions(
-        **{
-            key: value.strip() if isinstance(value, str) else value
-            for key, value in values.items()
-        }
-    )
-    if not 0 <= options.shutdown_delay <= 86400:
-        raise InvalidParams("关机延迟须为 0～86400 秒")
-    if require_shutdown_ui and options.shutdown_enabled and not shutdown_ui_supported():
-        raise InvalidParams("关机确认入口不可用，请关闭自动关机或重新启动前端")
-    if options.smtp_port and (
-        not options.smtp_port.isdecimal() or not 1 <= int(options.smtp_port) <= 65535
-    ):
-        raise InvalidParams("SMTP 端口须为 1～65535")
-    if options.auth_code and not options.email:
-        raise InvalidParams("填写授权码时请同时填写邮箱")
-    return options
-
-
-def _run_target(script_names: list[str], options) -> dict:
-    """构造独立 CLI 运行命令，脚本名单和选项只经 stdin 传递。"""
-    from src.utils import get_root_dir
-    from src.utils.utils_shutdown import SHUTDOWN_UI_ARGS_ENV, SHUTDOWN_UI_ENV
-
-    args = ["run"]
-    if not getattr(sys, "frozen", False):
-        args = ["-m", "src.headless", *args]
-    return {
-        "kind": "command",
-        "program": sys.executable,
-        "args": args,
-        "cwd": (
-            get_root_dir()
-            if getattr(sys, "frozen", False)
-            else os.path.join(get_root_dir(), "python-backend")
-        ),
-        "env": (
-            {
-                key: os.environ[key]
-                for key in (SHUTDOWN_UI_ENV, SHUTDOWN_UI_ARGS_ENV)
-                if key in os.environ
-            }
-            if SHUTDOWN_UI_ENV in os.environ
-            else {}
-        ),
-        "console": True,
-        "input": json.dumps(
-            {"script_names": script_names, "options": asdict(options)},
-            ensure_ascii=False,
-        ),
-    }
+    try:
+        return validate_run_options(
+            RunOptions(**values), require_shutdown_ui=require_shutdown_ui
+        )
+    except ValueError as exc:
+        raise InvalidParams(str(exc)) from exc
 
 
 def _daily_task():
@@ -186,14 +136,12 @@ class HeadlessApi:
     def prepare_run(self, script_names, options, confirm_invalid):
         if type(confirm_invalid) is not bool:
             raise InvalidParams("运行确认格式无效")
-        saved = self.service.prepare_run(
+        return self.service.prepare_run(
             script_names, _parse_run_options(options), confirm_invalid
         )
-        return _run_target(script_names, saved)
 
     def saved_run(self, script_names):
-        saved = self.service.saved_run(script_names)
-        return _run_target(script_names, _parse_run_options(asdict(saved)))
+        return self.service.saved_run(script_names)
 
     def plan_view(self):
         from src.utils.utils_shutdown import shutdown_ui_supported

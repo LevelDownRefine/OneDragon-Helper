@@ -1,24 +1,28 @@
-"""测试 src/gui/controllers/background.py：自定义壁纸缓存与背景解析。
+"""测试 src/gui/controllers/background.py：壁纸视图驱动的背景与缓存。
 
-覆盖 _build_wallpaper_cache（大图压缩 / 小图跳过 / 损坏回退，调用方已保证是图像）、
-_wallpaper_for（定位源 + 图/视频分类：视频直接返回源、图像委托缓存）与 resolve_bg 的优先级，
-及 open_wallpaper 选视频不预压缓存。
+数据源为 AppService.wallpaper_view（与 Rust 前端同一视图）：用视图替身驱动，
+验证模式分发（视频/图片/渐变）、缓存策略（小图跳过、大图压缩写回 token 通道）、
+视频首帧预览与错误回退；缓存内容经回写参数（base64 JPEG）解码验证。
 """
 
+import base64
 import os
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 # 在导入 PySide6 之前设置 offscreen 平台插件（CI 无显示器环境）
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from PySide6.QtCore import QUrl
 from PySide6.QtGui import QColor, QImage
 from PySide6.QtWidgets import QApplication
 
 import gui.controllers.background as bgmod
-from gui.controllers.background import WALLPAPER_MAX_SIDE, BackgroundController
-from src.utils import utils_wallpaper as wallpaper
+from gui.controllers.background import BackgroundController
+from src.service.app_service import AppService
+from src.utils.utils_wallpaper import InvalidWallpaper
 
 
 def _make_image(path: str, w: int, h: int, color: str = "red") -> str:
@@ -29,338 +33,311 @@ def _make_image(path: str, w: int, h: int, color: str = "red") -> str:
     return path
 
 
-def _wire_cache_service(test, ctrl, tmp_dir):
-    """把 mock service 的缓存三接口接到真实后端实现（目录隔离到 tmp_dir）。
-
-    缓存路径/新鲜度/落盘已归 utils_wallpaper；控制器只持 service 引用，
-    故用真实后端函数驱动 mock，保证「缓存目录由 wallpaper.json 落点推导」这一契约也被测到。
-    """
-    test.enterContext(
-        patch(
-            "src.utils.utils_wallpaper.get_wallpaper_json_path_under_root",
-            return_value=os.path.join(tmp_dir, "wallpaper.json"),
-        )
-    )
-    ctrl._app_service.wallpaper_cache_path.side_effect = wallpaper.wallpaper_cache_path
-    ctrl._app_service.wallpaper_cache_ready.side_effect = (
-        lambda src_path, name, **kwargs: wallpaper.wallpaper_cache_ready(
-            src_path, name, **kwargs
-        )
-    )
-    ctrl._app_service.save_wallpaper_cache_bytes.side_effect = (
-        wallpaper.save_wallpaper_cache_bytes
-    )
+def _view(script_name="s", mode="image", source="", token=None, cache=None):
+    return {
+        "script_name": script_name,
+        "display_name": "D",
+        "mode": mode,
+        "source": source,
+        "custom_path": None,
+        "token": token,
+        "cache": cache,
+    }
 
 
-class TestWallpaperCache(unittest.TestCase):
-    """_build_wallpaper_cache：压缩 / 跳过 / 回退。"""
+def _make_ctrl(view=None):
+    """构造控制器，service 的壁纸三接口接 mock（视图按用例注入）。"""
+    ctrl = BackgroundController(
+        game_list=MagicMock(),
+        app_service=MagicMock(),
+        toast=MagicMock(),
+    )
+    if view is not None:
+        ctrl._app_service.wallpaper_view.return_value = view
+    return ctrl
+
+
+class TestApplyModes(unittest.TestCase):
+    """apply_current：按视图模式分发（视频/图片/渐变）。"""
 
     def setUp(self):
-        self._tmp = self.enterContext(tempfile.TemporaryDirectory())
-        self._cache_dir = os.path.join(self._tmp, "wallpaper_cache")
-        self._img_dir = os.path.join(self._tmp, "imgs")
-        os.makedirs(self._img_dir)
         self._app = QApplication.instance() or QApplication([])
-        self.ctrl = BackgroundController(
-            game_list=MagicMock(),
-            app_service=MagicMock(),
-            toast=MagicMock(),
-        )
-        _wire_cache_service(self, self.ctrl, self._tmp)
+        self.tmp = self.enterContext(tempfile.TemporaryDirectory())
+        self.game = {"script_name": "s", "color": "#123456", "char": "游"}
 
-    def test_downscales_large_image(self):
-        """大图应压缩到最长边 <= 上限，且缓存为有效 JPG。"""
-        big = _make_image(os.path.join(self._img_dir, "big.png"), 3000, 2000)
-        cache = self.ctrl._build_wallpaper_cache(big, "s1")
-        self.assertIsNotNone(cache)
-        out = QImage(cache)
+    def test_gradient_view_uses_gradient(self):
+        ctrl = _make_ctrl(_view(mode="gradient"))
+        ctrl.apply_current(self.game)
+        self.assertEqual(ctrl.background_mode, "gradient")
+        self.assertEqual(ctrl.background_url, "")
+        self.assertEqual(ctrl.gradient_color, "#123456")
+
+    def test_missing_script_shrinks_to_gradient(self):
+        ctrl = _make_ctrl()
+        ctrl._app_service.wallpaper_view.side_effect = InvalidWallpaper("脚本不存在")
+        ctrl.apply_current(self.game)
+        self.assertEqual(ctrl.background_mode, "gradient")
+
+    def test_video_view_sets_source_and_existing_preview(self):
+        preview = _make_image(os.path.join(self.tmp, "v.jpg"), 320, 180)
+        ctrl = _make_ctrl(
+            _view(mode="video", source="C:/clip.mp4", token="t", cache=preview)
+        )
+        ctrl.apply_current(self.game)
+        self.assertEqual(ctrl.background_mode, "video")
+        self.assertTrue(ctrl.background_url.endswith("clip.mp4"))
+        self.assertEqual(
+            ctrl.background_preview_url, QUrl.fromLocalFile(preview).toString()
+        )
+
+    def test_video_view_without_cache_keeps_placeholder(self):
+        ctrl = _make_ctrl(_view(mode="video", source="C:/clip.mp4", token="t"))
+        ctrl.apply_current(self.game)
+        self.assertEqual(ctrl.background_mode, "video")
+        self.assertEqual(ctrl.background_preview_url, "")
+
+    def test_image_view_prefers_ready_cache(self):
+        """视图 cache 已就绪（后端仅在文件存在时给出）→ 直接使用，不重编码。"""
+        cache = _make_image(os.path.join(self.tmp, "c.jpg"), 100, 100)
+        ctrl = _make_ctrl(
+            _view(
+                source=_make_image(os.path.join(self.tmp, "s.png"), 3000, 2000),
+                token="t",
+                cache=cache,
+            )
+        )
+        ctrl.apply_current(self.game)
+        self.assertEqual(ctrl.background_mode, "image")
+        self.assertEqual(ctrl.background_url, QUrl.fromLocalFile(cache).toString())
+        ctrl._app_service.save_wallpaper_cache.assert_not_called()
+
+    def test_image_view_small_source_skips_cache(self):
+        small = _make_image(os.path.join(self.tmp, "small.png"), 800, 600)
+        ctrl = _make_ctrl(_view(source=small, token="t"))
+        ctrl.apply_current(self.game)
+        self.assertEqual(ctrl.background_mode, "image")
+        self.assertEqual(ctrl.background_url, QUrl.fromLocalFile(small).toString())
+        ctrl._app_service.save_wallpaper_cache.assert_not_called()
+
+    def test_missing_source_falls_back_to_gradient(self):
+        ctrl = _make_ctrl(
+            _view(mode="gradient", source=os.path.join(self.tmp, "gone.png"))
+        )
+        ctrl.apply_current(self.game)
+        self.assertEqual(ctrl.background_mode, "gradient")
+
+    def test_version_increments_on_apply(self):
+        """换壁纸 / 切脚本都走 apply_current：版本号自增，使 QML source 身份变化触发重载。"""
+        ctrl = _make_ctrl(_view(mode="gradient"))
+        v0 = ctrl.background_version
+        ctrl.apply_current(self.game)
+        v1 = ctrl.background_version
+        ctrl.apply_current(self.game)
+        v2 = ctrl.background_version
+        self.assertEqual((v1, v2), (v0 + 1, v0 + 2))
+
+
+class TestImageCache(unittest.TestCase):
+    """_build_image_cache：大图压缩 / 小图跳过 / 损坏回退 / token 写回。"""
+
+    def setUp(self):
+        self._app = QApplication.instance() or QApplication([])
+        self.tmp = self.enterContext(tempfile.TemporaryDirectory())
+        self.ctrl = _make_ctrl()
+        # 写盘通道按 token 校验后成功：缓存内容经回写参数验证。
+        self.ctrl._app_service.save_wallpaper_cache.return_value = True
+        self.ctrl._app_service.wallpaper_view.return_value = _view(
+            token="tok", cache="C:/cache/expected.jpg"
+        )
+
+    def _view(self, path, cache=None):
+        return _view(source=path, token="tok", cache=cache)
+
+    def test_downscales_large_image_and_writes_via_token(self):
+        big = _make_image(os.path.join(self.tmp, "big.png"), 3000, 2000)
+        got = self.ctrl._build_image_cache(self._view(big))
+        self.assertEqual(got, "C:/cache/expected.jpg")
+        args = self.ctrl._app_service.save_wallpaper_cache.call_args
+        self.assertEqual(args.args[:2], ("s", "tok"))
+        jpeg = base64.b64decode(args.args[2])
+        self.assertTrue(jpeg.startswith(b"\xff\xd8"))
+        out = QImage.fromData(jpeg)
         self.assertFalse(out.isNull())
-        self.assertLessEqual(max(out.width(), out.height()), WALLPAPER_MAX_SIDE)
         # 比例保持：3000x2000 -> 1920x1280
         self.assertEqual((out.width(), out.height()), (1920, 1280))
 
-    def test_skips_small_image(self):
-        """已小于等于上限的图不缓存，返回 None。"""
-        small = _make_image(os.path.join(self._img_dir, "small.png"), 800, 600)
-        self.assertIsNone(self.ctrl._build_wallpaper_cache(small, "s2"))
-        self.assertFalse(os.path.isfile(os.path.join(self._cache_dir, "s2.jpg")))
+    def test_skips_small_image_without_write(self):
+        small = _make_image(os.path.join(self.tmp, "small.png"), 640, 360)
+        self.assertIsNone(self.ctrl._build_image_cache(self._view(small)))
+        self.ctrl._app_service.save_wallpaper_cache.assert_not_called()
 
     def test_small_image_skips_pixel_decode(self):
         """小图仅凭头部尺寸判定即跳过缓存，不触发整图 QImage 解码（省内存）。"""
-        small = _make_image(os.path.join(self._img_dir, "small2.png"), 640, 360)
+        small = _make_image(os.path.join(self.tmp, "small2.png"), 640, 360)
         with patch.object(bgmod, "QImage") as mock_img:
-            result = self.ctrl._build_wallpaper_cache(small, "s5")
+            result = self.ctrl._build_image_cache(self._view(small))
         self.assertIsNone(result)
         mock_img.assert_not_called()
 
     def test_corrupt_image_warns_and_returns_none(self):
-        """损坏图解码失败：记日志并回退 None（不崩溃）。"""
-        corrupt = os.path.join(self._img_dir, "bad.png")
+        corrupt = os.path.join(self.tmp, "bad.png")
         with open(corrupt, "wb") as f:
             f.write(b"not an image")
-        with self.assertLogs(bgmod.__name__, level="WARNING") as cm:
-            result = self.ctrl._build_wallpaper_cache(corrupt, "s4")
-        self.assertIsNone(result)
-        self.assertTrue(any("解码失败" in r.getMessage() for r in cm.records))
+        with self.assertLogs(bgmod.__name__, level="WARNING"):
+            self.assertIsNone(self.ctrl._build_image_cache(self._view(corrupt)))
 
-    def test_force_rebuild_overrides_stale_cache(self):
-        """换壁纸（force=True）：即便新源 mtime 比旧缓存更旧，也重建为最新源内容。
-
-        这正是「改了壁纸却没变化」的根因——旧缓存被 mtime 误判为较新时，非 force
-        路径会直接返回旧缓存（旧壁纸）。force=True 先删旧缓存再从新源重建。
-        """
-        a = _make_image(os.path.join(self._img_dir, "a.png"), 3000, 2000, "red")
-        cache = self.ctrl._build_wallpaper_cache(a, "s1")
-        self.assertIsNotNone(cache)
-        # 新源 B：不同颜色；mtime 设为比旧缓存更旧，使非 force 路径误判旧缓存较新
-        b = _make_image(os.path.join(self._img_dir, "b.png"), 3000, 2000, "blue")
-        past = os.path.getmtime(cache) - 1000
-        os.utime(b, (past, past))
-        rebuilt = self.ctrl._build_wallpaper_cache(b, "s1", force=True)
-        self.assertEqual(rebuilt, cache)
-        out = QImage(cache)
-        self.assertFalse(out.isNull())
-        # 缓存内容应反映新源（整体蓝），而非旧的红色
-        self.assertLess(out.pixelColor(out.width() // 2, out.height() // 2).red(), 50)
+    def test_rejected_write_returns_none(self):
+        """后端拒收（源已变化 token 失配）→ 不使用缓存落点，回退原图。"""
+        big = _make_image(os.path.join(self.tmp, "big.png"), 3000, 2000)
+        self.ctrl._app_service.save_wallpaper_cache.return_value = False
+        with self.assertLogs(bgmod.__name__, level="WARNING"):
+            self.assertIsNone(self.ctrl._build_image_cache(self._view(big)))
 
 
-class TestWallpaperFor(unittest.TestCase):
-    """_wallpaper_for：优先缓存 / 过期重建 / 源图缺失回退。"""
+class TestWallpaperServiceIntegration(unittest.TestCase):
+    """真实 service 视图只返回已存在缓存，首次生成须重新取数。"""
 
     def setUp(self):
-        self._tmp = self.enterContext(tempfile.TemporaryDirectory())
-        self._cache_dir = os.path.join(self._tmp, "wallpaper_cache")
-        self._img_dir = os.path.join(self._tmp, "imgs")
-        os.makedirs(self._img_dir)
-        self._app = QApplication.instance() or QApplication([])
-        self.ctrl = BackgroundController(
-            game_list=MagicMock(),
-            app_service=MagicMock(),
-            toast=MagicMock(),
-        )
-        _wire_cache_service(self, self.ctrl, self._tmp)
-
-    def test_prefers_fresh_cache(self):
-        """缓存存在且较新：直接返回缓存路径，不重新生成。"""
-        big = _make_image(os.path.join(self._img_dir, "big.png"), 3000, 2000)
-        cache = self.ctrl._build_wallpaper_cache(big, "s1")
-        self.assertIsNotNone(cache)
-        with patch.object(self.ctrl, "read_wallpapers", return_value={"s1": big}):
-            returned = self.ctrl._wallpaper_for({"script_name": "s1"})
-        self.assertEqual(returned, os.path.join(self._cache_dir, "s1.jpg"))
-
-    def test_rebuilds_when_cache_stale(self):
-        """源图比缓存新：重建缓存并返回缓存路径。"""
-        big = _make_image(os.path.join(self._img_dir, "big.png"), 3000, 2000)
-        cache = self.ctrl._build_wallpaper_cache(big, "s1")
-        self.assertIsNotNone(cache)
-        # 把源图 mtime 改到未来，使缓存变旧
-        future = os.path.getmtime(big) + 10
-        os.utime(big, (future, future))
-        with patch.object(self.ctrl, "read_wallpapers", return_value={"s1": big}):
-            returned = self.ctrl._wallpaper_for({"script_name": "s1"})
-        self.assertEqual(returned, os.path.join(self._cache_dir, "s1.jpg"))
-
-    def test_missing_src_returns_src(self):
-        """源图缺失：返回源路径（交 resolve_bg 的 isfile 守卫走渐变兜底）。"""
-        missing = os.path.join(self._img_dir, "gone.png")
-        with patch.object(self.ctrl, "read_wallpapers", return_value={"s9": missing}):
-            returned = self.ctrl._wallpaper_for({"script_name": "s9"})
-        self.assertEqual(returned, missing)
-
-    def test_video_returns_src_early(self):
-        """视频壁纸：不走缓存逻辑，直接返回源路径且不生成缓存文件。"""
-        video = os.path.join(self._img_dir, "clip.mp4")
-        with open(video, "w", encoding="utf-8") as f:
-            f.write("dummy")
-        with patch.object(self.ctrl, "read_wallpapers", return_value={"s1": video}):
-            returned = self.ctrl._wallpaper_for({"script_name": "s1"})
-        self.assertEqual(returned, video)
-        self.assertFalse(
-            os.path.isfile(os.path.join(self._cache_dir, "s1.jpg")),
-            "视频壁纸不应生成缓存文件",
-        )
-
-
-class TestOpenWallpaper(unittest.TestCase):
-    """open_wallpaper：选图/视频的入口分类（视频不预压缓存）。"""
-
-    def setUp(self):
-        self._tmp = self.enterContext(tempfile.TemporaryDirectory())
-        self._img_dir = os.path.join(self._tmp, "imgs")
-        os.makedirs(self._img_dir)
-        self._app = QApplication.instance() or QApplication([])
-        self.ctrl = BackgroundController(
-            game_list=MagicMock(),
-            app_service=MagicMock(),
-            toast=MagicMock(),
-        )
-
-    def _video(self) -> str:
-        p = os.path.join(self._img_dir, "clip.mp4")
-        with open(p, "w", encoding="utf-8") as f:
-            f.write("dummy")
-        return p
-
-    def test_skips_cache_for_video(self):
-        """选视频：不预压缓存，壁纸表写入视频路径。"""
-        video = self._video()
-        with (
+        self.app = QApplication.instance() or QApplication([])
+        self.root = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        self.enterContext(
             patch(
-                "gui.dialogs.QFileDialog.getOpenFileName",
-                return_value=(video, ""),
-            ),
-            patch.object(self.ctrl, "read_wallpapers", return_value={}),
-            patch.object(self.ctrl, "write_wallpapers") as mock_write,
-            patch.object(self.ctrl, "_build_wallpaper_cache") as mock_build,
-            patch.object(self.ctrl, "apply_current"),
-        ):
-            self.ctrl.open_wallpaper()
-        mock_build.assert_not_called()
-        self.assertEqual(list(mock_write.call_args[0][0].values()), [video])
-
-    def test_builds_cache_with_force_for_image(self):
-        """选图片：以 force=True 预压缓存，确保换图后旧缓存被覆盖。"""
-        img = _make_image(os.path.join(self._img_dir, "pic.png"), 3000, 2000)
-        with (
+                "src.utils.utils_wallpaper.get_wallpaper_json_path_under_root",
+                return_value=str(self.root / "wallpaper.json"),
+            )
+        )
+        self.enterContext(
             patch(
-                "gui.dialogs.QFileDialog.getOpenFileName",
-                return_value=(img, ""),
-            ),
-            patch.object(self.ctrl, "read_wallpapers", return_value={}),
-            patch.object(self.ctrl, "write_wallpapers"),
-            patch.object(self.ctrl, "apply_current"),
-            patch.object(self.ctrl, "_build_wallpaper_cache") as mock_build,
+                "src.utils.utils_wallpaper.get_script",
+                return_value={"display_name": "测试"},
+            )
+        )
+        self.service = AppService()
+        self.ctrl = BackgroundController(MagicMock(), self.service, MagicMock())
+        self.game = {"script_name": "s", "color": "#123456", "char": "游"}
+        self.source = _make_image(str(self.root / "large.png"), 3000, 2000)
+        self.service.set_wallpaper("s", self.source)
+
+    def test_first_large_image_creates_and_reuses_cache(self):
+        self.assertIsNone(self.service.wallpaper_view("s")["cache"])
+        self.ctrl.apply_current(self.game)
+        cache = self.service.wallpaper_view("s")["cache"]
+        self.assertEqual(self.ctrl.background_url, QUrl.fromLocalFile(cache).toString())
+        image = QImage(cache)
+        self.assertEqual((image.width(), image.height()), (1920, 1280))
+        with patch.object(self.service, "save_wallpaper_cache") as save:
+            self.ctrl.apply_current(self.game)
+        save.assert_not_called()
+
+    def test_source_replaced_after_cache_save_does_not_show_stale_cache(self):
+        save = self.service.save_wallpaper_cache
+
+        def save_then_replace(*args):
+            result = save(*args)
+            _make_image(self.source, 640, 360, "blue")
+            return result
+
+        with patch.object(
+            self.service, "save_wallpaper_cache", side_effect=save_then_replace
         ):
-            self.ctrl.open_wallpaper()
-        mock_build.assert_called_once_with(
-            img, self.ctrl._game_list.current_game["script_name"], force=True
+            self.ctrl.apply_current(self.game)
+        self.assertIsNone(self.service.wallpaper_view("s")["cache"])
+        self.assertEqual(
+            self.ctrl.background_url, QUrl.fromLocalFile(self.source).toString()
         )
 
-    def test_empty_game_list_toasts_and_skips(self):
-        """config 删空（current_game None）：只 toast，不弹选框、不写壁纸表。"""
-        self.ctrl._game_list = MagicMock()
-        self.ctrl._game_list.current_game = None
+    def test_rejected_first_cache_write_falls_back_to_source(self):
         with (
-            patch("gui.dialogs.QFileDialog.getOpenFileName") as mock_dialog,
-            patch.object(self.ctrl, "write_wallpapers") as mock_write,
-            patch.object(self.ctrl, "apply_current"),
+            patch.object(self.service, "save_wallpaper_cache", return_value=False),
+            self.assertLogs(bgmod.__name__, level="WARNING"),
         ):
-            self.ctrl.open_wallpaper()
-        mock_dialog.assert_not_called()
-        mock_write.assert_not_called()
-        self.ctrl._toast.assert_called_once_with("尚无脚本")
-
-
-class TestScriptBackground(unittest.TestCase):
-    """_script_background：读脚本声明的背景图（相对脚本根），isfile 守卫。"""
-
-    def setUp(self):
-        self._app = QApplication.instance() or QApplication([])
-        self.ctrl = BackgroundController(
-            game_list=MagicMock(),
-            app_service=MagicMock(),
-            toast=MagicMock(),
+            self.ctrl.apply_current(self.game)
+        self.assertEqual(
+            self.ctrl.background_url, QUrl.fromLocalFile(self.source).toString()
         )
-        self.ctrl._app_service.get_background_rel_path.return_value = ""
 
-    def test_declared_and_present(self):
-        # 声明且文件存在：返回脚本根拼接的绝对路径
-        self.ctrl._app_service.get_background_rel_path.return_value = "assets/x.webp"
-        with (
-            patch.object(bgmod, "get_script_root_dir", return_value="/script/root"),
-            patch.object(bgmod.os.path, "isfile", return_value=True),
-        ):
-            self.assertEqual(
-                self.ctrl._script_background("ok-ww"),
-                os.path.join("/script/root", "assets/x.webp"),
-            )
+    def test_corrupt_cache_is_rebuilt(self):
+        self.ctrl.apply_current(self.game)
+        cache = self.service.wallpaper_view("s")["cache"]
+        Path(cache).write_bytes(b"broken jpeg")
+        self.ctrl.apply_current(self.game)
+        self.assertFalse(QImage(cache).isNull())
 
-    def test_declared_but_missing(self):
-        # 声明但文件缺失：返回空字符串（使用渐变背景）
-        self.ctrl._app_service.get_background_rel_path.return_value = "assets/x.webp"
-        with (
-            patch.object(bgmod, "get_script_root_dir", return_value="/script/root"),
-            patch.object(bgmod.os.path, "isfile", return_value=False),
-        ):
-            self.assertEqual(self.ctrl._script_background("ok-ww"), "")
-
-    def test_not_declared(self):
-        # 子类未声明 background（如原神）：返回空字符串
-        self.assertEqual(self.ctrl._script_background("BetterGI"), "")
-
-    def test_no_background_uses_gradient(self):
-        with (
-            patch.object(self.ctrl, "read_wallpapers", return_value={}),
-            patch.object(self.ctrl, "_script_background", return_value=""),
-        ):
-            self.ctrl.apply_current(
-                {"script_name": "demo", "color": "#123456", "char": "D"}
-            )
+    def test_missing_source_uses_service_gradient(self):
+        Path(self.source).unlink()
+        self.ctrl.apply_current(self.game)
         self.assertEqual(self.ctrl.background_mode, "gradient")
         self.assertEqual(self.ctrl.background_url, "")
 
-    def test_unadapted_script(self):
-        # 未适配脚本：返回空字符串（get_background_rel_path 返回 ""）
-        self.assertEqual(self.ctrl._script_background("不存在"), "")
 
-
-class TestResolveBg(unittest.TestCase):
-    """resolve_bg：自定义壁纸缓存优先于原图，缺失文件安全回退。"""
+class TestOpenWallpaper(unittest.TestCase):
+    """open_wallpaper：选图后经 service.set_wallpaper 落壁纸表并刷新。"""
 
     def setUp(self):
-        self._tmp = self.enterContext(tempfile.TemporaryDirectory())
-        self._cache_dir = os.path.join(self._tmp, "wallpaper_cache")
-        self._img_dir = os.path.join(self._tmp, "imgs")
-        os.makedirs(self._img_dir)
         self._app = QApplication.instance() or QApplication([])
-        self.ctrl = BackgroundController(
-            game_list=MagicMock(),
-            app_service=MagicMock(),
-            toast=MagicMock(),
-        )
-        _wire_cache_service(self, self.ctrl, self._tmp)
 
-    def test_custom_wallpaper_returns_cache(self):
-        """有自定义大图壁纸：resolve_bg 优先返回缓存（而非原始大图路径）。"""
-        big = _make_image(os.path.join(self._img_dir, "big.png"), 3000, 2000)
-        with patch.object(self.ctrl, "read_wallpapers", return_value={"game_x": big}):
-            bg = self.ctrl.resolve_bg({"script_name": "game_x"})
-        self.assertEqual(bg, os.path.join(self._cache_dir, "game_x.jpg"))
-
-    def test_missing_custom_falls_back_to_none(self):
-        """自定义壁纸源图已删除：resolve_bg 返回 None（渐变兜底），不抛异常。"""
-        missing = os.path.join(self._img_dir, "gone.png")
-        with patch.object(
-            self.ctrl, "read_wallpapers", return_value={"game_x": missing}
+    def test_pick_writes_through_service_and_refreshes(self):
+        img = "D:/pic.png"
+        ctrl = _make_ctrl(_view(mode="gradient"))
+        ctrl._game_list.current_game = {
+            "script_name": "ok-ww",
+            "display_name": "鸣潮",
+            "color": "#111",
+            "char": "鸣",
+        }
+        with (
+            patch("gui.dialogs.QFileDialog.getOpenFileName", return_value=(img, "")),
+            patch.object(ctrl, "apply_current") as apply,
         ):
-            self.assertIsNone(self.ctrl.resolve_bg({"script_name": "game_x"}))
+            ctrl.open_wallpaper()
+        ctrl._app_service.set_wallpaper.assert_called_once_with("ok-ww", img)
+        apply.assert_called_once()
+
+    def test_cancelled_pick_does_not_write(self):
+        ctrl = _make_ctrl()
+        ctrl._game_list.current_game = {"script_name": "ok-ww", "display_name": "鸣潮"}
+        with patch("gui.dialogs.QFileDialog.getOpenFileName", return_value=("", "")):
+            ctrl.open_wallpaper()
+        ctrl._app_service.set_wallpaper.assert_not_called()
+
+    def test_empty_game_list_toasts_and_skips(self):
+        """config 删空（current_game None）：只 toast，不弹选框、不写壁纸表。"""
+        ctrl = _make_ctrl()
+        ctrl._game_list.current_game = None
+        with patch("gui.dialogs.QFileDialog.getOpenFileName") as mock_dialog:
+            ctrl.open_wallpaper()
+        mock_dialog.assert_not_called()
+        ctrl._app_service.set_wallpaper.assert_not_called()
+        ctrl._toast.assert_called_once_with("尚无脚本")
 
 
-class TestApplyCurrent(unittest.TestCase):
-    """apply_current：每次刷新自增 background_version，供 QML 强制重载图片。"""
+class TestVideoFallback(unittest.TestCase):
+    """videoError：解码失败保留预览图，无缓存回退渐变。"""
 
     def setUp(self):
         self._app = QApplication.instance() or QApplication([])
-        self.ctrl = BackgroundController(
-            game_list=MagicMock(),
-            app_service=MagicMock(),
-            toast=MagicMock(),
-        )
-        # 壁纸表为空且脚本未声明背景：apply_current 走渐变路径，
-        # 不触碰真实 config（生成配置绊线会在 CI 上暴露此类依赖）。
-        self.ctrl._app_service.load_wallpapers.return_value = {}
-        self.ctrl._app_service.get_background_rel_path.return_value = ""
 
-    def test_version_increments_on_apply(self):
-        """换壁纸 / 切脚本都走 apply_current：版本号自增，使 QML source 身份变化触发重载。"""
-        game = {"script_name": "g", "color": "#111", "char": "X"}
-        v0 = self.ctrl.background_version
-        self.ctrl.apply_current(game)
-        v1 = self.ctrl.background_version
-        self.ctrl.apply_current(game)
-        v2 = self.ctrl.background_version
-        self.assertEqual((v1, v2), (v0 + 1, v0 + 2))
+    def test_error_without_preview_falls_back_gradient(self):
+        ctrl = _make_ctrl(_view(mode="gradient"))
+        ctrl.apply_current({"script_name": "s", "color": "#1", "char": "x"})
+        with self.assertLogs(bgmod.__name__, level="WARNING"):
+            ctrl.videoError("boom")
+        self.assertEqual(ctrl.background_mode, "gradient")
+        self.assertEqual(ctrl.background_url, "")
+
+    def test_error_with_preview_keeps_image(self):
+        preview = os.path.join(
+            self.enterContext(tempfile.TemporaryDirectory()), "p.jpg"
+        )
+        _make_image(preview, 320, 180)
+        ctrl = _make_ctrl(
+            _view(mode="video", source="C:/clip.mp4", token="t", cache=preview)
+        )
+        ctrl.apply_current({"script_name": "s", "color": "#1", "char": "x"})
+        with self.assertLogs(bgmod.__name__, level="WARNING"):
+            ctrl.videoError("boom")
+        self.assertEqual(ctrl.background_mode, "image")
+        self.assertEqual(ctrl.background_url, QUrl.fromLocalFile(preview).toString())
 
 
 if __name__ == "__main__":

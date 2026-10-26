@@ -40,7 +40,7 @@ _EMPTY_GAME = {
 }
 
 # 空视图：无脚本（哨兵）或脚本已被移除时收缩卡片（与旧直读口径一致：空列表）。
-_EMPTY_VIEW = {"dailies": [], "weeklies": []}
+_EMPTY_VIEW = {"script": {"adapted": False}, "dailies": [], "weeklies": []}
 
 
 class TaskCardController(QObject):
@@ -84,7 +84,8 @@ class TaskCardController(QObject):
         view = self._fetch_view(script_name) if script_name else None
         if view is None:
             view = _EMPTY_VIEW
-        assert "dailies" in view and "weeklies" in view
+        assert all(key in view for key in ("script", "dailies", "weeklies"))
+        assert "adapted" in view["script"]
         self._view = view
         self._view_script = script_name
         return view
@@ -107,8 +108,8 @@ class TaskCardController(QObject):
 
     @property
     def task_adapted(self) -> bool:
-        """当前游戏是否已注册副本适配（决定日常/周常行显隐）。"""
-        return self._app_service.is_adapted(self._current["script_name"])
+        """当前游戏是否已注册副本适配（视图 script.adapted，决定行显隐）。"""
+        return bool(self._card_view()["script"]["adapted"])
 
     @property
     def daily_items(self) -> list[dict]:

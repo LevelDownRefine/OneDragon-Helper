@@ -47,7 +47,7 @@ class TestSharedLayout(unittest.TestCase):
                 layout_path.write_text(layout, encoding="utf-8")
                 bridge = make_bridge()
                 bridge.app_service.script_view.return_value = {
-                    "script": {},
+                    "script": {"adapted": True},
                     "dailies": [],
                     "weeklies": [{
                         "name": "周常",
@@ -138,7 +138,7 @@ class TestSharedLayout(unittest.TestCase):
 
             def fake_view(*_args, **_kwargs):
                 return {
-                    "script": {},
+                    "script": {"adapted": True},
                     "dailies": [
                         {"name": f"日常{i}", "task": None, "sequence": None,
                          "enabled": True, "options": {"values": []}}

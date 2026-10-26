@@ -33,17 +33,21 @@ class TestVideoWallpaper(unittest.TestCase):
         )
         patcher.start()
         self.addCleanup(patcher.stop)
+        self.enterContext(
+            patch(
+                "src.utils.utils_wallpaper.get_script",
+                return_value={"display_name": "测试"},
+            )
+        )
         self.service = AppService()
+        self.service.set_wallpaper("game", str(self.video))
         self.ctrl = BackgroundController(MagicMock(), self.service, MagicMock())
         self.sink = QVideoSink()
         self.game = {"script_name": "game", "color": "#123456", "char": "游"}
         self.apply()
 
-    def apply(self, path=None):
-        with patch.object(
-            self.ctrl, "resolve_bg", return_value=str(path or self.video)
-        ):
-            self.ctrl.apply_current(self.game)
+    def apply(self):
+        self.ctrl.apply_current(self.game)
 
     def frame(self, color="red", width=320, height=180):
         img = QImage(width, height, QImage.Format_RGB32)
@@ -56,6 +60,7 @@ class TestVideoWallpaper(unittest.TestCase):
         )
 
     def test_invalid_then_valid_frame_creates_reusable_preview(self):
+        self.assertIsNone(self.service.wallpaper_view("game")["cache"])
         self.assertEqual(self.ctrl.background_preview_url, "")
         self.assertFalse(self.ready())
         self.frame()
@@ -89,7 +94,8 @@ class TestVideoWallpaper(unittest.TestCase):
         self.assertEqual(self.ctrl.background_preview_url, "")
         self.assertTrue(self.ready())
         image = QUrl(self.ctrl.background_preview_url).toLocalFile()
-        self.apply(image)
+        self.service.set_wallpaper("game", image)
+        self.apply()
         self.assertEqual(self.ctrl.background_mode, "image")
         self.assertEqual(self.ctrl.background_preview_url, "")
         self.assertFalse(self.ready())
@@ -108,6 +114,14 @@ class TestVideoWallpaper(unittest.TestCase):
             self.ctrl.videoError("decode failed")
         self.assertEqual(self.ctrl.background_mode, "image")
         self.assertEqual(self.ctrl.background_url, preview)
+
+    def test_replaced_video_rejects_pending_preview(self):
+        self.frame()
+        self.video.write_bytes(b"replacement video")
+        with self.assertLogs("src.utils.utils_wallpaper", level="WARNING"):
+            self.assertTrue(self.ready())
+        self.assertEqual(self.ctrl.background_preview_url, "")
+        self.assertIsNone(self.service.wallpaper_view("game")["cache"])
 
     def test_write_failure_still_unblocks_playback_and_is_not_retried_each_frame(self):
         self.frame()
@@ -145,13 +159,14 @@ class TestVideoWallpaperQml(unittest.TestCase):
                 "src.utils.utils_wallpaper.get_wallpaper_json_path_under_root",
                 return_value=str(Path(directory) / "wallpaper.json"),
             ):
-                with (
-                    patch("gui.controllers.background.BackgroundController.resolve_bg", return_value=None),
-                ):
-                    bridge = make_bridge()
+                bridge = make_bridge()
                 video = resolve_script_path("python-gui/tests/fixtures/wallpaper.mp4")
-                with patch.object(bridge.background, "resolve_bg", return_value=video):
-                    bridge.background.apply_current(bridge.game_list.current_game)
+                bridge.app_service.wallpaper_view.return_value = {
+                    "script_name": "", "display_name": "", "mode": "video",
+                    "source": str(video), "custom_path": None,
+                    "token": "tok", "cache": None,
+                }
+                bridge.background.apply_current(bridge.game_list.current_game)
                 qmlRegisterSingletonInstance(QmlBridge, "OneDragonHelper", 1, 0, "Bridge", bridge)
                 engine = QQmlApplicationEngine()
                 engine.addImageProvider("uiicon", UiIconProvider())
@@ -214,10 +229,7 @@ class TestVideoWallpaperQml(unittest.TestCase):
                 "src.utils.utils_wallpaper.get_wallpaper_json_path_under_root",
                 return_value=str(Path(directory) / "wallpaper.json"),
             ):
-                with (
-                    patch("gui.controllers.background.BackgroundController.resolve_bg", return_value=None),
-                ):
-                    bridge = make_bridge()
+                bridge = make_bridge()
                 video = Path(resolve_script_path("python-gui/tests/fixtures/wallpaper.mp4"))
                 preview = Path(bridge.app_service.video_preview_path(str(video)))
                 preview.parent.mkdir()
@@ -225,9 +237,14 @@ class TestVideoWallpaperQml(unittest.TestCase):
                 img.fill("red")
                 assert img.save(str(preview), "JPG")
                 game = bridge.game_list.current_game
+                bridge.app_service.wallpaper_view.return_value = {
+                    "script_name": "", "display_name": "", "mode": "video",
+                    "source": str(video), "custom_path": None,
+                    "token": "tok", "cache": str(preview),
+                }
+
                 def apply():
-                    with patch.object(bridge.background, "resolve_bg", return_value=str(video)):
-                        bridge.background.apply_current(game)
+                    bridge.background.apply_current(game)
                 apply()
                 qmlRegisterSingletonInstance(QmlBridge, "OneDragonHelper", 1, 0, "Bridge", bridge)
                 engine = QQmlApplicationEngine()

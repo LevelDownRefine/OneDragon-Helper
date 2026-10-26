@@ -296,16 +296,11 @@ class TestMaaNativeConfig(unittest.TestCase):
         from unittest.mock import MagicMock
 
         from gui.controllers.task_card import TaskCardController
-        from src.config.set_config import (
-            get_daily_map,
-            get_daily_readback,
-            is_adapted,
-        )
+        from src.config.set_config import get_daily_map, get_daily_readback
         from src.config.task.task_declarations import get_daily_configs
 
         self.cfg._init_config()
         service = MagicMock()
-        service.is_adapted.side_effect = is_adapted
 
         def card_view(script_name):
             """按 task_service.script_view 的口径装配视图（真实物化 + 真实反读）。"""
@@ -316,7 +311,7 @@ class TestMaaNativeConfig(unittest.TestCase):
                 for d in menus.get(script_name, {"dailies": []})["dailies"]
                 if d["display_name"] in records
             ]
-            return {"script": {}, "dailies": dailies, "weeklies": []}
+            return {"script": {"adapted": True}, "dailies": dailies, "weeklies": []}
 
         service.script_view.side_effect = card_view
         service.set_script_daily_task.side_effect = (

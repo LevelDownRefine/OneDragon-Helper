@@ -283,8 +283,14 @@ class TestNativeDropPersistence(unittest.TestCase):
                 ),
                 patch("src.service.daily_plan.load_schedule", return_value={}),
                 patch(
-                    "gui.controllers.background.BackgroundController.resolve_bg",
-                    return_value=None,
+                    "src.service.app_service.wallpaper_view",
+                    return_value={
+                        "script_name": "",
+                        "mode": "gradient",
+                        "source": "",
+                        "token": None,
+                        "cache": None,
+                    },
                 ),
                 patch(
                     "gui.file_drop.ctypes.WinDLL",
@@ -334,16 +340,12 @@ class TestQmlScriptDrop(unittest.TestCase):
             from PySide6.QtQml import QQmlApplicationEngine, qmlRegisterSingletonInstance
             from PySide6.QtQuick import QQuickItem
             from PySide6.QtTest import QTest
-            from gui.controllers.background import BackgroundController
             from gui.main_window import QmlBridge
             from src.service.app_service import AppService
             from tests.gui.helpers import get_app, make_bridge
 
             app = get_app()
-            with (
-                tempfile.TemporaryDirectory() as directory,
-                patch.object(BackgroundController, "resolve_bg", return_value=None),
-            ):
+            with tempfile.TemporaryDirectory() as directory:
                 bridge = make_bridge()
                 qmlRegisterSingletonInstance(QmlBridge, "OneDragonHelper", 1, 0, "Bridge", bridge)
                 engine = QQmlApplicationEngine()

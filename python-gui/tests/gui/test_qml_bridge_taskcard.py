@@ -25,9 +25,9 @@ def _daily(name, task=None, sequence=None, enabled=None, values=None):
     }
 
 
-def _view(dailies=(), weeklies=()):
+def _view(dailies=(), weeklies=(), adapted=False):
     return {
-        "script": {},
+        "script": {"script_name": "demo", "display_name": "demo", "adapted": adapted},
         "dailies": list(dailies),
         "weeklies": list(weeklies),
     }
@@ -81,13 +81,14 @@ class TestTaskCard(unittest.TestCase):
             name, "追猎目标", False
         )
 
-    @patch("src.service.app_service.is_adapted", return_value=False)
-    def test_task_adapted_reflects_is_adapted(self, *_):
+    def test_task_adapted_reflects_view(self):
         b = make_bridge()
-        self.assertFalse(b.taskAdapted)
+        self.assertFalse(b.taskAdapted)  # make_bridge 默认视图 adapted=False
+        b.app_service.script_view.return_value = _view(adapted=True)
+        b.task_card.refresh()
+        self.assertTrue(b.taskAdapted)
 
     @patch("src.service.app_service.set_config")  # 实时落盘子脚本 config（经 service）
-    @patch("src.service.app_service.is_adapted", return_value=True)
     def test_select_daily_task_writes_config(self, *_):
         b = make_bridge()
         name = b.games[0]["script_name"]

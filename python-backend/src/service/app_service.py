@@ -29,11 +29,8 @@ import src.service.script_service as script_service
 import src.service.task_service as task_service
 from src.config.native_task_switch import native_task_switch_of
 from src.config.set_config import (
-    get_background_rel_path,
     get_daily_map,
-    get_game_exe_path,
     get_weekly_map,
-    is_adapted,
     set_config,
     set_daily_enabled,
     set_weekly_start_day,
@@ -50,6 +47,7 @@ from src.service.schedule import (
     load_schedule,
     load_startup_options,
     save_schedule,
+    validate_run_options,
 )
 from src.service.script_service import InvalidScript, ScriptEdit
 from src.update import UpdateService, UpdateSession
@@ -68,15 +66,10 @@ from src.utils.utils_runner import (
 )
 from src.utils.utils_sub_config import get_script_name
 from src.utils.utils_wallpaper import (
-    load_wallpapers,
     save_video_preview,
     save_wallpaper_cache,
-    save_wallpaper_cache_bytes,
-    save_wallpapers,
     set_wallpaper,
     video_preview_path,
-    wallpaper_cache_path,
-    wallpaper_cache_ready,
     wallpaper_view,
 )
 from src.utils.utils_weekly import (
@@ -182,18 +175,6 @@ class AppService:
     ) -> bool:
         return save_wallpaper_cache(script_name, token, jpeg_base64)
 
-    def wallpaper_cache_path(self, script_name: str) -> str:
-        """静态壁纸压缩缓存的固定落点（GUI 解码缩放后写盘经 service）。"""
-        return wallpaper_cache_path(script_name)
-
-    def wallpaper_cache_ready(
-        self, src_path: str, script_name: str, *, force: bool = False
-    ) -> str | None:
-        return wallpaper_cache_ready(src_path, script_name, force=force)
-
-    def save_wallpaper_cache_bytes(self, cache_path: str, data: bytes) -> bool:
-        return save_wallpaper_cache_bytes(cache_path, data)
-
     def resolve_launch_target(self, script_name: str, target: str) -> dict:
         return link.resolve_launch_target(script_name, target)
 
@@ -218,24 +199,28 @@ class AppService:
             "run_options": asdict(load_run_options(schedule)),
         }
 
-    def saved_run(self, script_names: list[str]) -> RunOptions:
-        """自动启动校验名单并读取上次选项，不保存或运行。"""
+    def saved_run(self, script_names: list[str]) -> dict:
+        """自动启动校验名单并读取上次选项，返回独立运行命令（选项经 stdin 交付）。"""
         chain_service.selected_scripts(script_names)
-        return self.load_run_options()
+        return chain_service.run_target(script_names, self.load_run_options())
 
     def prepare_run(
         self, script_names: list[str], options: RunOptions, confirm_invalid: bool
-    ) -> RunOptions:
-        """确认配置问题后保存选项，反读不含授权码的运行配置。"""
+    ) -> dict:
+        """确认配置问题后保存选项，返回独立运行命令（选项经 stdin 交付）。"""
         assert isinstance(options, RunOptions)
         assert type(confirm_invalid) is bool
+        try:
+            options = validate_run_options(options)
+        except ValueError as exc:
+            raise chain_service.InvalidRunRequest(str(exc)) from exc
         scripts = chain_service.selected_scripts(script_names)
         if self.collect_invalid_scripts(scripts) and not confirm_invalid:
             raise chain_service.InvalidRunRequest(
                 "请先确认配置不合法的脚本将在运行时跳过"
             )
         self.apply_run_options(options)
-        return self.load_run_options()
+        return chain_service.run_target(script_names, self.load_run_options())
 
     def run_batch(self, script_names: list[str], options: RunOptions) -> None:
         return chain_service.run_batch(script_names, options)
@@ -315,18 +300,6 @@ class AppService:
     def get_daily_map(self, script_name: str) -> dict:
         """物化指定脚本的日常菜单。"""
         return get_daily_map(script_name)
-
-    def is_adapted(self, script_name: str) -> bool:
-        """查询脚本是否已注册副本适配（任务卡决定是否显示）。"""
-        return is_adapted(script_name)
-
-    def get_background_rel_path(self, script_name: str) -> str:
-        """读脚本默认背景图相对路径（相对脚本根目录，背景控制器）。"""
-        return get_background_rel_path(script_name)
-
-    def get_game_exe_path(self, script_name: str) -> str | None:
-        """解析游戏 exe 路径（图标渲染）；两处来源都没有时返回 None。"""
-        return get_game_exe_path(script_name)
 
     def config_yml_path(self) -> str:
         """总配置 config.yml 的落点（打开设置用）。"""
@@ -511,13 +484,6 @@ class AppService:
         return 0 if switch is None else switch.write(states)
 
     # ── 自定义壁纸表（config/wallpaper.json，src.utils.utils_wallpaper）──
-    def load_wallpapers(self) -> dict:
-        """读取壁纸表（{脚本标识: 壁纸路径}）；缺失/损坏返回空 dict。"""
-        return load_wallpapers()
-
-    def save_wallpapers(self, wallpapers: dict) -> None:
-        """原子写回壁纸表。"""
-        return save_wallpapers(wallpapers)
 
     def video_preview_path(self, source_path: str) -> str | None:
         """定位当前视频版本的首帧缓存。"""
@@ -573,7 +539,3 @@ class AppService:
             shutdown_delay=shutdown_delay,
             close_running=close_running,
         )
-
-    def spawn_run(self, enabled_keys, *, chain_name: str = "today"):
-        """「启动全部」：按 schedule.yml 运行选项起独立控制台进程立即运行。"""
-        return chain_service.spawn_run_from_options(enabled_keys, chain_name=chain_name)
