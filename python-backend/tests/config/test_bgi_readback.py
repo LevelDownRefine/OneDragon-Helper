@@ -6,6 +6,7 @@ import subprocess
 import sys
 import textwrap
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from src.config.set_config import get_daily_readback
@@ -110,6 +111,7 @@ class TestBgiReadback(unittest.TestCase):
         code = textwrap.dedent(
             """
             from unittest.mock import patch
+            import tests  # 子进程同样启用真实生成配置访问绊线。
             from PySide6.QtCore import QCoreApplication, QEvent, QUrl, qInstallMessageHandler
             from PySide6.QtQml import (
                 QQmlComponent, QQmlEngine, qmlClearTypeRegistrations, qmlRegisterSingletonInstance,
@@ -137,6 +139,7 @@ class TestBgiReadback(unittest.TestCase):
                 patch("src.utils.utils_sub_config._load_config_yml",
                       return_value={"script_list": []}),
                 patch.object(AppService, "load_config", return_value={"script_list": scripts}),
+                patch("src.utils.utils_config.load_config", return_value={"script_list": scripts}),
                 patch.object(AppService, "get_daily_map", return_value={}),
                 patch("src.service.daily_plan.load_schedule", return_value={}),
                 patch.object(AppService, "wallpaper_view", return_value={
@@ -184,6 +187,7 @@ class TestBgiReadback(unittest.TestCase):
             [sys.executable, "-c", code],
             env=dict(
                 os.environ,
+                PYTHONPATH=str(Path(__file__).resolve().parents[2]),
                 QT_QPA_PLATFORM="offscreen",
                 PYTHONUTF8="1",
                 PYTHONFAULTHANDLER="1",

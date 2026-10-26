@@ -35,9 +35,12 @@ from tests.gui.helpers import make_bridge  # noqa: E402
 _app = QApplication.instance() or QApplication([])
 
 _NATIVE_CONFIG_STUB = (
+    "import tests\n"
     "from unittest.mock import patch\n"
     "patch('src.utils.utils_sub_config._load_config_yml', "
     "return_value={'script_list': []}).start()\n"
+    "patch('src.utils.utils_weekly._load_weekly_start', "
+    "return_value={}).start()\n"
 )
 
 
@@ -430,6 +433,9 @@ class TestQmlApp(unittest.TestCase):
                 {"display_name": "鸣潮", "script_path": "scripts/ok-ww/ok-ww.exe", "script_type": "external"},
                 {"display_name": "测试脚本", "script_path": "scripts/t.py", "script_type": "python"},
             ]
+            # 后端聚合视图与界面列表共用同一份隔离配置。
+            patch("src.utils.utils_config.load_config",
+                  return_value={"script_list": scripts}).start()
             with (
                 patch.object(AppService, "load_config", return_value={"script_list": scripts}),
                 patch.object(
@@ -546,6 +552,7 @@ class TestQmlApp(unittest.TestCase):
                 ),
             },
         )
+        self.assertNotIn("Traceback (most recent call last)", proc.stderr)
         self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
         self.assertIn("ROOT_OBJECTS 1", proc.stdout)
         # 回归守卫：子组件（TaskCard 等）必须 import OneDragonHelper 才能在
@@ -600,6 +607,9 @@ class TestTaskCardPopupGeometry(unittest.TestCase):
                 "task": None,
                 "start_day": None,
             }]
+            # 后端聚合视图与界面列表共用同一份隔离配置。
+            patch("src.utils.utils_config.load_config",
+                  return_value={"script_list": scripts}).start()
             with (
                 patch.object(AppService, "load_config",
                              return_value={"script_list": scripts}),
@@ -657,6 +667,8 @@ class TestTaskCardPopupGeometry(unittest.TestCase):
                 ),
             },
         )
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertNotIn("Traceback (most recent call last)", proc.stderr)
         self.assertNotIn("ReferenceError", proc.stderr)
         opts_line = [ln for ln in proc.stdout.splitlines() if ln.startswith("OPTS")]
         self.assertTrue(opts_line, f"未取到副本数，stdout={proc.stdout}")
@@ -782,6 +794,7 @@ class TestTaskCardDailyChipOpensMenu(unittest.TestCase):
                 ),
             },
         )
+        self.assertNotIn("Traceback (most recent call last)", proc.stderr)
         self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
         # 点不动是行为级症状（QML 的类型报错未必落在 stderr），故断言落在「菜单是否打开」上。
         for error in ("ReferenceError", "TypeError"):
@@ -812,6 +825,9 @@ class TestTaskCardWeeklyHiddenForUnsupportedScript(unittest.TestCase):
                 "script_path": "scripts/ok-nte/ok-nte.exe",
                 "script_type": "external",
             }]
+            # 后端聚合视图与界面列表共用同一份隔离配置。
+            patch("src.utils.utils_config.load_config",
+                  return_value={"script_list": scripts}).start()
             with (
                 patch.object(AppService, "load_config",
                              return_value={"script_list": scripts}),
@@ -858,6 +874,8 @@ class TestTaskCardWeeklyHiddenForUnsupportedScript(unittest.TestCase):
                 ),
             },
         )
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertNotIn("Traceback (most recent call last)", proc.stderr)
         self.assertNotIn("ReferenceError", proc.stderr)
         # 输出样例：WEEKLY_VISIBLE false CARD_H 196 BOT_PAD 16
         visible = None
@@ -912,6 +930,9 @@ class TestTaskCardWeeklyAreaHeightForSupportedScript(unittest.TestCase):
                 "script_type": "external",
             }]
             # patch 必须常驻到子进程结束：QML 属性在 600ms 后求值，届时 with 块早已退出。
+            # 后端聚合视图与界面列表共用同一份隔离配置。
+            patch("src.utils.utils_config.load_config",
+                  return_value={"script_list": scripts}).start()
             patch.object(AppService, "load_config",
                          return_value={"script_list": scripts}).start()
             patch.object(
@@ -989,6 +1010,8 @@ class TestTaskCardWeeklyAreaHeightForSupportedScript(unittest.TestCase):
                 ),
             },
         )
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertNotIn("Traceback (most recent call last)", proc.stderr)
         self.assertNotIn("ReferenceError", proc.stderr)
         visible = wk_h = card_h = sec_gap = bot_pad = None
         for line in proc.stdout.splitlines():
@@ -1059,6 +1082,9 @@ class TestWeeklyRowChipGeometry(unittest.TestCase):
                     "start_day": None,
                 },
             ]
+            # 后端聚合视图与界面列表共用同一份隔离配置。
+            patch("src.utils.utils_config.load_config",
+                  return_value={"script_list": scripts}).start()
             patch.object(AppService, "load_config",
                          return_value={"script_list": scripts}).start()
             patch.object(
@@ -1149,6 +1175,8 @@ class TestWeeklyRowChipGeometry(unittest.TestCase):
                 ),
             },
         )
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertNotIn("Traceback (most recent call last)", proc.stderr)
         for error in ("ReferenceError", "TypeError", "Binding loop"):
             self.assertNotIn(error, proc.stderr)
 
