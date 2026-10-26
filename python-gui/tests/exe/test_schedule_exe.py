@@ -173,7 +173,8 @@ class TestScheduleExeE2E(unittest.TestCase):
             "        hist.write(f'{n}:fail\\n')\n"
             "        sys.exit(1)\n"
             "    (log / 'ok-script.log').write_text(\n"
-            "        'info_set 当前体力 132\\ninfo_set failed []\\n', encoding='utf-8')\n"
+            "        'info_set 当前体力 132\\n"
+            "DailyRoutineTask:任务完成: 日常领取\\n', encoding='utf-8')\n"
             "    hist.write(f'{n}:ok\\n')\n",
             encoding="utf-8",
         )

@@ -48,8 +48,9 @@ parsers:
     error_noise:
       - 'target_enemy failed'
       - 'Failed to terminate process'
+    # 每日看日常领取是否完成；家具等其他子任务失败仍保留报错。
     daily_success_marker:
-      - 'info_set failed []'
+      - 'DailyRoutineTask:任务完成: 日常领取'
     success_markers:
       - 'Successfully Executed Task'
       - 'Task completed'
