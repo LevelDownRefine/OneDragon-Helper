@@ -6,6 +6,7 @@ import tempfile
 import time
 import unittest
 from contextlib import ExitStack
+from pathlib import Path
 from unittest.mock import ANY, Mock, patch
 
 # 在导入 PySide6 相关模块之前设置 offscreen 平台插件（CI 无显示器环境）
@@ -203,6 +204,81 @@ class TestUpdateRestart(unittest.TestCase):
             confirm.assert_called_once_with(45)
             workflow.assert_not_called()
             window.assert_not_called()
+
+
+class TestCliBackendRouting(unittest.TestCase):
+    def _launch(self, root, *, frozen):
+        with ExitStack() as stack:
+            for name in (
+                "_clear_qml_cache",
+                "_install_qt_message_logger",
+                "QApplication",
+                "QTimer",
+                "qmlRegisterSingletonInstance",
+                "install_file_drop",
+            ):
+                stack.enter_context(patch.object(launcher, name))
+            stack.enter_context(patch.object(sys, "frozen", frozen, create=True))
+            stack.enter_context(patch("src.utils.get_root_dir", return_value=str(root)))
+            stack.enter_context(
+                patch.object(launcher.os.path, "isfile", return_value=True)
+            )
+            stack.enter_context(
+                patch.object(
+                    launcher, "resolve_script_path", return_value=str(root / "main.qml")
+                )
+            )
+            engine = stack.enter_context(
+                patch.object(launcher, "QQmlApplicationEngine")
+            )
+            engine.return_value.rootObjects.return_value = [Mock()]
+            client = stack.enter_context(patch("gui.cli_client.CliClient"))
+            client.return_value.running = False
+            bridge = stack.enter_context(patch.object(launcher, "QmlBridge"))
+            with self.assertRaises(SystemExit):
+                launcher._launch_qml(skip_auto_launch=True)
+            return client, bridge
+
+    def test_source_uses_python_module_without_cli_executable(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            client, bridge = self._launch(root, frozen=False)
+        self.assertEqual(
+            client.call_args.args[:3],
+            (
+                sys.executable,
+                ["-m", "src.headless", "serve", "--stdio"],
+                str(root / "python-backend"),
+            ),
+        )
+        assert "cli_client" in bridge.call_args.kwargs
+        self.assertIs(bridge.call_args.kwargs["cli_client"], client.return_value)
+
+    def test_frozen_uses_bundled_cli(self):
+        from src.update import CLI_EXE, QT_CLI_EXE
+
+        for relative in (CLI_EXE, QT_CLI_EXE):
+            with (
+                self.subTest(relative=relative),
+                tempfile.TemporaryDirectory() as directory,
+            ):
+                root = Path(directory)
+                executable = root / relative
+                executable.parent.mkdir(parents=True, exist_ok=True)
+                executable.touch()
+                client, bridge = self._launch(root, frozen=True)
+            self.assertEqual(
+                client.call_args.args[:3],
+                (str(executable), ["serve", "--stdio"], str(root)),
+            )
+            assert "cli_client" in bridge.call_args.kwargs
+            self.assertIs(bridge.call_args.kwargs["cli_client"], client.return_value)
+
+    def test_frozen_without_cli_does_not_create_a_backend_session(self):
+        with tempfile.TemporaryDirectory() as directory:
+            client, bridge = self._launch(Path(directory), frozen=True)
+        client.assert_not_called()
+        bridge.assert_called_once_with(cli_client=None, cli_client_factory=None)
 
 
 class TestQtMessageLogger(unittest.TestCase):

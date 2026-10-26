@@ -118,7 +118,7 @@ weekly_timeouts 恰为七项 0～86400 整数或 null；null 沿用默认，低�
 
 ## 独立运行与生命周期
 
-`run.prepare` 返回 command 目标、`console:true` 和 input JSON（script_names/options），不在服务进程启动。凭据不进入命令行或返回值，沿用安全存储。
+`AppService.prepare_run` / `saved_run` 返回校验后的 `RunOptions`；CLI 内部适配器 `headless._run_target` 将其组装为 RPC 命令目标。`run.prepare` / `run.saved` 继续返回 command 目标、`console:true` 和 input JSON（script_names/options），由前端启动独立运行进程。凭据不进入命令行或返回值，沿用安全存储。
 
 `src.headless run` 在独立进程从 UTF-8 stdin 读对象至 EOF，持运行锁执行 schedule_run；它不是 RPC 方法，GUI 退出不终止它。Windows 新控制台承接 stdout/stderr，stdin 只交付参数。
 

@@ -171,12 +171,15 @@ class TestLeftRail(unittest.TestCase):
         self.assertEqual([g["display_name"] for g in b.games], ["测试脚本", "鸣潮"])
         b.app_service.reorder_scripts.assert_called_once_with(["测试脚本", "ok-ww"])
 
-    def test_launch_all_no_enabled_toasts(self):
+    def test_launch_all_without_cli_toasts(self):
         b = make_bridge()
         b.deselectAll()
-        with patch.object(b.launch, "_confirm_and_prepare") as confirm:
+        messages = []
+        b.toastRequested.connect(messages.append)
+        with patch("gui.controllers.launch.subprocess.Popen") as spawn:
             b.launchAll()
-        confirm.assert_not_called()
+        self.assertEqual(messages, ["未找到独立 CLI，请重新解压完整安装包"])
+        spawn.assert_not_called()
 
     def test_launch_script_python(self):
         b = make_bridge()

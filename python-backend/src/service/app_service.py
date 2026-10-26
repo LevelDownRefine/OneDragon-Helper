@@ -14,8 +14,8 @@ peer：
 - 配置备份与恢复（各子脚本 config 打包为 ZIP / 按目录原样回写）：归 :mod:`src.service.backup_service` 模块函数
 - 助手手动更新（检查 / 下载 / 安装交接）：归 :class:`src.update.UpdateService`
 
-GUI（MainWindow）与 CLI（各子命令）都只实例化本类，控制器经构造注入持有它；
-Python GUI 直接调用本类；CLI 在传输边界转换数据，两者共用业务实现。
+两套 GUI 的正常入口经 CLI 调用本类，CLI 在传输边界转换数据。
+旧 Qt 包的部分非运行交互保留直连兼容；手动运行只走统一 CLI 协议。
 """
 
 import logging
@@ -80,6 +80,14 @@ from src.utils.utils_weekly import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _validated_run_options(options: RunOptions) -> RunOptions:
+    """将运行选项校验错误转换为统一的业务请求错误。"""
+    try:
+        return validate_run_options(options)
+    except ValueError as exc:
+        raise chain_service.InvalidRunRequest(str(exc)) from exc
 
 
 def _weekly_start_entries(script_name: str) -> dict[str, int]:
@@ -199,28 +207,25 @@ class AppService:
             "run_options": asdict(load_run_options(schedule)),
         }
 
-    def saved_run(self, script_names: list[str]) -> dict:
-        """自动启动校验名单并读取上次选项，返回独立运行命令（选项经 stdin 交付）。"""
+    def saved_run(self, script_names: list[str]) -> RunOptions:
+        """自动启动校验名单并读取上次选项，不保存或运行。"""
         chain_service.selected_scripts(script_names)
-        return chain_service.run_target(script_names, self.load_run_options())
+        return _validated_run_options(self.load_run_options())
 
     def prepare_run(
         self, script_names: list[str], options: RunOptions, confirm_invalid: bool
-    ) -> dict:
-        """确认配置问题后保存选项，返回独立运行命令（选项经 stdin 交付）。"""
+    ) -> RunOptions:
+        """确认配置问题后保存选项，反读不含授权码的运行配置。"""
         assert isinstance(options, RunOptions)
         assert type(confirm_invalid) is bool
-        try:
-            options = validate_run_options(options)
-        except ValueError as exc:
-            raise chain_service.InvalidRunRequest(str(exc)) from exc
+        options = _validated_run_options(options)
         scripts = chain_service.selected_scripts(script_names)
         if self.collect_invalid_scripts(scripts) and not confirm_invalid:
             raise chain_service.InvalidRunRequest(
                 "请先确认配置不合法的脚本将在运行时跳过"
             )
         self.apply_run_options(options)
-        return chain_service.run_target(script_names, self.load_run_options())
+        return _validated_run_options(self.load_run_options())
 
     def run_batch(self, script_names: list[str], options: RunOptions) -> None:
         return chain_service.run_batch(script_names, options)

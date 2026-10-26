@@ -15,13 +15,10 @@ weekly 运行期参数（weekly.yml 的 weekly_start 段 / weekly.yml 的 weekly
 本模块不承载 UI 渲染/弹窗逻辑，无 Qt 依赖。
 """
 
-import json
 import logging
 import os
 import subprocess
 import sys
-from dataclasses import asdict
-from pathlib import Path
 
 from src.log.monitor import parse_logs
 from src.service.chain_gen import generate_chain_config as _generate_chain_config
@@ -29,7 +26,6 @@ from src.service.schedule import (
     RunOptions,
     ScheduledRun,
     _dump_run_options,
-    validate_run_options,
 )
 from src.utils import utils_config
 from src.utils.utils_runner import (
@@ -218,7 +214,7 @@ def schedule_run(
 
     完整编排（等待到点 → 生成并运行 → 可选重跑 → post_run）由
     ``src.service.schedule.ScheduledRun`` 拥有；本函数仅作 facade 入口，
-    设计为在前端通过 ``run_target`` 启动的独立控制台进程中运行。
+    设计为在独立 CLI 运行进程中执行；进程交接由入口适配。
 
     Args:
         enabled_keys: 纳入链的脚本唯一标识集合；None/空集合表示不纳入任何脚本
@@ -250,57 +246,6 @@ def schedule_run(
         rerun_enabled=rerun_enabled,
         smtp_config=smtp_config,
     ).run()
-
-
-def run_target(script_names: list[str], options: RunOptions) -> dict:
-    """装配独立 CLI 运行命令（``run.saved`` / ``run.prepare`` 的目标）。
-
-    前端拿到目标后自行 Popen（独立控制台）并把 ``input`` 载荷写入子进程 stdin；
-    脚本名单和选项只经 stdin 传递，不出现在命令行里。
-    """
-    from src.utils import get_root_dir
-    from src.utils.utils_shutdown import SHUTDOWN_UI_ARGS_ENV, SHUTDOWN_UI_ENV
-
-    try:
-        options = validate_run_options(options)
-    except ValueError as exc:
-        raise InvalidRunRequest(str(exc)) from exc
-    frozen = getattr(sys, "frozen", False)
-    root = get_root_dir()
-    program = Path(sys.executable)
-    args = ["run"]
-    if frozen:
-        from src.update import CLI_EXE, QT_CLI_EXE
-
-        if program.name.lower() != CLI_EXE.lower():
-            candidates = [Path(root) / name for name in (QT_CLI_EXE, CLI_EXE)]
-            program = next((path for path in candidates if path.is_file()), None)
-            if program is None:
-                raise InvalidRunRequest("未找到独立 CLI，请重新解压完整安装包")
-    else:
-        args = ["-m", "src.headless", *args]
-        if program.name.lower() == "pythonw.exe":
-            program = program.with_name("python.exe")
-    return {
-        "kind": "command",
-        "program": str(program),
-        "args": args,
-        "cwd": root if frozen else os.path.join(root, "python-backend"),
-        "env": (
-            {
-                key: os.environ[key]
-                for key in (SHUTDOWN_UI_ENV, SHUTDOWN_UI_ARGS_ENV)
-                if key in os.environ
-            }
-            if SHUTDOWN_UI_ENV in os.environ
-            else {}
-        ),
-        "console": True,
-        "input": json.dumps(
-            {"script_names": script_names, "options": asdict(options)},
-            ensure_ascii=False,
-        ),
-    }
 
 
 def _run_chain_once_impl(

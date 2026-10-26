@@ -7,8 +7,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from src.headless import _daily_task, _installed_frontend
-from src.service.chain_service import run_target as _run_target
+from src.headless import _daily_task, _installed_frontend, _run_target
 from src.service.schedule import RunOptions
 from src.utils import utils_shutdown
 

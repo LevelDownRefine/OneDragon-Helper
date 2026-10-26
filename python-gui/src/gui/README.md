@@ -16,7 +16,7 @@
 
 ## CLI 与状态
 
-源码及含独立 CLI 的冻结包通过同一会话接入列表、任务卡、表单、设置、资源、运行、计划、备份和更新；缺少 CLI 的旧 Qt 包保留 AppService 路径。协议见 [无 Qt CLI](../../../docs/rust-feasibility/headless-cli.md)。
+源码及含独立 CLI 的冻结包通过同一会话接入列表、任务卡、表单、设置、资源、运行、计划、备份和更新；缺少随包独立 CLI 的旧冻结 Qt 包保留其他 AppService 界面功能，手动运行和窗口自动启动提示修复安装包；源码仍使用当前 Python 解释器启动后端。协议见 [无 Qt CLI](../../../docs/rust-feasibility/headless-cli.md)。
 
 - 使用 QProcess/QTimer 异步收发，禁止 `waitForFinished` / `waitForReadyRead` 阻塞 UI。
 - 写入与刷新分别处理。断连使待处理请求失败；重连只重读状态，不重放写入、运行或自动启动。

@@ -5,10 +5,7 @@
 （选脚本 → 刷背景 + 任务卡）。
 """
 
-import logging
-
 from PySide6.QtCore import Property, QCoreApplication, QObject, Signal, Slot
-from ruamel.yaml.error import YAMLError
 
 from gui.controllers.background import BackgroundController
 from gui.controllers.backup import BackupController
@@ -19,8 +16,6 @@ from gui.controllers.task_card import TaskCardController
 from gui.controllers.window import WindowController
 from gui.icons import UiIconProvider
 from src.service.app_service import AppService
-
-logger = logging.getLogger(__name__)
 
 
 class QmlBridge(QObject):
@@ -78,7 +73,6 @@ class QmlBridge(QObject):
         if self._cli_session is None:
             self.launch = LaunchController(
                 game_list=self.game_list,
-                task_card=self.task_card,
                 app_service=self.app_service,
                 toast=self.toastRequested.emit,
             )
@@ -266,57 +260,37 @@ class QmlBridge(QObject):
         self.launch.launchAll()
 
     def maybe_auto_launch(self) -> None:
-        """按启动设置弹倒计时确认；关闭自动启动或未启用脚本时不弹窗。
-
-        与自动关机（shutdown_dialog）同款 UX：倒计时归零/点「立即启动」→ 启动全部，
-        取消/关窗 → 不启动。无人值守启动跳过运行前确认窗（``confirm=False``），直接按
-        已落盘的 config/schedule 启动当前启用的脚本。无启用脚本时无需弹窗。
-        """
-        if self._cli_session is not None:
-            if self._startup_load_failed:
-                return
-            if not self._games_loaded:
-                self._auto_launch_pending = True
-                return
-
-            def loaded(view):
-                from gui.controllers.cli_settings import parse_settings
-                from gui.startup_dialog import confirm_startup
-
-                options, _ = parse_settings(view)
-                if (
-                    not view["daily_enabled"]
-                    and options.enabled
-                    and any(self.game_list.enabled)
-                    and confirm_startup(options.delay_seconds)
-                ):
-                    self.launch.launchAll(confirm=False)
-
-            self._cli_session.call(
-                "startup.view",
-                {},
-                loaded,
-                lambda failure: self.toastRequested.emit(
-                    f"读取启动设置失败，已取消自动启动：{failure.message}"
-                ),
-            )
-            return
-        if not any(self.game_list.enabled):
-            return
-        try:
-            if self.app_service.load_daily_plan().enabled:
-                return
-            options = self.app_service.load_startup_options()
-        except (OSError, YAMLError) as exc:
-            logger.error("读取启动设置失败：%s: %s", type(exc).__name__, exc)
-            self.toastRequested.emit(f"读取启动设置失败，已取消自动启动：{exc}")
-            return
-        if not options.enabled:
-            return
-        from gui.startup_dialog import confirm_startup
-
-        if confirm_startup(options.delay_seconds):
+        """经 CLI 确认自动运行；冻结包缺少后端时提示修复安装包。"""
+        if self._cli_session is None:
             self.launch.launchAll(confirm=False)
+            return
+        if self._startup_load_failed:
+            return
+        if not self._games_loaded:
+            self._auto_launch_pending = True
+            return
+
+        def loaded(view):
+            from gui.controllers.cli_settings import parse_settings
+            from gui.startup_dialog import confirm_startup
+
+            options, _ = parse_settings(view)
+            if (
+                not view["daily_enabled"]
+                and options.enabled
+                and any(self.game_list.enabled)
+                and confirm_startup(options.delay_seconds)
+            ):
+                self.launch.launchAll(confirm=False)
+
+        self._cli_session.call(
+            "startup.view",
+            {},
+            loaded,
+            lambda failure: self.toastRequested.emit(
+                f"读取启动设置失败，已取消自动启动：{failure.message}"
+            ),
+        )
 
     @Slot()
     def launchScript(self):

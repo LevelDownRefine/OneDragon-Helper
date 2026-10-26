@@ -1,13 +1,9 @@
 """链生成、运行与调度编排；外部进程和通知使用替身。"""
 
-import json
 import os
 import subprocess
-import tempfile
 import unittest
-from dataclasses import asdict
 from datetime import datetime
-from pathlib import Path
 from unittest.mock import patch
 
 import src.service.chain_service as chain_service
@@ -72,79 +68,6 @@ class TestBatchRun(unittest.TestCase):
                     "smtp_port": 465,
                 },
             )
-
-
-class TestRunTarget(unittest.TestCase):
-    def test_source_target_uses_headless_and_keeps_names_in_stdin(self):
-        names = ["中文,逗号 & 空格"]
-        options = RunOptions(mute_enabled=True, close_running_enabled=False)
-        with tempfile.TemporaryDirectory() as temporary:
-            for executable in ("python.exe", "pythonw.exe"):
-                with (
-                    self.subTest(executable=executable),
-                    patch("sys.frozen", False, create=True),
-                    patch("sys.executable", str(Path(temporary) / executable)),
-                    patch("src.utils.get_root_dir", return_value=temporary),
-                    patch.dict(os.environ, {}, clear=True),
-                ):
-                    target = chain_service.run_target(names, options)
-                self.assertEqual(target["program"], str(Path(temporary) / "python.exe"))
-                self.assertEqual(target["args"], ["-m", "src.headless", "run"])
-                self.assertEqual(target["cwd"], str(Path(temporary) / "python-backend"))
-                self.assertTrue(target["console"])
-                self.assertEqual(target["env"], {})
-                self.assertEqual(
-                    json.loads(target["input"]),
-                    {"script_names": names, "options": asdict(options)},
-                )
-
-    def test_frozen_cli_reuses_its_entry(self):
-        from src.update import CLI_EXE, QT_CLI_EXE
-
-        with tempfile.TemporaryDirectory() as temporary:
-            for entry in (CLI_EXE, QT_CLI_EXE):
-                executable = Path(temporary) / entry
-                with (
-                    self.subTest(entry=entry),
-                    patch("sys.frozen", True, create=True),
-                    patch("sys.executable", str(executable)),
-                    patch("src.utils.get_root_dir", return_value=temporary),
-                ):
-                    target = chain_service.run_target(["demo"], RunOptions())
-                self.assertEqual(target["program"], str(executable))
-                self.assertEqual(target["args"], ["run"])
-                self.assertEqual(target["cwd"], temporary)
-
-    def test_frozen_gui_selects_packaged_cli(self):
-        from src.update import APP_EXE, CLI_EXE, QT_CLI_EXE
-
-        for entry in (CLI_EXE, QT_CLI_EXE):
-            with (
-                self.subTest(entry=entry),
-                tempfile.TemporaryDirectory() as temporary,
-                patch("sys.frozen", True, create=True),
-                patch("src.utils.get_root_dir", return_value=temporary),
-                patch("sys.executable", str(Path(temporary) / APP_EXE)),
-            ):
-                executable = Path(temporary) / entry
-                executable.parent.mkdir(parents=True, exist_ok=True)
-                executable.touch()
-                target = chain_service.run_target(["demo"], RunOptions())
-                self.assertEqual(target["program"], str(executable))
-                self.assertEqual(target["args"], ["run"])
-                self.assertEqual(target["cwd"], temporary)
-
-    def test_frozen_gui_without_cli_reports_missing_package(self):
-        from src.update import APP_EXE
-
-        with (
-            tempfile.TemporaryDirectory() as temporary,
-            patch("sys.frozen", True, create=True),
-            patch("src.utils.get_root_dir", return_value=temporary),
-            patch("sys.executable", str(Path(temporary) / APP_EXE)),
-            self.assertRaisesRegex(chain_service.InvalidRunRequest, "独立 CLI"),
-        ):
-            chain_service.run_target(["demo"], RunOptions())
 
 
 class TestRunChainOnce(unittest.TestCase):

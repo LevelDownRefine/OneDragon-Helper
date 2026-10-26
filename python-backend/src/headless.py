@@ -6,7 +6,7 @@ import logging
 import os
 import sys
 from contextlib import contextmanager, nullcontext, redirect_stderr, redirect_stdout
-from dataclasses import fields
+from dataclasses import asdict, fields
 from functools import wraps
 from pathlib import Path
 
@@ -52,6 +52,45 @@ def _parse_run_options(values: dict, *, require_shutdown_ui: bool = True):
         )
     except ValueError as exc:
         raise InvalidParams(str(exc)) from exc
+
+
+def _run_target(script_names: list[str], options) -> dict:
+    """装配独立 CLI 运行命令（``run.saved`` / ``run.prepare`` 的目标）。
+
+    前端拿到目标后自行 Popen（独立控制台）并把 ``input`` 载荷写入子进程 stdin；
+    脚本名单和选项只经 stdin 传递，不出现在命令行里。
+    """
+    from src.utils import get_root_dir
+    from src.utils.utils_shutdown import SHUTDOWN_UI_ARGS_ENV, SHUTDOWN_UI_ENV
+
+    frozen = getattr(sys, "frozen", False)
+    root = get_root_dir()
+    program = Path(sys.executable)
+    args = ["run"]
+    if not frozen:
+        args = ["-m", "src.headless", *args]
+        if program.name.lower() == "pythonw.exe":
+            program = program.with_name("python.exe")
+    return {
+        "kind": "command",
+        "program": str(program),
+        "args": args,
+        "cwd": root if frozen else os.path.join(root, "python-backend"),
+        "env": (
+            {
+                key: os.environ[key]
+                for key in (SHUTDOWN_UI_ENV, SHUTDOWN_UI_ARGS_ENV)
+                if key in os.environ
+            }
+            if SHUTDOWN_UI_ENV in os.environ
+            else {}
+        ),
+        "console": True,
+        "input": json.dumps(
+            {"script_names": script_names, "options": asdict(options)},
+            ensure_ascii=False,
+        ),
+    }
 
 
 def _daily_task():
@@ -136,12 +175,13 @@ class HeadlessApi:
     def prepare_run(self, script_names, options, confirm_invalid):
         if type(confirm_invalid) is not bool:
             raise InvalidParams("运行确认格式无效")
-        return self.service.prepare_run(
+        saved = self.service.prepare_run(
             script_names, _parse_run_options(options), confirm_invalid
         )
+        return _run_target(script_names, saved)
 
     def saved_run(self, script_names):
-        return self.service.saved_run(script_names)
+        return _run_target(script_names, self.service.saved_run(script_names))
 
     def plan_view(self):
         from src.utils.utils_shutdown import shutdown_ui_supported

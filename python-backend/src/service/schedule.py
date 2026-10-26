@@ -9,7 +9,7 @@ notify / close_running）的读写归本模块：``load_schedule`` / ``save_sche
 缺项默认启用 60 秒倒计时，与运行确认窗的 RunOptions 分开读写。
 
 ``ScheduledRun`` 是一个带生命周期的对象，而非纯函数：它在独立控制台进程
-（前端按 ``chain_service.run_target`` 返回的命令启动）中运行，
+（CLI 适配器负责交付运行参数，前端负责启动）中运行，
 故前置阻塞等待（``time.sleep``）无害；关闭该控制台即取消。
 
 编排固定为：pre_run → （等待到点）→ 生成脚本链并运行 → 可选重跑轮 → post_run。

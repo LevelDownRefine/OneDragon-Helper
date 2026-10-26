@@ -21,6 +21,7 @@ from src.headless import (
     _daily_task,
     _parse_json,
     _parse_run_options,
+    _run_target,
     main,
     rpc_methods,
 )
@@ -1042,6 +1043,48 @@ with patch('src.utils.get_root_dir', return_value=root), patch('src.service.chai
                 reader.join(timeout=5)
 
 
+class TestRunTarget(unittest.TestCase):
+    def test_source_target_uses_headless_and_keeps_names_in_stdin(self):
+        names = ["中文,逗号 & 空格"]
+        options = RunOptions(mute_enabled=True, close_running_enabled=False)
+        with tempfile.TemporaryDirectory() as temporary:
+            for executable in ("python.exe", "pythonw.exe"):
+                with (
+                    self.subTest(executable=executable),
+                    patch("sys.frozen", False, create=True),
+                    patch("sys.executable", str(Path(temporary) / executable)),
+                    patch("src.utils.get_root_dir", return_value=temporary),
+                    patch.dict(os.environ, {}, clear=True),
+                ):
+                    target = _run_target(names, options)
+                self.assertEqual(target["program"], str(Path(temporary) / "python.exe"))
+                self.assertEqual(target["args"], ["-m", "src.headless", "run"])
+                self.assertEqual(target["cwd"], str(Path(temporary) / "python-backend"))
+                self.assertTrue(target["console"])
+                self.assertEqual(target["env"], {})
+                self.assertEqual(
+                    json.loads(target["input"]),
+                    {"script_names": names, "options": asdict(options)},
+                )
+
+    def test_frozen_cli_reuses_its_entry(self):
+        from src.update import CLI_EXE, QT_CLI_EXE
+
+        with tempfile.TemporaryDirectory() as temporary:
+            for entry in (CLI_EXE, QT_CLI_EXE):
+                executable = Path(temporary) / entry
+                with (
+                    self.subTest(entry=entry),
+                    patch("sys.frozen", True, create=True),
+                    patch("sys.executable", str(executable)),
+                    patch("src.utils.get_root_dir", return_value=temporary),
+                ):
+                    target = _run_target(["demo"], RunOptions())
+                self.assertEqual(target["program"], str(executable))
+                self.assertEqual(target["args"], ["run"])
+                self.assertEqual(target["cwd"], temporary)
+
+
 class RunRequestTests(unittest.TestCase):
     def setUp(self):
         self.service = AppService(frontend="rust")
@@ -1052,6 +1095,40 @@ class RunRequestTests(unittest.TestCase):
         self.invalid = self.enterContext(
             patch.object(self.service, "collect_invalid_scripts", return_value=[])
         )
+
+    def test_service_saved_run_returns_options_without_cli_adaptation(self):
+        options = RunOptions(mute_enabled=True, close_running_enabled=False)
+        with (
+            patch.object(
+                self.service, "load_run_options", return_value=options
+            ) as load,
+            patch.object(self.service, "apply_run_options") as save,
+            patch("src.headless._run_target") as target,
+        ):
+            result = self.service.saved_run(["test"])
+        self.assertIsInstance(result, RunOptions)
+        self.assertEqual(result, options)
+        load.assert_called_once_with()
+        save.assert_not_called()
+        target.assert_not_called()
+
+    def test_service_prepare_returns_readback_without_credentials_or_cli_adaptation(
+        self,
+    ):
+        options = RunOptions(email="test@example.invalid", auth_code="test-secret")
+        saved = RunOptions(email=options.email)
+        with (
+            patch.object(self.service, "apply_run_options") as save,
+            patch.object(self.service, "load_run_options", return_value=saved) as load,
+            patch("src.headless._run_target") as target,
+        ):
+            result = self.service.prepare_run(["test"], options, confirm_invalid=False)
+        self.assertIsInstance(result, RunOptions)
+        self.assertEqual(result, saved)
+        self.assertEqual(result.auth_code, "")
+        save.assert_called_once_with(options)
+        load.assert_called_once_with()
+        target.assert_not_called()
 
     def test_saved_run_returns_target_without_saving_or_starting(self):
         options = RunOptions(mute_enabled=True, close_running_enabled=False)
@@ -1110,7 +1187,7 @@ class RunRequestTests(unittest.TestCase):
                 self.subTest(options=options),
                 patch.object(self.service, "apply_run_options") as save,
                 patch.object(self.service, "load_run_options") as load,
-                patch("src.service.chain_service.run_target") as target,
+                patch("src.headless._run_target") as target,
                 patch(
                     "src.utils.utils_shutdown.shutdown_ui_supported", return_value=False
                 ),

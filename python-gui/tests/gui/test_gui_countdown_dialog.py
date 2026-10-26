@@ -1,6 +1,7 @@
 """启动/关机确认共用倒计时契约；自动启动仍受用户设置约束。"""
 
 import unittest
+from dataclasses import asdict
 from types import SimpleNamespace
 from unittest import mock
 
@@ -8,8 +9,7 @@ from PySide6.QtWidgets import QDialog, QPushButton
 
 from gui.shutdown_dialog import ShutdownConfirmDialog, confirm_shutdown
 from gui.startup_dialog import StartupConfirmDialog, confirm_startup
-from src.service.daily_plan import DailyPlanOptions
-from src.service.schedule import StartupOptions
+from src.service.schedule import RunOptions, StartupOptions
 from tests.gui.helpers import get_app
 
 DIALOGS = (
@@ -99,6 +99,25 @@ class TestCountdownDialogs(unittest.TestCase):
 
 
 class TestAutoLaunchPreference(unittest.TestCase):
+    def _bridge(self, options, *, planned=False, enabled=True):
+        view = {
+            "startup": asdict(options),
+            "daily_enabled": planned,
+            "run_options": asdict(RunOptions()),
+            "shutdown_supported": True,
+        }
+        session = mock.Mock()
+        session.call.side_effect = lambda method, params, loaded, failed: loaded(view)
+        return SimpleNamespace(
+            _cli_session=session,
+            _startup_load_failed=False,
+            _games_loaded=True,
+            game_list=SimpleNamespace(enabled=[enabled]),
+            app_service=mock.Mock(),
+            launch=mock.Mock(),
+            toastRequested=mock.Mock(),
+        )
+
     def test_ineligible_startup_never_prompts_or_launches(self):
         from gui.main_window import QmlBridge
 
@@ -111,26 +130,11 @@ class TestAutoLaunchPreference(unittest.TestCase):
                 self.subTest(name=name),
                 mock.patch("gui.startup_dialog.confirm_startup") as confirm,
             ):
-                bridge = self._bridge(options)
-                bridge.app_service.load_daily_plan.return_value = DailyPlanOptions(
-                    planned
-                )
-                bridge.game_list.enabled = [enabled]
+                bridge = self._bridge(options, planned=planned, enabled=enabled)
                 QmlBridge.maybe_auto_launch(bridge)
                 confirm.assert_not_called()
                 bridge.launch.launchAll.assert_not_called()
-
-    def _bridge(self, options):
-        bridge = SimpleNamespace(
-            _cli_session=None,
-            game_list=SimpleNamespace(enabled=[True]),
-            app_service=mock.Mock(),
-            launch=mock.Mock(),
-            toastRequested=mock.Mock(),
-        )
-        bridge.app_service.load_startup_options.return_value = options
-        bridge.app_service.load_daily_plan.return_value = DailyPlanOptions()
-        return bridge
+                self.assertEqual(bridge.app_service.mock_calls, [])
 
     @mock.patch("gui.startup_dialog.confirm_startup")
     def test_configured_delay_and_confirmation_control_launch(self, confirm):
@@ -147,15 +151,20 @@ class TestAutoLaunchPreference(unittest.TestCase):
                     bridge.launch.launchAll.assert_called_once_with(confirm=False)
                 else:
                     bridge.launch.launchAll.assert_not_called()
+                self.assertEqual(bridge.app_service.mock_calls, [])
 
     @mock.patch("gui.startup_dialog.confirm_startup")
     def test_read_failure_cancels_startup_and_informs_user(self, confirm):
         from gui.main_window import QmlBridge
 
         bridge = self._bridge(StartupOptions())
-        bridge.app_service.load_startup_options.side_effect = OSError("locked")
-        with self.assertLogs("gui.main_window", level="ERROR"):
-            QmlBridge.maybe_auto_launch(bridge)
+        bridge._cli_session.call.side_effect = lambda method, params, loaded, failed: (
+            failed(SimpleNamespace(message="locked"))
+        )
+        QmlBridge.maybe_auto_launch(bridge)
         confirm.assert_not_called()
         bridge.launch.launchAll.assert_not_called()
-        self.assertIn("已取消自动启动", bridge.toastRequested.emit.call_args.args[0])
+        bridge.toastRequested.emit.assert_called_once_with(
+            "读取启动设置失败，已取消自动启动：locked"
+        )
+        self.assertEqual(bridge.app_service.mock_calls, [])

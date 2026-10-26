@@ -47,6 +47,167 @@ class Transport(QObject):
         self.protected = False
 
 
+class LaunchWorkflowTests(TestCase):
+    """两端共用的 run.view / prepare / saved 确认与交付契约。"""
+
+    def setUp(self):
+        get_app()
+        self.transport = Transport()
+        self.session = CliSession(self.transport, None)
+        self.games = SimpleNamespace(
+            games=[{"script_name": "A"}, {"script_name": "B"}],
+            enabled=[True, False],
+        )
+        self.toast = Mock()
+        self.controller = CliLaunchController(self.games, self.session, self.toast)
+        self.controller._starter.start = Mock()
+
+    def reply(self, value):
+        self.transport.succeeded.emit(len(self.transport.requests), value)
+
+    def view(self, *, invalid=(), options=None):
+        return {
+            "script_names": ["A"],
+            "invalid": list(invalid),
+            "options": asdict(options if options is not None else RunOptions()),
+            "shutdown_supported": True,
+        }
+
+    def target(self):
+        return {
+            "kind": "command",
+            "program": "python",
+            "args": ["-m", "src.headless", "run"],
+            "cwd": None,
+            "env": {},
+            "console": True,
+            "input": '{"script_names":["A"]}',
+        }
+
+    def test_empty_selection_stays_local_without_confirmation_or_request(self):
+        self.games.enabled = [False, False]
+        with patch("gui.controllers.cli_launch.RunConfirmDialog") as dialog:
+            self.controller.launchAll()
+        self.toast.assert_called_once_with("没有勾选手动运行的脚本")
+        dialog.assert_not_called()
+        self.assertEqual(self.transport.requests, [])
+        self.controller._starter.start.assert_not_called()
+        self.assertFalse(self.controller.active)
+
+    def test_saved_selection_failure_toasts_without_starting_or_replaying(self):
+        self.controller.launchAll(confirm=False)
+        self.transport.failed.emit(1, CliFailure(-32001, "脚本不存在: A"))
+        self.toast.assert_called_once_with("脚本不存在: A")
+        self.assertEqual(
+            self.transport.requests, [("run.saved", {"script_names": ["A"]})]
+        )
+        self.controller._starter.start.assert_not_called()
+        self.assertFalse(self.controller.active)
+
+    def test_delivery_signals_report_result_and_release_launch_state(self):
+        self.controller.launchAll(confirm=False)
+        self.reply(self.target())
+        self.controller._starter.failed.emit("运行配置交付超时")
+        self.toast.assert_called_once_with("运行配置交付超时")
+        self.assertFalse(self.controller.active)
+
+        self.toast.reset_mock()
+        self.controller.launchAll(confirm=False)
+        self.reply(self.target())
+        self.controller._starter.started.emit()
+        self.toast.assert_called_once_with(
+            "手动运行：已在独立控制台启动，关闭控制台即取消"
+        )
+        self.assertFalse(self.controller.active)
+        self.assertEqual(
+            self.transport.requests,
+            [("run.saved", {"script_names": ["A"]})] * 2,
+        )
+
+    def test_cancel_keeps_saved_options_without_warning_or_prepare(self):
+        options = RunOptions(shutdown_enabled=False, shutdown_delay=45)
+        with (
+            patch("gui.controllers.cli_launch.styled_msg_box") as warning,
+            patch("gui.controllers.cli_launch.RunConfirmDialog") as dialog,
+        ):
+            dialog.return_value.exec.return_value = QDialog.Rejected
+            self.controller.launchAll()
+            self.reply(self.view(options=options))
+        warning.assert_not_called()
+        dialog.assert_called_once()
+        self.assertEqual(dialog.call_args.args, (1, options))
+        self.assertEqual(
+            self.transport.requests, [("run.view", {"script_names": ["A"]})]
+        )
+        self.controller._starter.start.assert_not_called()
+        self.assertFalse(self.controller.active)
+
+    def test_invalid_warning_no_cancels_before_options_or_prepare(self):
+        with (
+            patch("gui.controllers.cli_launch.styled_msg_box") as warning,
+            patch("gui.controllers.cli_launch.RunConfirmDialog") as dialog,
+        ):
+            warning.return_value.exec.return_value = QMessageBox.No
+            self.controller.launchAll()
+            self.reply(self.view(invalid=[{"name": "A", "reason": "exe 不存在"}]))
+        self.assertIn("A：exe 不存在", warning.call_args.args[3])
+        dialog.assert_not_called()
+        self.assertEqual(
+            self.transport.requests, [("run.view", {"script_names": ["A"]})]
+        )
+        self.controller._starter.start.assert_not_called()
+        self.assertFalse(self.controller.active)
+
+    def test_invalid_warning_yes_saves_edited_options_and_waits_for_ack(self):
+        dialog = Mock()
+        dialog.run_options = RunOptions(shutdown_enabled=True, shutdown_delay=120)
+        saved_options = RunOptions(shutdown_enabled=False, shutdown_delay=45)
+        target = self.target()
+
+        def make_dialog(*args, **kwargs):
+            self.assertEqual(args, (1, saved_options))
+            assert "submit" in kwargs
+
+            def execute():
+                kwargs["submit"](dialog)
+                self.controller._starter.start.assert_not_called()
+                self.assertTrue(self.session.busy)
+                self.assertEqual(
+                    self.transport.requests[-1],
+                    (
+                        "run.prepare",
+                        {
+                            "script_names": ["A"],
+                            "options": asdict(dialog.run_options),
+                            "confirm_invalid": True,
+                        },
+                    ),
+                )
+                self.reply(target)
+                return QDialog.Accepted
+
+            dialog.exec.side_effect = execute
+            return dialog
+
+        with (
+            patch("gui.controllers.cli_launch.styled_msg_box") as warning,
+            patch(
+                "gui.controllers.cli_launch.RunConfirmDialog", side_effect=make_dialog
+            ),
+        ):
+            warning.return_value.exec.return_value = QMessageBox.Yes
+            self.controller.launchAll()
+            self.reply(
+                self.view(
+                    invalid=[{"name": "A", "reason": "exe 不存在"}],
+                    options=saved_options,
+                )
+            )
+        dialog.accept.assert_called_once()
+        self.controller._starter.start.assert_called_once_with(target)
+        self.assertFalse(self.session.busy)
+
+
 class WorkflowTests(TestCase):
     def setUp(self):
         get_app()
