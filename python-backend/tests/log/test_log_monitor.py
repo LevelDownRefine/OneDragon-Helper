@@ -78,7 +78,7 @@ class TestLogParser(unittest.TestCase):
             (M7ALogParser, "游戏终止：StarRail\n每日实训已完成", "游戏终止：StarRail"),
             (
                 OkNteLogParser,
-                "INFO info_set failed []",
+                "INFO DailyRoutineTask:任务完成: 日常领取",
                 "INFO TaskExecutor DailyTask:Task completed",
             ),
             (
@@ -757,6 +757,7 @@ class TestFourFieldExtraction(unittest.TestCase):
         content = (
             "AnomalyHunter:info_set 当前体力 355\n"
             "DailyRoutineTask:开始执行日常任务\n"
+            "DailyRoutineTask:任务完成: 日常领取\n"
             "DailyRoutineTask:info_set failed []\n"
             "DailyRoutineTask:结束执行日常任务\n"
             "TaskExecutor:Successfully Executed Task, Exiting Game and App!\n"
@@ -770,15 +771,49 @@ class TestFourFieldExtraction(unittest.TestCase):
             ["ERROR DailyRoutineTask:任务运行失败: 喷泉签到 Traceback"],
         )
 
-    def test_onte_daily_partial_is_false(self):
-        p = OkNteLogParser()
-        content = (
-            "DailyRoutineTask:开始执行日常任务\n"
-            "DailyRoutineTask:info_set failed ['喷泉签到']\n"
-            "DailyRoutineTask:结束执行日常任务\n"
+    def test_onte_daily_claim_done_with_furniture_failure(self):
+        """日常领奖完成后家具失败，仍不重跑每日，但保留报错通知。"""
+        error = (
+            "2026-10-26 11:04:41,381 ERROR TaskExecutor "
+            "FurnitureTask:异象家具奖励未能全部领取成功"
         )
-        self.assertFalse(p.parse_daily(content))
-        self.assertFalse(OkNteLogParser().parse_daily("完全没有日常相关标记"))
+        content = (
+            "2026-10-26 11:00:23,448 INFO TaskExecutor "
+            "DailyRoutineTask:任务完成: 日常领取\n"
+            f"{error}\n"
+            "DailyRoutineTask:info_set success ['日常领取', '喷泉签到']\n"
+            "DailyRoutineTask:info_set failed ['异象家具']\n"
+            "TaskExecutor:Successfully Executed Task, Exiting Game and App!\n"
+        )
+        result = _parse_content(OkNteLogParser(), content)
+        self.assertTrue(result["daily_done"])
+        self.assertEqual(result["status"], ScriptLogStatus.SUCCESS)
+        self.assertEqual(result["errors"], [error])
+        self.assertEqual(collect_log.display_status(result), ScriptLogStatus.WARN)
+        self.assertEqual(
+            collect_log._prepare_action_lists(
+                [{"script_name": "ok-nte", "result": result}]
+            ),
+            ([], ["ok-nte"]),
+        )
+
+    def test_onte_daily_requires_completed_claim(self):
+        for detail in (
+            "DailyRoutineTask:任务失败: 日常领取\n"
+            "DailyRoutineTask:info_set failed ['日常领取']\n",
+            "DailyRoutineTask:info_set failed []\n"
+            "DailyRoutineTask:info_set skipped ['日常领取']\n",
+            "DailyRoutineTask:开始任务: 日常领取\nDailyClaimTask:正在领取活跃度奖励\n",
+            "DailyRoutineTask:info_set failed ['喷泉签到']\n",
+            "完全没有日常相关标记\n",
+        ):
+            with self.subTest(detail=detail):
+                result = _parse_content(
+                    OkNteLogParser(),
+                    detail + "TaskExecutor:Successfully Executed Task\n",
+                )
+                self.assertFalse(result["daily_done"])
+                self.assertEqual(result["status"], ScriptLogStatus.FAILED)
 
     def test_oef_report_fields(self):
         p = OkEfLogParser()
