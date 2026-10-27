@@ -8,9 +8,29 @@ fn runner_launch_preserves_arguments_and_survives_gui_owner_drop() {
     let python = Path::new(&python)
         .canonicalize()
         .expect("absolute test Python");
-    let target=LaunchTarget::Command {program:python.to_string_lossy().into(),
-        args:vec!["-c".into(),"import sys,time,os;from pathlib import Path;time.sleep(.3);Path(sys.argv[1]).write_text(sys.argv[2]+os.environ['ODH_LAUNCH_TEST'],encoding='utf-8')".into(),marker.to_string_lossy().into(),"原样 & 空格".into()],
-        cwd:root.path().to_string_lossy().into(),env:HashMap::from([("ODH_LAUNCH_TEST".into(),"环境".into())]),input:None,console:false};
+    // Publish the marker only after its complete contents have been written and closed.
+    let script = r#"
+import os, sys, time
+from pathlib import Path
+time.sleep(.3)
+marker = Path(sys.argv[1])
+pending = marker.with_suffix('.tmp')
+pending.write_text(sys.argv[2] + os.environ['ODH_LAUNCH_TEST'], encoding='utf-8')
+pending.replace(marker)
+"#;
+    let target = LaunchTarget::Command {
+        program: python.to_string_lossy().into(),
+        args: vec![
+            "-c".into(),
+            script.into(),
+            marker.to_string_lossy().into(),
+            "原样 & 空格".into(),
+        ],
+        cwd: root.path().to_string_lossy().into(),
+        env: HashMap::from([("ODH_LAUNCH_TEST".into(), "环境".into())]),
+        input: None,
+        console: false,
+    };
     let job = LaunchJob::start(target, eframe::egui::Context::default());
     let child = job
         .0
