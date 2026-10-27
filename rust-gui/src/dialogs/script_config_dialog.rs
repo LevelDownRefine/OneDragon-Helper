@@ -521,7 +521,10 @@ impl ScriptEditor {
                 );
                 ui.end_row();
                 ui.label("游戏路径");
-                ui.add(crate::dialogs::common::text_input(&mut fields.game_path));
+                ui.add(
+                    crate::dialogs::common::text_input(&mut fields.game_path)
+                        .hint_text("脚本可以自动启动游戏时无需设置"),
+                );
                 ui.end_row();
                 ui.label("游戏启动参数");
                 ui.add(crate::dialogs::common::text_input(
