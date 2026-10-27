@@ -173,7 +173,7 @@ impl SettingsDialog {
                             if action_row(
                                 ui,
                                 "app-update",
-                                "助手更新",
+                                "更新",
                                 "检查新版本，查看下载与安装进度",
                             )
                             .clicked()
