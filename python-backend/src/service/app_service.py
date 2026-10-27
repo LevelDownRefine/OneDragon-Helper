@@ -444,8 +444,9 @@ class AppService:
     ) -> None:
         """写日常副本/二级序列到脚本自身 config（编辑期实时落盘）。
 
-        交互前端（Qt 任务卡）与既有 RPC 的契约：没有要写的就什么都不做、返回 null。
-        需要知道「为什么没写成」的调用方用 :meth:`check_daily_task`。
+        失败时由适配器抛错，与 ``daily.select`` 的 -32002 语义一致（可能已部分
+        落盘，调用方须重读）。需要「名字对不上」的可读结果时用
+        :meth:`set_daily_task_checked`。
         """
         return set_config(
             script_name,
@@ -454,17 +455,17 @@ class AppService:
             sequence=sequence,
         )
 
-    def check_daily_task(
+    def set_daily_task_checked(
         self,
         script_name: str,
         daily_display_name: str,
         task_name: str,
         sequence: str | int | None = None,
     ) -> DailyTaskResult:
-        """设置副本，并把「名字对不上」作为返回值而不是异常或静默 no-op。
+        """设置副本并把失败作为返回值，供没有下拉框的调用方使用。
 
-        与 :meth:`set_script_daily_task` 写的是同一件事，区别只在出口：这个会告诉
-        调用方没写成的理由与候选副本，供没有下拉框的调用方（CLI/助手）使用。
+        与 :meth:`set_script_daily_task` 写同一份配置，区别只在失败出口：这个不抛
+        异常，而是返回原因与候选副本。两条路径共用 ``set_daily_task_checked``。
 
         Args:
             script_name: 脚本标识名。

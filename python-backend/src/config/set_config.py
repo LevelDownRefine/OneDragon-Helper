@@ -39,18 +39,22 @@ class DailyTaskResult(NamedTuple):
         reason: 未写入的原因；成功时为空串。
         daily_names: 该脚本声明的日常展示名，供调用方给出候选。
         task_names: 该日常声明的一级项展示名。
+        rejected: True 表示失败源于适配器内部类型校验（值类型不对），
+            而不是名字找不到。两者对调用方含义不同：名字错可以改正后重试，
+            类型错说明声明与脚本实际不符，属内部缺陷。
     """
 
     applied: bool
     reason: str
     daily_names: list[str]
     task_names: list[str]
+    rejected: bool = False
 
     def describe(self, script_name: str) -> str:
-        """人可读的一行结论。"""
+        """人可读的一行结论；成功与失败共用「{脚本}：{动作}{对象}」句式。"""
         if self.applied:
             return f"{script_name}：已更新副本选择"
-        parts = [f"{script_name}：未写入（{self.reason}）"]
+        parts = [f"{script_name}：未写入副本选择（{self.reason}）"]
         if self.daily_names:
             parts.append(f"当前日常：{'、'.join(self.daily_names)}")
         if self.task_names:
@@ -548,15 +552,26 @@ def set_daily_task_checked(
         写入结果；``applied=False`` 时未写盘。
     """
     if script_name not in _CONFIGS:
-        return DailyTaskResult(
-            False, f"脚本 {script_name} 未适配副本选择（自定义脚本）", [], []
-        )
+        # 未适配脚本（自定义 / 已不在列表）没有副本概念：与「名字写错」不同，
+        # 这是合法的「无事可做」，故按成功返回，不当作错误。
+        return DailyTaskResult(True, "", [], [])
     assert script_name in _CONFIGS
     config = _CONFIGS[script_name]()
     resolved = config._resolve_daily(daily_display_name)
     if isinstance(resolved, DailyTaskResult):
         return resolved
     daily = resolved
+    # 选择本身是否合法先判，与 update 读盘无关：名字类失败可改正后重试，
+    # 与「声明和脚本实际不符」区分开，后者属内部缺陷。
+    try:
+        daily.check_fields(task_name, sequence)
+    except AssertionError as exc:
+        return DailyTaskResult(
+            False,
+            str(exc).split("] ", 1)[-1],
+            config.daily_names(),
+            daily.task_names(),
+        )
     try:
         daily.update(task_name, sequence)
     except AssertionError as exc:
@@ -565,9 +580,11 @@ def set_daily_task_checked(
             str(exc).split("] ", 1)[-1],
             config.daily_names(),
             daily.task_names(),
+            rejected=True,
         )
     config.set_daily_enabled(daily_display_name, True)
-    return DailyTaskResult(True, "", config.daily_names(), daily.task_names())
+    # 成功时没有消费者读候选，不构造（每日写入路径上省两次遍历）。
+    return DailyTaskResult(True, "", [], [])
 
 
 def get_daily_map(script_name: str | None = None) -> dict:

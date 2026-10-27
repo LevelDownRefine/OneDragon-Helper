@@ -61,7 +61,7 @@ class SwitchWriteResult(NamedTuple):
         return not self.reasons
 
     def describe(self, script_name: str) -> str:
-        """人可读的一行结论，含「是否想写其中某个」提示。失败时为空串之外的说明。"""
+        """人可读的一行结论；成功与失败共用「{脚本}：{动作}{对象}」句式。"""
         if self.ok:
             return f"{script_name}：已更新 {self.changed} 项任务开关"
         detail = "；".join(
@@ -70,7 +70,7 @@ class SwitchWriteResult(NamedTuple):
         near = _nearest(self.reasons, self.candidates)
         hint = f"；是否为：{'、'.join(near)}" if near else ""
         return (
-            f"{script_name}：{detail}{hint}"
+            f"{script_name}：未写入任务开关（{detail}）{hint}"
             f"；当前可用任务：{'、'.join(self.candidates) or '（无）'}"
         )
 

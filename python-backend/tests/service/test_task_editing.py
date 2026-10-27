@@ -78,7 +78,7 @@ class TaskEditingTests(unittest.TestCase):
     def setUp(self):
         self.service = AppService()
         self.select_daily = self.service.set_script_daily_task
-        self.check_daily = self.service.check_daily_task
+        self.check_daily = self.service.set_daily_task_checked
         self.enable_daily = self.service.set_script_daily_enabled
         self.select_weekly = self.service.set_script_weekly_task
         # 查询坏了也不能影响独立写入；菜单物化同样不应是写操作的前置条件。
@@ -167,8 +167,7 @@ class TaskEditingTests(unittest.TestCase):
             with self.subTest(task=task):
                 self.assertIsNone(self.select_daily("脚本", task_name=task))
         unadapted = self.check_daily("自定义", "日常", "材料", 1)
-        self.assertFalse(unadapted.applied)
-        self.assertIn("未适配", unadapted.reason)
+        self.assertTrue(unadapted.applied, "未适配脚本没有副本概念，属无事可做")
         self.assertEqual(self.reads, [])
         self.assertEqual(self.saves, [])
 
@@ -223,7 +222,6 @@ class TaskEditingTests(unittest.TestCase):
         result = self.check_daily("脚本", "日常", "材料", "第一项")
         self.assertTrue(result.applied)
         self.assertEqual(result.reason, "")
-        self.assertEqual(result.daily_names, ["日常", "动态日常", "无开关日常"])
 
     def test_enable_only_changes_target_switch_without_reading_selections(self):
         self.files["daily.json"]["enabled"] = True

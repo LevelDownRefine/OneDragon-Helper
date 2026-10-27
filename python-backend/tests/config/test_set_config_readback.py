@@ -421,10 +421,11 @@ class TestSetDailyTaskChecked(unittest.TestCase):
         self.assertFalse(result.applied)
         self.assertIn("未适配的二级值", result.reason)
 
-    def test_unadapted_script_reports_reason(self):
+    def test_unadapted_script_is_noop_not_error(self):
+        """未适配脚本没有副本概念：属合法的「无事可做」，不当作错误。"""
         result = set_daily_task_checked("自定义脚本", "日常", "副本")
-        self.assertFalse(result.applied)
-        self.assertIn("未适配", result.reason)
+        self.assertTrue(result.applied)
+        self.assertEqual(result.reason, "")
 
     def test_describe_is_actionable_on_failure(self):
         with patch.object(Daily, "_load_daily_config", return_value={}):

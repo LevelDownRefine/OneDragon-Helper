@@ -299,7 +299,6 @@ class Daily(TaskSourceMixin):
                 或二级取值不在声明里。
         """
         self.check_fields(task_name, sequence)
-        assert task_name in self.option_fields  # 由 check_fields 保证
         values: dict[str, Any] = {}
         if self.task_field is not None:
             values[self.task_field] = self.task_map[task_name]

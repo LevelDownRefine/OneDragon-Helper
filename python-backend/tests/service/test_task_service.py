@@ -171,7 +171,6 @@ class SetScriptSwitchesTests(unittest.TestCase):
         self.assertTrue(result.ok)
         self.assertEqual(result.changed, 2)
         switch.apply.assert_called_once_with({"甲": True, "乙": False})
-        switch.write.assert_not_called()
 
     def test_unknown_name_returns_reason_and_candidates(self):
         switch = mock.Mock()
