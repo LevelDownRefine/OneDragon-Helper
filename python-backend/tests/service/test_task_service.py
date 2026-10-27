@@ -159,11 +159,11 @@ AppService()
 
 
 class SetScriptSwitchesTests(unittest.TestCase):
-    """set_script_switches：名字对不上时返回原因与候选，不写盘、不抛错。"""
+    """set_script_switches：名字对不上时返回原因，不写盘、不抛错。"""
 
     def test_returns_result_for_resolved_names(self):
         switch = mock.Mock()
-        switch.apply.return_value = SwitchWriteResult(2, {}, ["甲", "乙"])
+        switch.apply.return_value = SwitchWriteResult(2, {})
         with patch.object(app_service, "native_task_switch_of", return_value=switch):
             result = AppService().set_script_switches(
                 "BetterGI", {"甲": True, "乙": False}
@@ -172,10 +172,10 @@ class SetScriptSwitchesTests(unittest.TestCase):
         self.assertEqual(result.changed, 2)
         switch.apply.assert_called_once_with({"甲": True, "乙": False})
 
-    def test_unknown_name_returns_reason_and_candidates(self):
+    def test_unknown_name_returns_reason(self):
         switch = mock.Mock()
         switch.apply.return_value = SwitchWriteResult(
-            0, {"模拟宇宙_差分": "未找到该任务"}, ["模拟宇宙", "历战余响"]
+            0, {"模拟宇宙_差分": "未找到该任务"}
         )
         with patch.object(app_service, "native_task_switch_of", return_value=switch):
             result = AppService().set_script_switches(
@@ -183,7 +183,6 @@ class SetScriptSwitchesTests(unittest.TestCase):
             )
         self.assertFalse(result.ok)
         self.assertEqual(result.changed, 0)
-        self.assertEqual(result.candidates, ["模拟宇宙", "历战余响"])
         self.assertIn("未找到该任务", result.describe("March7th-Launcher"))
 
     def test_script_without_switches_reports_reason(self):
@@ -191,11 +190,10 @@ class SetScriptSwitchesTests(unittest.TestCase):
             result = AppService().set_script_switches("自定义脚本", {"任意": True})
         self.assertFalse(result.ok)
         self.assertEqual(result.reasons, {"任意": "脚本未声明任务开关"})
-        self.assertEqual(result.candidates, [])
 
     def test_empty_states_reports_success(self):
         switch = mock.Mock()
-        switch.apply.return_value = SwitchWriteResult(0, {}, [])
+        switch.apply.return_value = SwitchWriteResult(0, {})
         with patch.object(app_service, "native_task_switch_of", return_value=switch):
             result = AppService().set_script_switches("BetterGI", {})
         self.assertTrue(result.ok)

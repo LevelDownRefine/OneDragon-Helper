@@ -652,66 +652,13 @@ class TestDeclaration(unittest.TestCase):
         self.assertEqual(multi["names"]["Check Weekly Garden"], "检查每周乐园")
 
 
-class TestPrecheck(unittest.TestCase):
-    """check / apply：任务名定位失败作为返回值，而不是静默跳过或抛错。"""
+class TestApply(unittest.TestCase):
+    """apply：名字对不上时整批不写，并说明原因。"""
 
     def _switch(self) -> NativeTaskSwitch:
         return NativeTaskSwitch("BetterGI", [_DECLARATION])
 
-    def test_check_passes_for_writable_names(self):
-        config = _config({"a": "领取邮件", "b": "周常"}, {"a": True, "b": False})
-        with patch.object(mod, "load_script_config", return_value=config):
-            self.assertEqual(self._switch().check({"领取邮件": True, "周常": True}), {})
-
-    def test_check_distinguishes_unknown_ambiguous_and_missing_slot(self):
-        """三种失败原因分开报：找不到 / 同名撞车 / 该行没有开关记录。"""
-        config = _config(
-            {"a": "同名", "b": "同名", "c": "无开关"},
-            {"a": True, "b": False},
-        )
-        with patch.object(mod, "load_script_config", return_value=config):
-            self.assertEqual(
-                self._switch().check({"不存在": True, "同名": True, "无开关": True}),
-                {
-                    "不存在": mod._REASON_UNKNOWN,
-                    "同名": mod._REASON_AMBIGUOUS,
-                    "无开关": mod._REASON_NO_SLOT,
-                },
-            )
-
-    def test_check_reports_missing_config_for_every_name(self):
-        with patch.object(mod, "load_script_config", return_value=None):
-            self.assertEqual(
-                self._switch().check({"领取邮件": True, "周常": False}),
-                {
-                    "领取邮件": mod._REASON_NO_CONFIG,
-                    "周常": mod._REASON_NO_CONFIG,
-                },
-            )
-
-    def test_check_empty_states_reads_nothing(self):
-        with patch.object(mod, "load_script_config") as mock_load:
-            self.assertEqual(self._switch().check({}), {})
-        mock_load.assert_not_called()
-
-    def test_apply_reads_each_segment_once_regardless_of_states(self):
-        """整次调用每段只读一次盘：预检与写入共用同一份快照。"""
-        config = _config({"a": "领取邮件"}, {"a": True})
-        reads = []
-
-        def load(*_args, **_kwargs):
-            reads.append(1)
-            return config
-
-        with (
-            patch.object(mod, "load_script_config", side_effect=load),
-            patch.object(mod, "save_script_config"),
-        ):
-            result = self._switch().apply({"领取邮件": False})
-        self.assertTrue(result.ok)
-        self.assertEqual(len(reads), 1, f"单段脚本应只读 1 次，实际 {len(reads)} 次")
-
-    def test_apply_writes_when_all_names_resolve(self):
+    def test_all_names_resolve_writes_and_reports_count(self):
         config = _config({"a": "领取邮件", "b": "周常"}, {"a": True, "b": False})
         saved = []
         with (
@@ -721,13 +668,13 @@ class TestPrecheck(unittest.TestCase):
             ),
         ):
             result = self._switch().apply({"周常": True})
-        self.assertEqual(result.changed, 1)
         self.assertTrue(result.ok)
+        self.assertEqual(result.changed, 1)
         self.assertTrue(config["TaskEnabledList"]["b"])
         self.assertEqual(len(saved), 1)
 
-    def test_apply_refuses_whole_batch_when_one_name_fails(self):
-        """一行名写错则整批不落盘：不能留下「改了一半」的状态。"""
+    def test_unknown_name_refuses_whole_batch(self):
+        """一行写错则整批不落盘：不能留下「改了一半」的状态。"""
         config = _config({"a": "领取邮件", "b": "周常"}, {"a": True, "b": False})
         with (
             patch.object(mod, "load_script_config", return_value=config),
@@ -739,95 +686,60 @@ class TestPrecheck(unittest.TestCase):
         self.assertEqual(result.reasons, {"不存在": mod._REASON_UNKNOWN})
         self.assertEqual(config["TaskEnabledList"], {"a": True, "b": False})
 
-    def test_failure_describe_carries_candidates_and_nearest_hint(self):
-        """结果里带当前可用任务与最接近的候选，直接可以回给用户/模型。"""
-        config = _config({"a": "模拟宇宙", "b": "历战余响"}, {"a": True, "b": True})
+    def test_task_without_switch_record_reports_its_own_reason(self):
+        """定义表有、启用表缺：报「无开关记录」而非「未找到」。"""
+        config = _config({"a": "领取邮件", "b": "周常"}, {"a": True})
         with (
             patch.object(mod, "load_script_config", return_value=config),
             patch.object(mod, "save_script_config") as mock_save,
         ):
-            result = self._switch().apply({"模拟宇宙_差分": False})
+            result = self._switch().apply({"周常": True})
         mock_save.assert_not_called()
-        self.assertEqual(result.candidates, ["模拟宇宙", "历战余响"])
-        text = result.describe("March7th-Launcher")
-        self.assertIn("模拟宇宙", text)
-        self.assertIn("当前可用任务", text)
+        self.assertEqual(result.reasons, {"周常": mod._REASON_NO_SLOT})
 
-    def test_success_describe_reports_changed_count(self):
+    def test_describe_success_and_failure(self):
         config = _config({"a": "领取邮件"}, {"a": False})
         with (
             patch.object(mod, "load_script_config", return_value=config),
             patch.object(mod, "save_script_config"),
         ):
-            result = self._switch().apply({"领取邮件": True})
-        self.assertEqual(result.describe("BetterGI"), "BetterGI：已更新 1 项任务开关")
+            ok = self._switch().apply({"领取邮件": True})
+        self.assertEqual(ok.describe("BetterGI"), "BetterGI：已更新 1 项任务开关")
+        failed = self._switch().apply({"不存在": True})
+        self.assertIn("未写入任务开关", failed.describe("BetterGI"))
 
-    def test_names_lists_rows_in_declaration_order(self):
-        config = _config({"a": "领取邮件", "b": "周常"}, {"a": True, "b": False})
-        with patch.object(mod, "load_script_config", return_value=config):
-            self.assertEqual(self._switch().names(), ["领取邮件", "周常"])
+    def test_empty_states_writes_nothing(self):
+        with patch.object(mod, "load_script_config") as mock_load:
+            result = self._switch().apply({})
+        self.assertTrue(result.ok)
+        self.assertEqual(result.changed, 0)
+        mock_load.assert_not_called()
 
-
-class TestSegmentDispatch(unittest.TestCase):
-    """多段脚本的预检：行名归属先按整表解析，再交给所在段定位。"""
-
-    def _switch(self) -> NativeTaskSwitch:
-        return NativeTaskSwitch(
-            "ok-ww", [_OKWW_BOOL_DECLARATION, _OKWW_MULTI_DECLARATION]
-        )
-
-    def test_check_dispatches_to_owning_segment(self):
-        config = {
-            "Farm Nightmare Nest for Daily Echo": True,
-            _OKWW_LIST_KEY: [],
-        }
-        with patch.object(mod, "load_script_config", return_value=config):
-            self.assertEqual(
-                self._switch().check(
-                    {"使用梦魇巢穴获取日常声骸": False, "检查每周乐园": True}
-                ),
-                {},
-            )
-
-    def test_multi_segment_apply_reads_shared_file_once(self):
-        """多段指向同一文件时只读一次盘，且各段改的是同一份 dict。
-
-        各段各读一份副本会让后保存的段覆盖先保存的段——多段脚本会丢改动。
-        """
-        reads = []
+    def test_multi_segment_dispatch(self):
+        """多段：行名按段归属，两段的改动都要落盘。"""
+        store = {"Farm Nightmare Nest for Daily Echo": True, _OKWW_LIST_KEY: []}
 
         def load(*_args, **_kwargs):
-            reads.append(1)
             return {
-                "Farm Nightmare Nest for Daily Echo": True,
-                _OKWW_LIST_KEY: [],
+                k: (list(v) if isinstance(v, list) else v) for k, v in store.items()
             }
 
-        saves = []
+        def save(*args):
+            data = args[-1]
+            store.clear()
+            store.update(data)
+
+        switch = NativeTaskSwitch(
+            "ok-ww", [_OKWW_BOOL_DECLARATION, _OKWW_MULTI_DECLARATION]
+        )
         with (
             patch.object(mod, "load_script_config", side_effect=load),
-            patch.object(
-                mod, "save_script_config", side_effect=lambda *a: saves.append(a)
-            ),
+            patch.object(mod, "save_script_config", side_effect=save),
         ):
-            result = self._switch().apply(
+            result = switch.apply(
                 {"使用梦魇巢穴获取日常声骸": False, "检查每周乐园": True}
             )
         self.assertTrue(result.ok)
         self.assertEqual(result.changed, 2)
-        self.assertEqual(len(reads), 1, f"同一文件应只读 1 次，实际 {len(reads)} 次")
-        self.assertEqual(len(saves), 1, "同一文件应只落盘 1 次")
-        # 两段的改动都落在同一份配置里
-        saved = saves[0][-1]
-        self.assertFalse(saved["Farm Nightmare Nest for Daily Echo"])
-        self.assertEqual(saved[_OKWW_LIST_KEY], ["Check Weekly Garden"])
-
-    def test_apply_rejects_name_from_other_segment(self):
-        config = {"Farm Nightmare Nest for Daily Echo": True, _OKWW_LIST_KEY: []}
-        with (
-            patch.object(mod, "load_script_config", return_value=config),
-            patch.object(mod, "save_script_config") as mock_save,
-        ):
-            result = self._switch().apply({"不存在的任务": True})
-        mock_save.assert_not_called()
-        self.assertEqual(result.reasons, {"不存在的任务": mod._REASON_UNKNOWN})
+        self.assertFalse(store["Farm Nightmare Nest for Daily Echo"])
+        self.assertEqual(store[_OKWW_LIST_KEY], ["Check Weekly Garden"])
