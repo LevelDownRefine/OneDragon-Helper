@@ -41,7 +41,8 @@ a = Analysis(
     pathex=[str(root / "python-backend")],
     binaries=binaries,
     datas=collect_data_files("jsonrpcserver"),
-    hiddenimports=collect_submodules("keyring"),
+    # ShellLink.GetPath 的 WIN32_FIND_DATA 时间字段会由 pywin32 动态加载此模块。
+    hiddenimports=collect_submodules("keyring") + ["win32timezone"],
     runtime_hooks=[str(root / "deploy/runtime_hook_utf8.py")],
     excludes=["PySide6", "shiboken6", "gui", "gui.launcher", "tkinter"],
 )

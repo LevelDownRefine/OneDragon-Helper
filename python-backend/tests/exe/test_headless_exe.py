@@ -105,6 +105,65 @@ class HeadlessExeTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads(result.stdout)["result"]["scripts"], [])
 
+    def test_real_shortcut_import_preserves_target_arguments_and_duplicate_identity(
+        self,
+    ):
+        import pythoncom
+        from win32com.shell import shell
+
+        script_directory = self.directory / "中文 脚本目录"
+        script_directory.mkdir()
+        target = script_directory / "临时 目标.bat"
+        marker = script_directory / "shortcut-started.txt"
+        content = b'@echo off\r\n> "%~dp0shortcut-started.txt" echo unexpected\r\n'
+        target.write_bytes(content)
+        shortcut_path = self.directory / "中文 快捷方式.lnk"
+        arguments = '--profile "中文 空格" --literal "a&b 100%"'
+        pythoncom.CoInitializeEx(pythoncom.COINIT_APARTMENTTHREADED)
+        shortcut = None
+        persist_file = None
+        try:
+            shortcut = pythoncom.CoCreateInstance(
+                shell.CLSID_ShellLink,
+                None,
+                pythoncom.CLSCTX_INPROC_SERVER,
+                shell.IID_IShellLink,
+            )
+            shortcut.SetPath(str(target))
+            shortcut.SetArguments(arguments)
+            shortcut.SetWorkingDirectory(str(script_directory))
+            persist_file = shortcut.QueryInterface(pythoncom.IID_IPersistFile)
+            persist_file.Save(str(shortcut_path), 1)
+        finally:
+            persist_file = None
+            shortcut = None
+            pythoncom.CoUninitialize()
+        shortcut_before = shortcut_path.read_bytes()
+
+        for script_name in (target.stem, f"{target.stem}_2"):
+            with self.subTest(script_name=script_name):
+                result = self.call("script.add", {"file_path": str(shortcut_path)})
+                self.assertEqual(
+                    result.returncode, 0, f"{result.stdout}\n{result.stderr}"
+                )
+                self.assertEqual(
+                    json.loads(result.stdout)["result"],
+                    {"script_name": script_name, "display_name": script_name},
+                )
+                result = self.call("script.edit_view", {"script_name": script_name})
+                self.assertEqual(
+                    result.returncode, 0, f"{result.stdout}\n{result.stderr}"
+                )
+                view = json.loads(result.stdout)["result"]
+                self.assertEqual(view["script_name"], script_name)
+                self.assertEqual(Path(view["script"]["script_path"]), target)
+                self.assertEqual(view["script"]["script_arguments"], arguments)
+                if script_name != target.stem:
+                    self.assertEqual(view["script"]["script_id"], script_name)
+        self.assertEqual(target.read_bytes(), content)
+        self.assertEqual(shortcut_path.read_bytes(), shortcut_before)
+        self.assertFalse(marker.exists())
+
     def test_legacy_flags_preserve_output_files_and_exit_status(self):
         output = self.directory / "中文 自检.json"
         for arguments, code in (
@@ -238,6 +297,7 @@ class HeadlessExeTests(unittest.TestCase):
             "jsonrpcserver",
             "jsonschema",
             "ssl",
+            "win32timezone",
         ):
             self.assertIn(name, modules)
         self.assertFalse(
