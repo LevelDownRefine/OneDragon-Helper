@@ -68,7 +68,7 @@ def get_script(script_name: str) -> dict | None:
     """按脚本唯一标识读取单个脚本条目。
 
     Args:
-        script_name: 脚本唯一标识（exe 用进程名，脚本文件用 display_name）。
+        script_name: 脚本唯一标识（由 get_script_name 解析）。
 
     Returns:
         脚本条目 dict；不存在时返回 None。

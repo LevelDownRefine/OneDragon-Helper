@@ -233,7 +233,7 @@ class HeadlessApi:
 def rpc_methods(service, *, persistent=True) -> dict:
     """显式开放助手方法，保留业务互斥和错误语义；协议和参数绑定交给库。"""
     from src.service.chain_service import InvalidRunRequest
-    from src.service.script_service import DuplicateScript, InvalidScript
+    from src.service.script_service import InvalidScript
     from src.service.task_service import InvalidTaskSelection
     from src.utils.utils_job import InvalidJob
     from src.utils.utils_wallpaper import InvalidWallpaper
@@ -315,8 +315,6 @@ def rpc_methods(service, *, persistent=True) -> dict:
                 )
             try:
                 return Success(method(*args, **kwargs))
-            except DuplicateScript as exc:
-                return Error(-32001, str(exc), {"refresh_required": False})
             except (
                 InvalidParams,
                 InvalidTaskSelection,

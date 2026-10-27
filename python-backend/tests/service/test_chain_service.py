@@ -12,6 +12,17 @@ from src.service.schedule import RunOptions, ScheduledRun, build_post_run_pipeli
 
 
 class TestBatchRun(unittest.TestCase):
+    def test_distinct_ids_select_same_exe_independently_in_config_order(self):
+        first = {"display_name": "鸣潮", "script_path": "C:/ok-ww.exe"}
+        second = {**first, "script_id": "ok-ww_2", "display_name": "第二轮"}
+        with patch.object(
+            utils_config, "load_config", return_value={"script_list": [first, second]}
+        ):
+            self.assertEqual(chain_service.selected_scripts(["ok-ww_2"]), [second])
+            self.assertEqual(
+                chain_service.selected_scripts(["ok-ww_2", "ok-ww"]), [first, second]
+            )
+
     def test_empty_unknown_duplicate_selection_rejected(self):
         with patch.object(
             utils_config,

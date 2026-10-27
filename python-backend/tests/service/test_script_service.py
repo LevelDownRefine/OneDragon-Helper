@@ -473,23 +473,28 @@ class TestScriptList(ScriptServiceTestBase):
                 self.assertTrue(entry["block"])
 
     def test_repeated_script_files_get_distinct_names(self):
-        for filename in ("重复.py", "重复.bat"):
+        for filename in ("重复.py", "重复.bat", "重复.EXE"):
             with self.subTest(filename=filename):
                 self._seed(self.edit())
                 path = self._file(filename)
                 results = [self.service.add_script(path) for _ in range(3)]
                 self.assertEqual(
                     [result["script_name"] for result in results],
-                    ["重复", "重复_1", "重复_2"],
+                    ["重复", "重复_2", "重复_3"],
+                )
+                entries = utils_config.load_config()["script_list"][1:]
+                self.assertEqual(
+                    [entry["display_name"] for entry in entries],
+                    ["重复", "重复_2", "重复_3"],
+                )
+                self.assertNotIn("script_id", entries[0])
+                self.assertEqual(entries[1]["script_id"], "重复_2")
+                self.assertEqual(entries[2]["script_id"], "重复_3")
+                self.assertEqual(
+                    [entry["script_path"] for entry in entries], [path] * 3
                 )
                 self.assertEqual(
-                    [
-                        entry["display_name"]
-                        for entry in load_data(
-                            str(self.config), file_format="yaml", cached=True
-                        )["script_list"][1:]
-                    ],
-                    ["重复", "重复_1", "重复_2"],
+                    [entry["script_process_name"] for entry in entries], [[], [], []]
                 )
 
     def test_mutations_preserve_other_config_with_one_read(self):
@@ -530,13 +535,76 @@ class TestScriptList(ScriptServiceTestBase):
                 elif operation != "remove":
                     self.assertIn(original, saved["script_list"])
 
-    def test_duplicate_exe_has_distinct_error_without_writing(self):
+    def test_duplicate_adapted_exe_is_an_independent_plain_script(self):
         path = self._file("BetterGI.exe")
-        before = (self.config.read_bytes(), self.weekly.read_bytes())
-        with self.assertRaises(script_service.DuplicateScript):
-            self.service.add_script(path)
-        self.assertEqual((self.config.read_bytes(), self.weekly.read_bytes()), before)
-        self.invalidate.assert_not_called()
+        original = utils_config.get_script("BetterGI")
+        result = self.service.add_script(path)
+        self.assertEqual(
+            result, {"script_name": "BetterGI_2", "display_name": "BetterGI_2"}
+        )
+        self.assertEqual(utils_config.get_script("BetterGI"), original)
+        view = self.service.script_view("BetterGI_2")
+        self.assertFalse(view["script"]["adapted"])
+        self.assertEqual(view["dailies"], [])
+        self.assertEqual(view["weeklies"], [])
+        self.assertEqual(self.service.get_script_options("BetterGI_2"), [])
+        self.assertEqual(self.service.get_script_switches("BetterGI_2"), [])
+        weekly = load_data(str(self.weekly), file_format="yaml", cached=True)
+        self.assertEqual(weekly["weekly_timeouts"]["BetterGI"], [60] * 7)
+        self.assertEqual(
+            weekly["weekly_timeouts"]["BetterGI_2"], [DEFAULT_RUN_TIMEOUT] * 7
+        )
+        self.assertNotIn("BetterGI_2", weekly["weekly_start"])
+
+    def test_suffix_collision_and_reorder_delete_preserve_identity(self):
+        path = self._file("BetterGI.exe")
+        self.service.add_script(self._file("BetterGI_2.py"))
+        self.assertEqual(self.service.add_script(path)["script_name"], "BetterGI_3")
+        self.assertEqual(self.service.add_script(path)["script_name"], "BetterGI_4")
+        self.service.reorder_scripts(
+            ["BetterGI_4", "BetterGI", "BetterGI_3", "BetterGI_2"]
+        )
+        self.service.remove_script("BetterGI")
+        self.service.remove_script("BetterGI_3")
+        entries = utils_config.load_config()["script_list"]
+        self.assertEqual(
+            [get_script_name(entry) for entry in entries], ["BetterGI_4", "BetterGI_2"]
+        )
+        self.assertEqual(entries[0]["script_path"], path)
+        self.assertFalse(self.service.script_view("BetterGI_4")["script"]["adapted"])
+        weekly = load_data(str(self.weekly), file_format="yaml", cached=True)
+        self.assertEqual(set(weekly["weekly_timeouts"]), {"BetterGI_4", "BetterGI_2"})
+
+    def test_duplicate_edit_keeps_id_and_separate_timeout(self):
+        path = self._file("BetterGI.exe")
+        self.service.add_script(path)
+        edit = replace(
+            self.edit(script_path=path, script_arguments="--second"),
+            script_name="BetterGI_2",
+            display_name="第二轮",
+            weekly_timeouts=[90] * 7,
+            switches={},
+        )
+        self.assertEqual(self.service.validate_script_edit(edit), edit)
+        self.assertEqual(self.service.update_script(edit), "BetterGI_2")
+        new_path = self._file("other.exe")
+        self.assertEqual(
+            self.service.update_script(
+                replace(
+                    edit, config_patch={**edit.config_patch, "script_path": new_path}
+                )
+            ),
+            "BetterGI_2",
+        )
+        saved = utils_config.get_script("BetterGI_2")
+        self.assertEqual(saved["script_id"], "BetterGI_2")
+        self.assertEqual(saved["display_name"], "第二轮")
+        self.assertEqual(saved["script_path"], new_path)
+        self.assertEqual(saved["script_arguments"], "--second")
+        weekly = load_data(str(self.weekly), file_format="yaml", cached=True)
+        self.assertEqual(weekly["weekly_timeouts"]["BetterGI"], [60] * 7)
+        self.assertEqual(weekly["weekly_timeouts"]["BetterGI_2"], [90] * 7)
+        self.assertNotIn("other", weekly["weekly_timeouts"])
 
     def test_invalid_file_and_shortcut_do_not_write(self):
         before = (self.config.read_bytes(), self.weekly.read_bytes())
@@ -596,6 +664,22 @@ class TestScriptList(ScriptServiceTestBase):
         self.assertEqual(entry["script_path"], target)
         self.assertEqual(entry["script_arguments"], arguments)
         self.invalidate.assert_called_once_with("new")
+
+    def test_shortcuts_to_same_exe_keep_their_own_arguments(self):
+        target = self._file("March7th Launcher.exe")
+        with patch.object(
+            script_service,
+            "read_shortcut",
+            side_effect=[(target, "--first", ""), (target, "--second", "")],
+        ):
+            first = self.service.add_script(self._file("first.lnk"))
+            second = self.service.add_script(self._file("second.lnk"))
+        self.assertEqual(first["script_name"], "March7th-Launcher")
+        self.assertEqual(second["script_name"], "March7th-Launcher_2")
+        for result, arguments in ((first, "--first"), (second, "--second")):
+            entry = utils_config.get_script(result["script_name"])
+            self.assertEqual(entry["script_path"], target)
+            self.assertEqual(entry["script_arguments"], arguments)
 
     def test_shortcut_with_different_working_directory_does_not_write(self):
         before = (self.config.read_bytes(), self.weekly.read_bytes())

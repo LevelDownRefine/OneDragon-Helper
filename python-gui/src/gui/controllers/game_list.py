@@ -27,7 +27,7 @@ from gui.icons import (
     _render_icon,
     get_script_icon,
 )
-from src.service.script_service import DuplicateScript, InvalidScript
+from src.service.script_service import InvalidScript
 from src.utils.utils_sub_config import get_script_name
 
 # 游戏图标停用底色（渐变兜底水印等场景复用）
@@ -386,11 +386,8 @@ class GameListController(QObject):
         if len(results) == 1:
             self._toast(results[0][1])
         else:
-            duplicate = sum(status == "duplicate" for status, _ in results)
             failed = sum(status == "failed" for status, _ in results)
             summary = f"已添加 {added} 个脚本"
-            if duplicate:
-                summary += f"，重复 {duplicate} 个"
             if failed:
                 summary += f"，失败 {failed} 个"
             details = [
@@ -405,8 +402,6 @@ class GameListController(QObject):
         """添加单个脚本并返回状态与提示，调用方统一展示结果。"""
         try:
             result = self._app_service.add_script(file_path)
-        except DuplicateScript as exc:
-            return "duplicate", str(exc)
         except InvalidScript as exc:
             logger.warning("读取脚本未完成：%s", file_path, exc_info=True)
             return "failed", f"无法添加 {os.path.basename(file_path)}：{exc}"

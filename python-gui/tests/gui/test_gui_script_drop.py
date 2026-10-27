@@ -118,18 +118,25 @@ class TestDroppedScripts(unittest.TestCase):
         self.assertFalse(self.ctrl.dropScripts([url]))
         self.persist_script.assert_not_called()
 
-    def test_duplicate_exe_is_not_added_or_renamed(self):
+    def test_repeated_exe_is_added_with_distinct_identity(self):
         url = self.file_url("same.exe")
         self.assertTrue(self.ctrl.dropScripts([url]))
-        self.assertFalse(self.ctrl.dropScripts([url]))
-        self.persist_script.assert_called_once()
-        self.toast.assert_called_with("脚本已存在：same")
+        self.assertTrue(self.ctrl.dropScripts([url]))
+        self.assertEqual(self.persist_script.call_count, 2)
+        self.assertEqual(
+            [game["script_name"] for game in self.ctrl.games], ["same", "same_2"]
+        )
+        self.assertEqual(
+            [game["script_data"]["script_path"] for game in self.ctrl.games],
+            [os.path.normpath(url.toLocalFile())] * 2,
+        )
+        self.toast.assert_called_with("已添加 same_2")
 
-    def test_same_named_python_scripts_keep_existing_suffix_behavior(self):
+    def test_repeated_script_files_get_numbered_entries(self):
         url = self.file_url("same.py")
         self.assertTrue(self.ctrl.dropScripts([url, url]))
         self.assertEqual(
-            [g["script_name"] for g in self.ctrl.games], ["same", "same_1"]
+            [game["script_name"] for game in self.ctrl.games], ["same", "same_2"]
         )
 
     def test_save_failure_refreshes_and_reports_without_success(self):
@@ -201,15 +208,16 @@ class TestDroppedScripts(unittest.TestCase):
                 self.assertIn("disk unavailable", message)
                 self.assertEqual(self.added.call_count, 2)
 
-    def test_batch_reports_duplicates_and_successes_together(self):
-        duplicate = self.file_url("existing.exe")
-        self.assertTrue(self.ctrl.dropScripts([duplicate]))
+    def test_batch_adds_repeated_and_new_scripts_together(self):
+        repeated = self.file_url("existing.exe")
+        self.assertTrue(self.ctrl.dropScripts([repeated]))
         self.toast.reset_mock()
-        self.assertTrue(self.ctrl.dropScripts([duplicate, self.file_url("new.exe")]))
-        self.toast.assert_called_once()
-        message = self.toast.call_args.args[0]
-        self.assertIn("已添加 1 个脚本，重复 1 个", message)
-        self.assertIn("existing.exe", message)
+        self.assertTrue(self.ctrl.dropScripts([repeated, self.file_url("new.exe")]))
+        self.toast.assert_called_once_with("已添加 2 个脚本")
+        self.assertEqual(
+            [game["script_name"] for game in self.ctrl.games],
+            ["existing", "existing_2", "new"],
+        )
 
     def test_unreadable_shortcut_does_not_hide_another_success(self):
         with (

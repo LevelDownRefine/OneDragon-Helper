@@ -46,14 +46,8 @@ class InvalidScript(ValueError):
     """写入前发现的无效输入或过期脚本状态。"""
 
 
-class DuplicateScript(InvalidScript):
-    """同标识 EXE 已在列表，批量导入可继续处理其他文件。"""
-
-
-def validate_edit(
-    edit: ScriptEdit, *, script_names: set[str] | None = None
-) -> ScriptEdit:
-    """校验并规范化输入；保存时复用本次读取的标识集合，不重复读盘。"""
+def validate_edit(edit: ScriptEdit, *, scripts: list[dict] | None = None) -> ScriptEdit:
+    """校验并规范化输入；保存时复用本次读取的条目，保留持久化标识。"""
     if not isinstance(edit.script_name, str) or not edit.script_name:
         raise InvalidScript("脚本标识不能为空")
     if not isinstance(edit.display_name, str) or not edit.display_name.strip():
@@ -109,7 +103,22 @@ def validate_edit(
     ):
         raise InvalidScript("任务开关格式无效")
     display_name = edit.display_name.strip()
-    new_script_name = get_script_name({**patch, "display_name": display_name})
+    candidate = {**patch, "display_name": display_name}
+    if scripts is None and get_script_name(candidate) != edit.script_name:
+        config = utils_config.load_config()
+        assert "script_list" in config
+        scripts = config["script_list"]
+    if scripts is not None:
+        current = next(
+            (
+                script
+                for script in scripts
+                if get_script_name(script) == edit.script_name
+            ),
+            {},
+        )
+        candidate = {**current, **candidate}
+    new_script_name = get_script_name(candidate)
     if not isinstance(edit.task_options, dict):
         raise InvalidScript("任务选项格式无效")
     if edit.task_options:
@@ -120,11 +129,8 @@ def validate_edit(
         except ValueError as exc:
             raise InvalidScript(str(exc)) from exc
     if new_script_name != edit.script_name:
-        if script_names is None:
-            config = utils_config.load_config()
-            assert "script_list" in config
-            script_names = {get_script_name(script) for script in config["script_list"]}
-        if new_script_name in script_names:
+        assert scripts is not None
+        if any(get_script_name(script) == new_script_name for script in scripts):
             raise InvalidScript("已存在同标识脚本，请修改路径或名称")
     return replace(edit, display_name=display_name, config_patch=patch)
 
@@ -160,20 +166,21 @@ def add(file_path: str) -> dict:
             raise InvalidScript("快捷方式指定了不同的工作目录，暂不支持导入")
 
     base_name = os.path.splitext(os.path.basename(file_path))[0]
-    display_name = base_name
-    suffix = 1
-    while display_name in existing:
-        display_name = f"{base_name}_{suffix}"
-        suffix += 1
     entry = default_script_entry(
-        display_name=display_name,
+        display_name=base_name,
         script_type="python" if file_path.lower().endswith(".py") else "external",
         script_path=file_path,
         script_arguments=script_arguments,
     )
-    script_name = get_script_name(entry)
-    if script_name in existing:
-        raise DuplicateScript(f"脚本已存在：{script_name}")
+    base_id = get_script_name(entry)
+    script_name = base_id
+    suffix = 2
+    while script_name in existing:
+        script_name = f"{base_id}_{suffix}"
+        entry["display_name"] = f"{base_name}_{suffix}"
+        suffix += 1
+    if script_name != base_id:
+        entry["script_id"] = script_name
     config["script_list"].append(entry)
     utils_config.save_config(config)
     utils_weekly.ensure_weekly_entry(script_name)
@@ -204,9 +211,7 @@ def update(edit: ScriptEdit) -> str:
     config = utils_config.load_config()
     assert "script_list" in config
     scripts = config["script_list"]
-    edit = validate_edit(
-        edit, script_names={get_script_name(script) for script in scripts}
-    )
+    edit = validate_edit(edit, scripts=scripts)
     target = next(
         (script for script in scripts if get_script_name(script) == edit.script_name),
         None,

@@ -8,7 +8,6 @@ pub struct DropDialog {
     current: Option<String>,
     results: Vec<(String, String)>,
     added: usize,
-    duplicate: usize,
     failed: usize,
     stopped: usize,
 }
@@ -38,7 +37,6 @@ impl DropDialog {
             current: None,
             results: Vec::new(),
             added: 0,
-            duplicate: 0,
             failed: 0,
             stopped: 0,
         })
@@ -86,11 +84,7 @@ impl DropDialog {
             }
             Err(failure) => {
                 disconnected = failure.code == "transport_failed";
-                if failure.code == "duplicate_script" {
-                    self.duplicate += 1;
-                } else {
-                    self.failed += 1;
-                }
+                self.failed += 1;
                 if failure.refresh_required || disconnected {
                     for path in self.pending.drain(..) {
                         self.stopped += 1;
@@ -121,8 +115,8 @@ impl DropDialog {
         .show(ctx, !blocked, |ui| {
             crate::dialogs::common::dialog_body(ui, |ui| {
                 ui.label(format!(
-                    "已添加 {}，重复 {}，失败 {}，未尝试 {}",
-                    self.added, self.duplicate, self.failed, self.stopped
+                    "已添加 {}，失败 {}，未尝试 {}",
+                    self.added, self.failed, self.stopped
                 ));
                 if let Some(path) = &self.current {
                     ui.horizontal(|ui| {

@@ -62,7 +62,7 @@ fn rejects_mixed_drop_before_start_and_preserves_files() {
 }
 
 #[test]
-fn serial_import_counts_duplicates_and_stops_unknown_writes() {
+fn serial_import_counts_failures_and_stops_unknown_writes() {
     let root = tempfile::tempdir().unwrap();
     let mut dialog = DropDialog::new(paths(root.path())).unwrap();
     assert_eq!(dialog.next().unwrap().method, "script.add");
@@ -70,14 +70,14 @@ fn serial_import_counts_duplicates_and_stops_unknown_writes() {
     assert!(!dialog.receive(Ok(json!({"script_name":"first"}))));
     dialog.next().unwrap();
     dialog.receive(Err(Failure {
-        code: "duplicate_script".into(),
-        message: "exists".into(),
+        code: "invalid_params".into(),
+        message: "invalid shortcut".into(),
         refresh_required: false,
     }));
     dialog.next().unwrap();
     dialog.receive(Ok(json!({"script_name":"third"})));
     assert!(!dialog.active());
-    assert_eq!((dialog.added, dialog.duplicate, dialog.failed), (2, 1, 0));
+    assert_eq!((dialog.added, dialog.failed), (2, 1));
     for failure in [
         Failure::transport("lost"),
         Failure {
@@ -93,4 +93,21 @@ fn serial_import_counts_duplicates_and_stops_unknown_writes() {
         assert!(dialog.next().is_none(), "must not replay unknown writes");
         assert_eq!((dialog.failed, dialog.stopped), (1, 2));
     }
+}
+
+#[test]
+fn repeated_paths_are_imported_as_separate_entries() {
+    let root = tempfile::tempdir().unwrap();
+    let path = paths(root.path())[0].clone();
+    let mut dialog = DropDialog::new(vec![path.clone(), path.clone()]).unwrap();
+    for name in ["一", "一_2"] {
+        let request = dialog.next().unwrap();
+        assert_eq!(request.method, "script.add");
+        assert_eq!(request.params, json!({"file_path": path.to_str().unwrap()}));
+        assert!(!dialog.receive(Ok(json!({"script_name": name}))));
+    }
+    assert!(!dialog.active());
+    assert_eq!((dialog.added, dialog.failed, dialog.stopped), (2, 0, 0));
+    assert_eq!(dialog.results[0].1, "已添加：一");
+    assert_eq!(dialog.results[1].1, "已添加：一_2");
 }

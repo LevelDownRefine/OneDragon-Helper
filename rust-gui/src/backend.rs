@@ -66,13 +66,12 @@ fn decode_response(line: &str, id: u64) -> Result<Value, Failure> {
             -32601 => "method_not_found",
             -32602 => "invalid_params",
             -32603 => "internal_error",
-            -32001 => "duplicate_script",
             -32002 => "operation_failed",
             -32003 => "operation_busy",
             -32004 => "session_failed",
             _ => "rpc_error",
         };
-        let refresh_required = if (-32004..=-32001).contains(&error.code) {
+        let refresh_required = if (-32004..=-32002).contains(&error.code) {
             serde_json::from_value::<ErrorData>(error.data)
                 .map_err(|err| Failure::transport(format!("CLI 错误详情无效：{err}")))?
                 .refresh_required

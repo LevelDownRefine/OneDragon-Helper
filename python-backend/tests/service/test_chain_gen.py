@@ -148,6 +148,47 @@ class TestGenerateChainConfig(unittest.TestCase):
         self.assertEqual([s["display_name"] for s in data["script_list"]], ["甲"])
         self.assertIs(data["script_list"][0]["enabled"], True)
 
+    def test_repeated_exe_entries_keep_independent_selection_and_timeouts(self):
+        first = {
+            "script_path": "C:/scripts/ok-ww.exe",
+            "display_name": "鸣潮",
+            "script_arguments": "--first",
+            "script_process_name": ["pythonw.exe"],
+        }
+        second = {
+            **first,
+            "script_id": "ok-ww_2",
+            "display_name": "鸣潮第二轮",
+            "script_arguments": "--second",
+        }
+        config = {"script_list": [first, second]}
+        for names, expected in (
+            ({"ok-ww_2"}, [("--second", 120)]),
+            ({"ok-ww", "ok-ww_2"}, [("--first", 60), ("--second", 120)]),
+        ):
+            with self.subTest(names=names), tempfile.TemporaryDirectory() as directory:
+                output = os.path.join(directory, "chain.yml")
+                generate_chain_config(
+                    config,
+                    names,
+                    out_path=output,
+                    weekly_timeouts={"ok-ww": [60] * 7, "ok-ww_2": [120] * 7},
+                )
+                entries = load_data(output, file_format="yaml")["script_list"]
+            self.assertEqual(
+                [
+                    (entry["script_arguments"], entry["run_timeout_seconds"])
+                    for entry in entries
+                ],
+                expected,
+            )
+            for entry in entries:
+                self.assertEqual(entry["script_path"], first["script_path"])
+                self.assertEqual(entry["script_process_name"], ["pythonw.exe"])
+            self.assertEqual(entries[-1]["log_path"], "")
+        self.assertNotIn("run_timeout_seconds", first)
+        self.assertNotIn("run_timeout_seconds", second)
+
     def test_residual_enabled_field_does_not_exclude_script(self):
         """config.yml 残留的 enabled=False 不影响入链。"""
         config = {
