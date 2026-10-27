@@ -16,8 +16,8 @@ from src.config.set_config import (
     WutheringWavesConfig,
     get_daily_readback,
     get_weekly_task,
+    set_config_checked,
     set_daily_enabled,
-    set_daily_task_checked,
 )
 from src.config.task import daily as daily_mod
 from src.config.task.daily import Daily
@@ -374,7 +374,7 @@ if __name__ == "__main__":
 
 
 class TestSetDailyTaskChecked(unittest.TestCase):
-    """set_daily_task_checked：选择失败作为返回值，不抛错、不写盘。"""
+    """set_config_checked：选择失败作为返回值，不抛错、不写盘。"""
 
     def test_valid_selection_writes_and_reads_back(self):
         config: dict = {}
@@ -382,7 +382,7 @@ class TestSetDailyTaskChecked(unittest.TestCase):
             patch.object(Daily, "_load_daily_config", return_value=config),
             patch.object(daily_mod, "save_script_config"),
         ):
-            result = set_daily_task_checked("ok-ww", "每日任务", "凝素领域", 5)
+            result = set_config_checked("ok-ww", "每日任务", "凝素领域", 5)
             self.assertTrue(result.applied)
             self.assertEqual(result.reason, "")
             cfg = WutheringWavesConfig()
@@ -393,7 +393,7 @@ class TestSetDailyTaskChecked(unittest.TestCase):
         with (
             patch.object(Daily, "_load_daily_config") as read,
         ):
-            result = set_daily_task_checked("ok-ww", "不存在日常", "凝素领域", 5)
+            result = set_config_checked("ok-ww", "不存在日常", "凝素领域", 5)
         self.assertFalse(result.applied)
         self.assertIn("未找到该日常", result.reason)
         self.assertIn("每日任务", result.daily_names)
@@ -407,7 +407,7 @@ class TestSetDailyTaskChecked(unittest.TestCase):
                 daily_mod, "save_script_config", side_effect=lambda *a: saved.append(a)
             ),
         ):
-            result = set_daily_task_checked("ok-ww", "每日任务", "不存在的副本", None)
+            result = set_config_checked("ok-ww", "每日任务", "不存在的副本", None)
         self.assertFalse(result.applied)
         self.assertIn("未声明的一级项", result.reason)
         self.assertIn("凝素领域", result.task_names)
@@ -415,21 +415,19 @@ class TestSetDailyTaskChecked(unittest.TestCase):
 
     def test_invalid_sequence_reports_reason(self):
         with patch.object(Daily, "_load_daily_config", return_value={}):
-            result = set_daily_task_checked(
-                "ok-ww", "每日任务", "模拟领域", "不存在的二级"
-            )
+            result = set_config_checked("ok-ww", "每日任务", "模拟领域", "不存在的二级")
         self.assertFalse(result.applied)
         self.assertIn("未适配的二级值", result.reason)
 
     def test_unadapted_script_is_noop_not_error(self):
         """未适配脚本没有副本概念：属合法的「无事可做」，不当作错误。"""
-        result = set_daily_task_checked("自定义脚本", "日常", "副本")
+        result = set_config_checked("自定义脚本", "日常", "副本")
         self.assertTrue(result.applied)
         self.assertEqual(result.reason, "")
 
     def test_describe_is_actionable_on_failure(self):
         with patch.object(Daily, "_load_daily_config", return_value={}):
-            result = set_daily_task_checked("ok-ww", "每日任务", "不存在的副本", None)
+            result = set_config_checked("ok-ww", "每日任务", "不存在的副本", None)
         text = result.describe("ok-ww")
         self.assertIn("未写入", text)
         self.assertIn("当前可选副本", text)

@@ -42,6 +42,8 @@ class DailyTaskResult(NamedTuple):
         rejected: True 表示失败源于适配器内部类型校验（值类型不对），
             而不是名字找不到。两者对调用方含义不同：名字错可以改正后重试，
             类型错说明声明与脚本实际不符，属内部缺陷。
+        skipped: True 表示这次调用本来就没打算写（未选副本 / 脚本未适配），
+            属正常流程，不是失败。与 ``applied=False`` 是两回事。
     """
 
     applied: bool
@@ -49,9 +51,12 @@ class DailyTaskResult(NamedTuple):
     daily_names: list[str]
     task_names: list[str]
     rejected: bool = False
+    skipped: bool = False
 
     def describe(self, script_name: str) -> str:
         """人可读的一行结论；成功与失败共用「{脚本}：{动作}{对象}」句式。"""
+        if self.skipped:
+            return f"{script_name}：未选择副本，无需写入"
         if self.applied:
             return f"{script_name}：已更新副本选择"
         parts = [f"{script_name}：未写入副本选择（{self.reason}）"]
@@ -516,6 +521,9 @@ def set_config(
     未选副本或脚本未适配（自定义脚本）时优雅跳过。周常（周几起 / 周常副本）归
     本模块的周常接口分发给同一 ScriptConfig 持有的 Weekly，不经本函数。
 
+    选择对不上时由适配器抛错——``daily.select`` 的 -32002 语义依赖它，属已发布
+    契约。需要「不抛错、拿到原因与候选」的调用方用 :func:`set_config_checked`。
+
     Args:
         script_name: 脚本标识名。
         daily_display_name: 副本所属日常展示名（界面逐行渲染时即该行行名）；
@@ -534,30 +542,37 @@ def set_config(
     _CONFIGS[script_name]().set_daily_task(daily_display_name, task_name, sequence)
 
 
-def set_daily_task_checked(
+def set_config_checked(
     script_name: str,
-    daily_display_name: str,
-    task_name: str,
+    daily_display_name: str | None = None,
+    task_name: str | None = None,
     sequence: str | int | None = None,
 ) -> DailyTaskResult:
-    """预检后设置副本：任一项对不上就不写盘，并把原因与候选返回。
+    """设置副本，把选择失败作为返回值而不是异常。
+
+    与 :func:`set_config` 是同一件事、同一份适配器逻辑，区别只在失败出口：
+    这个不抛错，而是返回原因与候选，供没有下拉框的调用方（CLI/助手）判断。
 
     Args:
         script_name: 脚本标识名。
-        daily_display_name: 日常展示名。
-        task_name: 一级项展示名。
-        sequence: 二级项值。
+        daily_display_name: 副本所属日常展示名。
+        task_name: 一级项展示名；None 或「未选择」表示不设置副本。
+        sequence: 二级项值；仅部分脚本支持。
 
     Returns:
-        写入结果；``applied=False`` 时未写盘。
+        写入结果。``skipped`` 表示本来就没打算写（未选副本 / 脚本未适配），属正常
+        流程；``applied=False`` 且非 ``skipped`` 时才是名字对不上或适配器拒绝。
     """
+    if not task_name or task_name == "未选择":
+        return DailyTaskResult(True, "", [], [], skipped=True)
+
+    # 自定义脚本（不在注册表）没有副本概念：与「名字写错」不同，属合法的无事可做。
     if script_name not in _CONFIGS:
-        # 未适配脚本（自定义 / 已不在列表）没有副本概念：与「名字写错」不同，
-        # 这是合法的「无事可做」，故按成功返回，不当作错误。
-        return DailyTaskResult(True, "", [], [])
-    assert script_name in _CONFIGS
+        logger.info(f"[set_config] 进程 {script_name} 无副本适配（自定义脚本），跳过")
+        return DailyTaskResult(True, "", [], [], skipped=True)
+
     config = _CONFIGS[script_name]()
-    resolved = config._resolve_daily(daily_display_name)
+    resolved = config._resolve_daily(daily_display_name or "")
     if isinstance(resolved, DailyTaskResult):
         return resolved
     daily = resolved
@@ -572,8 +587,6 @@ def set_daily_task_checked(
             config.daily_names(),
             daily.task_names(),
         )
-    # check_fields 已通过，update 内部的 _fields 会再校验一次；两处共用同一判断，
-    # 不会产生不同结论，也不会多读文件。
     try:
         daily.update(task_name, sequence)
     except AssertionError as exc:

@@ -37,8 +37,8 @@ from src.config.set_config import (
     get_daily_map,
     get_weekly_map,
     set_config,
+    set_config_checked,
     set_daily_enabled,
-    set_daily_task_checked,
     set_weekly_start_day,
     set_weekly_task,
     weekly_names,
@@ -247,8 +247,12 @@ class AppService:
         task_name: str | None = None,
         sequence: str | int | None = None,
     ) -> None:
-        """CLI 日常选择，直接转发原 GUI 接口。"""
-        return self.set_script_daily_task(
+        """CLI 日常选择；``daily.select`` 的 RPC 契约仍返回 null。
+
+        写入结果由 :meth:`set_script_daily_task` 返回，这里只丢弃：两个前端都把它
+        当写操作、不读返回值，改返回形状会破坏已发布的协议。
+        """
+        self.set_script_daily_task(
             script_name,
             daily_display_name=daily_name,
             task_name=task_name,
@@ -446,7 +450,7 @@ class AppService:
         """写日常副本/二级序列到脚本自身 config（编辑期实时落盘）。
 
         失败时由适配器抛错，与 ``daily.select`` 的 -32002 语义一致（可能已部分
-        落盘，调用方须重读）。需要「名字对不上」的可读结果时用
+        落盘，调用方须重读）。需要「不抛错、拿到原因与候选」时用
         :meth:`set_daily_task_checked`。
         """
         return set_config(
@@ -459,26 +463,29 @@ class AppService:
     def set_daily_task_checked(
         self,
         script_name: str,
-        daily_display_name: str,
-        task_name: str,
+        daily_display_name: str | None = None,
+        task_name: str | None = None,
         sequence: str | int | None = None,
     ) -> DailyTaskResult:
-        """设置副本并把失败作为返回值，供没有下拉框的调用方使用。
+        """设置副本并把选择失败作为返回值，供没有下拉框的调用方使用。
 
-        与 :meth:`set_script_daily_task` 写同一份配置，区别只在失败出口：这个不抛
-        异常，而是返回原因与候选副本。两条路径共用 ``set_daily_task_checked``。
+        与 :meth:`set_script_daily_task` 是同一件事，区别只在失败出口：这个不抛
+        异常，而是返回原因与候选副本。
 
         Args:
             script_name: 脚本标识名。
             daily_display_name: 日常展示名（多日常脚本必须给）。
-            task_name: 一级项展示名。
+            task_name: 一级项展示名；空或「未选择」表示不设置副本。
             sequence: 二级项值。
 
         Returns:
-            写入结果；``applied=False`` 时未写盘。
+            写入结果；``skipped`` 或 ``applied=True`` 时都没有失败。
         """
-        return set_daily_task_checked(
-            script_name, daily_display_name, task_name, sequence
+        return set_config_checked(
+            script_name,
+            daily_display_name=daily_display_name,
+            task_name=task_name,
+            sequence=sequence,
         )
 
     def set_script_daily_enabled(
