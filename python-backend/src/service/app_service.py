@@ -37,7 +37,6 @@ from src.config.set_config import (
     get_daily_map,
     get_weekly_map,
     set_config,
-    set_config_checked,
     set_daily_enabled,
     set_weekly_start_day,
     set_weekly_task,
@@ -249,15 +248,22 @@ class AppService:
     ) -> None:
         """CLI 日常选择；``daily.select`` 的 RPC 契约仍返回 null。
 
-        写入结果由 :meth:`set_script_daily_task` 返回，这里只丢弃：两个前端都把它
-        当写操作、不读返回值，改返回形状会破坏已发布的协议。
+        写入失败时抛错而不是静默返回：``daily.select`` 已发布的行为是 -32002
+        （可能已部分落盘，调用方须重读），两个前端都按这个处理。成功与否由
+        :meth:`set_script_daily_task` 的返回值表达。
+
+        Raises:
+            AssertionError: 名字对不上或适配器拒绝；消息含原因与候选。
         """
-        self.set_script_daily_task(
+        result = self.set_script_daily_task(
             script_name,
             daily_display_name=daily_name,
             task_name=task_name,
             sequence=sequence,
         )
+        if not result.applied and not result.skipped:
+            raise AssertionError(result.describe(script_name))
+        return None
 
     def check_update(self):
         """用户手动检查新版。"""
@@ -446,31 +452,12 @@ class AppService:
         daily_display_name: str | None = None,
         task_name: str | None = None,
         sequence: str | int | None = None,
-    ) -> None:
+    ) -> DailyTaskResult:
         """写日常副本/二级序列到脚本自身 config（编辑期实时落盘）。
 
-        失败时由适配器抛错，与 ``daily.select`` 的 -32002 语义一致（可能已部分
-        落盘，调用方须重读）。需要「不抛错、拿到原因与候选」时用
-        :meth:`set_daily_task_checked`。
-        """
-        return set_config(
-            script_name,
-            daily_display_name=daily_display_name,
-            task_name=task_name,
-            sequence=sequence,
-        )
-
-    def set_daily_task_checked(
-        self,
-        script_name: str,
-        daily_display_name: str | None = None,
-        task_name: str | None = None,
-        sequence: str | int | None = None,
-    ) -> DailyTaskResult:
-        """设置副本并把选择失败作为返回值，供没有下拉框的调用方使用。
-
-        与 :meth:`set_script_daily_task` 是同一件事，区别只在失败出口：这个不抛
-        异常，而是返回原因与候选副本。
+        名字对不上时不写盘，原因与候选在返回值里；调用方据此区分「没事要做」
+        （``skipped``）、「改成了」和「名字错了」。需要失败即抛错的调用方（RPC
+        的 -32002 语义）见 :meth:`select_daily`。
 
         Args:
             script_name: 脚本标识名。
@@ -481,7 +468,7 @@ class AppService:
         Returns:
             写入结果；``skipped`` 或 ``applied=True`` 时都没有失败。
         """
-        return set_config_checked(
+        return set_config(
             script_name,
             daily_display_name=daily_display_name,
             task_name=task_name,

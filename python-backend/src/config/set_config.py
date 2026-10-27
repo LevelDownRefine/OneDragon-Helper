@@ -515,48 +515,17 @@ def set_config(
     daily_display_name: str | None = None,
     task_name: str | None = None,
     sequence: str | int | None = None,
-) -> None:
+) -> DailyTaskResult:
     """适配器接口：设置副本 / 序列。
 
-    未选副本或脚本未适配（自定义脚本）时优雅跳过。周常（周几起 / 周常副本）归
-    本模块的周常接口分发给同一 ScriptConfig 持有的 Weekly，不经本函数。
-
-    选择对不上时由适配器抛错——``daily.select`` 的 -32002 语义依赖它，属已发布
-    契约。需要「不抛错、拿到原因与候选」的调用方用 :func:`set_config_checked`。
+    周常（周几起 / 周常副本）归本模块的周常接口分发给同一 ScriptConfig 持有的
+    Weekly，不经本函数。
 
     Args:
         script_name: 脚本标识名。
         daily_display_name: 副本所属日常展示名（界面逐行渲染时即该行行名）；
             单日常脚本也要给，分段脚本（多日常）据此选段。
         task_name: 一级项展示名（副本站位）；None 或「未选择」表示不设置副本。
-        sequence: 二级项值；仅部分脚本支持。
-    """
-    if not task_name or task_name == "未选择":
-        return
-
-    # 自定义脚本（不在注册表）跳过
-    if script_name not in _CONFIGS:
-        logger.info(f"[set_config] 进程 {script_name} 无副本适配（自定义脚本），跳过")
-        return
-
-    _CONFIGS[script_name]().set_daily_task(daily_display_name, task_name, sequence)
-
-
-def set_config_checked(
-    script_name: str,
-    daily_display_name: str | None = None,
-    task_name: str | None = None,
-    sequence: str | int | None = None,
-) -> DailyTaskResult:
-    """设置副本，把选择失败作为返回值而不是异常。
-
-    与 :func:`set_config` 是同一件事、同一份适配器逻辑，区别只在失败出口：
-    这个不抛错，而是返回原因与候选，供没有下拉框的调用方（CLI/助手）判断。
-
-    Args:
-        script_name: 脚本标识名。
-        daily_display_name: 副本所属日常展示名。
-        task_name: 一级项展示名；None 或「未选择」表示不设置副本。
         sequence: 二级项值；仅部分脚本支持。
 
     Returns:
