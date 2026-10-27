@@ -12,6 +12,7 @@ from src.config.native_task_switch import (
     MultiSelectSegment,
     NativeTaskSwitch,
     PatternSegment,
+    UnknownNativeTask,
     load_native_task_switch_map,
     native_task_switch_of,
 )
@@ -235,8 +236,8 @@ class TestWrite(unittest.TestCase):
             self.assertEqual(_switch().write({}), 0)
         mock_load.assert_not_called()
 
-    def test_unknown_and_ambiguous_names_are_skipped(self):
-        """行名找不到或同名撞车都不写，并记日志。"""
+    def test_unknown_and_ambiguous_names_raise_without_writing(self):
+        """行名找不到或同名撞车：抛错并保持文件不变，不猜目标。"""
         config = _config(
             {"a": "领取邮件", "b": "同名", "c": "同名"},
             {"a": True, "b": False, "c": False},
@@ -244,24 +245,32 @@ class TestWrite(unittest.TestCase):
         with (
             patch.object(mod, "load_script_config", return_value=config),
             patch.object(mod, "save_script_config") as mock_save,
-            self.assertLogs("src.config.native_task_switch", level="WARNING"),
+            self.assertRaises(UnknownNativeTask) as raised,
         ):
-            self.assertEqual(_switch().write({"不存在": True, "同名": True}), 0)
+            _switch().write({"不存在": True, "同名": True})
         mock_save.assert_not_called()
+        self.assertEqual(
+            raised.exception.reasons,
+            {"不存在": mod._REASON_UNKNOWN, "同名": mod._REASON_AMBIGUOUS},
+        )
+        self.assertEqual(raised.exception.candidates, ["领取邮件", "同名", "同名"])
 
-    def test_missing_config_write_is_noop(self):
-        with patch.object(mod, "load_script_config", return_value=None):
-            self.assertEqual(_switch().write({"领取邮件": True}), 0)
+    def test_missing_config_write_raises(self):
+        with (
+            patch.object(mod, "load_script_config", return_value=None),
+            self.assertRaises(UnknownNativeTask),
+        ):
+            _switch().write({"领取邮件": True})
 
-    def test_missing_tables_write_is_noop(self):
+    def test_missing_tables_write_raises(self):
         with (
             patch.object(mod, "load_script_config", return_value={"other": 1}),
-            self.assertLogs("src.config.native_task_switch", level="WARNING"),
+            self.assertRaises(UnknownNativeTask),
         ):
-            self.assertEqual(_switch().write({"领取邮件": True}), 0)
+            _switch().write({"领取邮件": True})
 
     def test_pattern_write_only_touches_switch_items(self):
-        """正则白名单形态：按行名回填同一个键，带子选项的项既不写也不报错。"""
+        """正则白名单形态：按行名回填同一个键；带子选项的项不是开关，写它就报错。"""
         config = {"⭐收邮件": False, "⭐帝江号收菜": [], "普通字段": 1}
         saved = []
         with (
@@ -269,9 +278,12 @@ class TestWrite(unittest.TestCase):
             patch.object(
                 mod, "save_script_config", side_effect=lambda *args: saved.append(args)
             ),
-            self.assertLogs("src.config.native_task_switch", level="WARNING"),
         ):
-            changed = _pattern_switch().write({"收邮件": True, "帝江号收菜": True})
+            # 值不是 bool 的项不算开关，按「任务不存在」拒绝。
+            with self.assertRaises(UnknownNativeTask):
+                _pattern_switch().write({"收邮件": True, "帝江号收菜": True})
+            self.assertEqual(saved, [])
+            changed = _pattern_switch().write({"收邮件": True})
         self.assertEqual(changed, 1)
         self.assertEqual(config["⭐收邮件"], True)
         self.assertEqual(config["⭐帝江号收菜"], [])
@@ -292,9 +304,11 @@ class TestWrite(unittest.TestCase):
                 mod, "save_script_config", side_effect=lambda *args: saved.append(args)
             ),
         ):
-            self.assertEqual(
-                _app_list_switch().write({"兑换码": False, "lost_void": True}), 1
-            )
+            # 白名单外的标识写不动：整批拒绝。
+            with self.assertRaises(UnknownNativeTask):
+                _app_list_switch().write({"兑换码": False, "lost_void": True})
+            self.assertEqual(saved, [])
+            self.assertEqual(_app_list_switch().write({"兑换码": False}), 1)
         self.assertEqual(
             config["app_list"],
             [
@@ -328,12 +342,15 @@ class TestWrite(unittest.TestCase):
                     {"name": "每日实训", "enabled": False},
                 ],
             )
-            self.assertEqual(
-                switch.write({"清体力": False, "debug_mode_enable": True}), 1
-            )
+            # 白名单外的键不能写：整批拒绝，一个字节都不动。
+            with self.assertRaises(UnknownNativeTask):
+                switch.write({"清体力": False, "debug_mode_enable": True})
+            mock_save.assert_not_called()
+            self.assertTrue(config["power_enable"])
+            self.assertTrue(config["debug_mode_enable"])
+            self.assertEqual(switch.write({"清体力": False}), 1)
         mock_save.assert_called_once()
         self.assertFalse(config["power_enable"])
-        self.assertTrue(config["debug_mode_enable"])
 
     def test_multi_select_write_adds_and_removes_members(self):
         """多选形态：开即把标识加进列表，关即摘掉；取值未变的成员不动。"""
@@ -650,96 +667,3 @@ class TestDeclaration(unittest.TestCase):
         )
         self.assertEqual(multi["list_key"], _OKWW_LIST_KEY)
         self.assertEqual(multi["names"]["Check Weekly Garden"], "检查每周乐园")
-
-
-class TestApply(unittest.TestCase):
-    """apply：名字对不上时整批不写，并说明原因。"""
-
-    def _switch(self) -> NativeTaskSwitch:
-        return NativeTaskSwitch("BetterGI", [_DECLARATION])
-
-    def test_all_names_resolve_writes_and_reports_count(self):
-        config = _config({"a": "领取邮件", "b": "周常"}, {"a": True, "b": False})
-        saved = []
-        with (
-            patch.object(mod, "load_script_config", return_value=config),
-            patch.object(
-                mod, "save_script_config", side_effect=lambda *args: saved.append(args)
-            ),
-        ):
-            result = self._switch().apply({"周常": True})
-        self.assertTrue(result.ok)
-        self.assertEqual(result.changed, 1)
-        self.assertTrue(config["TaskEnabledList"]["b"])
-        self.assertEqual(len(saved), 1)
-
-    def test_unknown_name_refuses_whole_batch(self):
-        """一行写错则整批不落盘：不能留下「改了一半」的状态。"""
-        config = _config({"a": "领取邮件", "b": "周常"}, {"a": True, "b": False})
-        with (
-            patch.object(mod, "load_script_config", return_value=config),
-            patch.object(mod, "save_script_config") as mock_save,
-        ):
-            result = self._switch().apply({"周常": True, "不存在": False})
-        mock_save.assert_not_called()
-        self.assertEqual(result.changed, 0)
-        self.assertEqual(result.reasons, {"不存在": mod._REASON_UNKNOWN})
-        self.assertEqual(config["TaskEnabledList"], {"a": True, "b": False})
-
-    def test_task_without_switch_record_reports_its_own_reason(self):
-        """定义表有、启用表缺：报「无开关记录」而非「未找到」。"""
-        config = _config({"a": "领取邮件", "b": "周常"}, {"a": True})
-        with (
-            patch.object(mod, "load_script_config", return_value=config),
-            patch.object(mod, "save_script_config") as mock_save,
-        ):
-            result = self._switch().apply({"周常": True})
-        mock_save.assert_not_called()
-        self.assertEqual(result.reasons, {"周常": mod._REASON_NO_SLOT})
-
-    def test_describe_success_and_failure(self):
-        config = _config({"a": "领取邮件"}, {"a": False})
-        with (
-            patch.object(mod, "load_script_config", return_value=config),
-            patch.object(mod, "save_script_config"),
-        ):
-            ok = self._switch().apply({"领取邮件": True})
-        self.assertEqual(ok.describe("BetterGI"), "BetterGI：已更新 1 项任务开关")
-        failed = self._switch().apply({"不存在": True})
-        self.assertIn("未写入任务开关", failed.describe("BetterGI"))
-
-    def test_empty_states_writes_nothing(self):
-        with patch.object(mod, "load_script_config") as mock_load:
-            result = self._switch().apply({})
-        self.assertTrue(result.ok)
-        self.assertEqual(result.changed, 0)
-        mock_load.assert_not_called()
-
-    def test_multi_segment_dispatch(self):
-        """多段：行名按段归属，两段的改动都要落盘。"""
-        store = {"Farm Nightmare Nest for Daily Echo": True, _OKWW_LIST_KEY: []}
-
-        def load(*_args, **_kwargs):
-            return {
-                k: (list(v) if isinstance(v, list) else v) for k, v in store.items()
-            }
-
-        def save(*args):
-            data = args[-1]
-            store.clear()
-            store.update(data)
-
-        switch = NativeTaskSwitch(
-            "ok-ww", [_OKWW_BOOL_DECLARATION, _OKWW_MULTI_DECLARATION]
-        )
-        with (
-            patch.object(mod, "load_script_config", side_effect=load),
-            patch.object(mod, "save_script_config", side_effect=save),
-        ):
-            result = switch.apply(
-                {"使用梦魇巢穴获取日常声骸": False, "检查每周乐园": True}
-            )
-        self.assertTrue(result.ok)
-        self.assertEqual(result.changed, 2)
-        self.assertFalse(store["Farm Nightmare Nest for Daily Echo"])
-        self.assertEqual(store[_OKWW_LIST_KEY], ["Check Weekly Garden"])

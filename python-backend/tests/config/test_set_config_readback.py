@@ -16,7 +16,6 @@ from src.config.set_config import (
     WutheringWavesConfig,
     get_daily_readback,
     get_weekly_task,
-    set_config,
     set_daily_enabled,
 )
 from src.config.task import daily as daily_mod
@@ -371,62 +370,3 @@ class TestSetDailyEnabledFacade(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
-
-class TestSetDailyTaskChecked(unittest.TestCase):
-    """set_config：选择失败作为返回值，不抛错、不写盘。"""
-
-    def test_valid_selection_writes_and_reads_back(self):
-        config: dict = {}
-        with (
-            patch.object(Daily, "_load_daily_config", return_value=config),
-            patch.object(daily_mod, "save_script_config"),
-        ):
-            result = set_config("ok-ww", "每日任务", "凝素领域", 5)
-            self.assertTrue(result.applied)
-            self.assertEqual(result.reason, "")
-            cfg = WutheringWavesConfig()
-            with patch.object(Daily, "_load_daily_config", return_value=config):
-                self.assertEqual(_read(cfg, "每日任务"), ("凝素领域", 5))
-
-    def test_unknown_daily_reports_candidates_without_reading_config(self):
-        with (
-            patch.object(Daily, "_load_daily_config") as read,
-        ):
-            result = set_config("ok-ww", "不存在日常", "凝素领域", 5)
-        self.assertFalse(result.applied)
-        self.assertIn("未找到该日常", result.reason)
-        self.assertIn("每日任务", result.daily_names)
-        read.assert_not_called()
-
-    def test_unknown_task_reports_reason_without_writing(self):
-        saved = []
-        with (
-            patch.object(Daily, "_load_daily_config", return_value={}),
-            patch.object(
-                daily_mod, "save_script_config", side_effect=lambda *a: saved.append(a)
-            ),
-        ):
-            result = set_config("ok-ww", "每日任务", "不存在的副本", None)
-        self.assertFalse(result.applied)
-        self.assertIn("未声明的一级项", result.reason)
-        self.assertEqual(saved, [])
-
-    def test_invalid_sequence_reports_reason(self):
-        with patch.object(Daily, "_load_daily_config", return_value={}):
-            result = set_config("ok-ww", "每日任务", "模拟领域", "不存在的二级")
-        self.assertFalse(result.applied)
-        self.assertIn("未适配的二级值", result.reason)
-
-    def test_unadapted_script_is_noop_not_error(self):
-        """未适配脚本没有副本概念：属合法的「无事可做」，不当作错误。"""
-        result = set_config("自定义脚本", "日常", "副本")
-        self.assertTrue(result.applied)
-        self.assertEqual(result.reason, "")
-
-    def test_describe_is_actionable_on_failure(self):
-        with patch.object(Daily, "_load_daily_config", return_value={}):
-            result = set_config("ok-ww", "每日任务", "不存在的副本", None)
-        text = result.describe("ok-ww")
-        self.assertIn("未写入", text)
-        self.assertIn("当前日常", text)

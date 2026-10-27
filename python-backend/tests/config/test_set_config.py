@@ -798,20 +798,17 @@ class TestSetConfigAdapter(unittest.TestCase):
 
     def test_dispatches_to_correct_subclass(self):
         """验证 set_config 正确分发到对应子类（日常名一并透传，顺序为日常→副本→序列）"""
-        mock_daily = MagicMock()
         mock_instance = MagicMock()
-        mock_instance._resolve_daily.return_value = mock_daily
         mock_factory = MagicMock(return_value=mock_instance)
         with patch.dict("src.config.set_config._CONFIGS", {"ok-ww": mock_factory}):
-            result = set_config.set_config(
+            set_config.set_config(
                 "ok-ww",
                 daily_display_name="每日任务",
                 task_name="无音区",
                 sequence="1",
             )
         mock_factory.assert_called_once()
-        mock_daily.update.assert_called_once_with("无音区", "1")
-        self.assertTrue(result.applied)
+        mock_instance.set_daily_task.assert_called_once_with("每日任务", "无音区", "1")
 
 
 if __name__ == "__main__":

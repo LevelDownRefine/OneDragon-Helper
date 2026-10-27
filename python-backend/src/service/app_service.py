@@ -27,12 +27,8 @@ import src.service.chain_service as chain_service
 import src.service.daily_plan as daily_plan
 import src.service.script_service as script_service
 import src.service.task_service as task_service
-from src.config.native_task_switch import (
-    SwitchWriteResult,
-    native_task_switch_of,
-)
+from src.config.native_task_switch import UnknownNativeTask, native_task_switch_of
 from src.config.set_config import (
-    DailyTaskResult,
     get_daily_map,
     get_weekly_map,
     set_config,
@@ -245,24 +241,13 @@ class AppService:
         task_name: str | None = None,
         sequence: str | int | None = None,
     ) -> None:
-        """CLI 日常选择；``daily.select`` 的 RPC 契约仍返回 null。
-
-        写入失败时抛错而不是静默返回：``daily.select`` 已发布的行为是 -32002
-        （可能已部分落盘，调用方须重读），两个前端都按这个处理。成功与否由
-        :meth:`set_script_daily_task` 的返回值表达。
-
-        Raises:
-            AssertionError: 名字对不上或适配器拒绝；消息含原因与候选。
-        """
-        result = self.set_script_daily_task(
+        """CLI 日常选择，直接转发原 GUI 接口。"""
+        return self.set_script_daily_task(
             script_name,
             daily_display_name=daily_name,
             task_name=task_name,
             sequence=sequence,
         )
-        if not result.applied and not result.skipped:
-            raise AssertionError(result.describe(script_name))
-        return None
 
     def check_update(self):
         """用户手动检查新版。"""
@@ -451,22 +436,8 @@ class AppService:
         daily_display_name: str | None = None,
         task_name: str | None = None,
         sequence: str | int | None = None,
-    ) -> DailyTaskResult:
-        """写日常副本/二级序列到脚本自身 config（编辑期实时落盘）。
-
-        名字对不上时不写盘，原因与候选在返回值里；调用方据此区分「没事要做」
-        （``skipped``）、「改成了」和「名字错了」。需要失败即抛错的调用方（RPC
-        的 -32002 语义）见 :meth:`select_daily`。
-
-        Args:
-            script_name: 脚本标识名。
-            daily_display_name: 日常展示名（多日常脚本必须给）。
-            task_name: 一级项展示名；空或「未选择」表示不设置副本。
-            sequence: 二级项值。
-
-        Returns:
-            写入结果；``skipped`` 或 ``applied=True`` 时都没有失败。
-        """
+    ) -> None:
+        """写日常副本/二级序列到脚本自身 config（编辑期实时落盘）。"""
         return set_config(
             script_name,
             daily_display_name=daily_display_name,
@@ -483,11 +454,7 @@ class AppService:
     def set_script_weekly_task(
         self, script_name: str, weekly_name: str, task_name: str
     ) -> None:
-        """写某周常当前选中的副本名到脚本自身 config。
-
-        周常副本选型（``Weekly.set_task``）目前无任何子类实现、声明里也没有
-        ``options``，故本方法对现有脚本都是 no-op，机制保留待用。
-        """
+        """写某周常当前选中的副本名到脚本自身 config。"""
         return set_weekly_task(script_name, weekly_name, task_name)
 
     def get_script_options(self, script_name: str) -> list:
@@ -503,16 +470,21 @@ class AppService:
         switch = native_task_switch_of(script_name)
         return [] if switch is None else switch.read()
 
-    def set_script_switches(self, script_name: str, states: dict) -> SwitchWriteResult:
-        """按任务名写该脚本原生任务的开关，返回结果而不是只给变更数。
+    def set_script_switches(self, script_name: str, states: dict) -> int:
+        """按任务名写该脚本原生任务的开关，返回实际变更项数。
 
-        任务名对不上时不写盘、不抛错，而是把原因与候选放进返回值：调用方要靠它
-        告诉用户「没改成，可选的是这些」。只拿到一个偏小的变更数会误判为已改成功。
+        任务名对不上时抛错而不是只写能写的那几项：静默跳过会让调用方拿到一个
+        偏小的变更数，误以为已经改成功。
+
+        Raises:
+            UnknownNativeTask: 有任务名无法定位；此时未写入任何一项。
         """
         switch = native_task_switch_of(script_name)
         if switch is None:
-            return SwitchWriteResult(0, dict.fromkeys(states, "脚本未声明任务开关"))
-        return switch.apply(states)
+            raise UnknownNativeTask(
+                script_name, dict.fromkeys(states, "脚本未声明任务开关"), []
+            )
+        return switch.write(states)
 
     # ── 自定义壁纸表（config/wallpaper.json，src.utils.utils_wallpaper）──
     def load_wallpapers(self) -> dict:

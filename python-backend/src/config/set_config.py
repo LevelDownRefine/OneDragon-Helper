@@ -5,7 +5,6 @@ import os
 from collections.abc import Callable
 from copy import deepcopy
 from functools import cache
-from typing import NamedTuple
 
 from src.config.script_resources import ScriptResources, get_script_resources
 from src.config.task.daily import Daily, MaaDaily, build_dailies
@@ -27,36 +26,6 @@ from src.utils.utils_sub_config import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-class DailyTaskResult(NamedTuple):
-    """一次副本写入的结果；名字对不上是可预期结果，不是异常。
-
-    外部输入（模型、命令行）写错名字属可恢复情况，按项目约定用返回值表达。
-
-    Attributes:
-        applied: 是否真的写入了。
-        reason: 未写入的原因；成功时为空串。
-        daily_names: 该脚本声明的日常展示名，供调用方定位「是哪个日常段」。
-        skipped: True 表示这次调用本来就没打算写（未选副本 / 脚本未适配），
-            属正常流程，不是失败。与 ``applied=False`` 是两回事。
-    """
-
-    applied: bool
-    reason: str
-    daily_names: list[str]
-    skipped: bool = False
-
-    def describe(self, script_name: str) -> str:
-        """人可读的一行结论；成功与失败共用「{脚本}：{动作}{对象}」句式。"""
-        if self.skipped:
-            return f"{script_name}：未选择副本，无需写入"
-        if self.applied:
-            return f"{script_name}：已更新副本选择"
-        parts = [f"{script_name}：未写入副本选择（{self.reason}）"]
-        if self.daily_names:
-            parts.append(f"当前日常：{'、'.join(self.daily_names)}")
-        return "；".join(parts)
 
 
 # ============================================================
@@ -162,28 +131,6 @@ class ScriptConfig:
         assert daily_display_name, f"[set_config][{self.display_name}] 必须指定日常"
         self._dispatch_daily(daily_display_name).update(task_name, sequence)
         self.set_daily_enabled(daily_display_name, True)
-
-    def _resolve_daily(self, daily_display_name: str) -> Daily | DailyTaskResult:
-        """按展示名取日常；对不上时返回已填好候选的结果。
-
-        与 :meth:`_dispatch_daily` 的区别只在出口：那个断言（编程错误），这个返回
-        结果（外部输入写错名字）。两者共用同一份匹配规则。
-        """
-        if not daily_display_name:
-            return DailyTaskResult(
-                False, "必须指定日常（同一脚本可能有多个日常段）", self.daily_names()
-            )
-        matches = [
-            daily for daily in self._dailies if daily.display_name == daily_display_name
-        ]
-        if len(matches) == 1:
-            return matches[0]
-        reason = "日常名不唯一" if matches else "未找到该日常"
-        return DailyTaskResult(False, reason, self.daily_names())
-
-    def daily_names(self) -> list[str]:
-        """本脚本声明的日常展示名（同一脚本可能有多个日常段）。"""
-        return [daily.display_name for daily in self._dailies]
 
     def set_daily_enabled(self, daily_display_name: str, enabled: bool) -> None:
         """启用/停用某日常：读开关文件 → 交给该日常改内存 → 有改动才落盘。
@@ -504,11 +451,11 @@ def set_config(
     daily_display_name: str | None = None,
     task_name: str | None = None,
     sequence: str | int | None = None,
-) -> DailyTaskResult:
+) -> None:
     """适配器接口：设置副本 / 序列。
 
-    周常（周几起 / 周常副本）归本模块的周常接口分发给同一 ScriptConfig 持有的
-    Weekly，不经本函数。
+    未选副本或脚本未适配（自定义脚本）时优雅跳过。周常（周几起 / 周常副本）归
+    本模块的周常接口分发给同一 ScriptConfig 持有的 Weekly，不经本函数。
 
     Args:
         script_name: 脚本标识名。
@@ -516,32 +463,16 @@ def set_config(
             单日常脚本也要给，分段脚本（多日常）据此选段。
         task_name: 一级项展示名（副本站位）；None 或「未选择」表示不设置副本。
         sequence: 二级项值；仅部分脚本支持。
-
-    Returns:
-        写入结果。``skipped`` 表示本来就没打算写（未选副本 / 脚本未适配），属正常
-        流程；``applied=False`` 且非 ``skipped`` 时才是名字对不上或适配器拒绝。
     """
     if not task_name or task_name == "未选择":
-        return DailyTaskResult(True, "", [], skipped=True)
+        return
 
-    # 自定义脚本（不在注册表）没有副本概念：与「名字写错」不同，属合法的无事可做。
+    # 自定义脚本（不在注册表）跳过
     if script_name not in _CONFIGS:
         logger.info(f"[set_config] 进程 {script_name} 无副本适配（自定义脚本），跳过")
-        return DailyTaskResult(True, "", [], skipped=True)
+        return
 
-    config = _CONFIGS[script_name]()
-    resolved = config._resolve_daily(daily_display_name or "")
-    if isinstance(resolved, DailyTaskResult):
-        return resolved
-    daily = resolved
-    try:
-        daily.update(task_name, sequence)
-    except AssertionError as exc:
-        # update 内部会校验选择；这里只把断言翻成返回值，不另做一次校验。
-        return DailyTaskResult(False, str(exc).split("] ", 1)[-1], config.daily_names())
-    config.set_daily_enabled(daily_display_name, True)
-    # 成功时没有消费者读候选，不构造（每日写入路径上省两次遍历）。
-    return DailyTaskResult(True, "", [])
+    _CONFIGS[script_name]().set_daily_task(daily_display_name, task_name, sequence)
 
 
 def get_daily_map(script_name: str | None = None) -> dict:

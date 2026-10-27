@@ -55,18 +55,10 @@ class CliForwardingTests(unittest.TestCase):
         for cli_name, args, original_name, forwarded_args, forwarded_kwargs in routes:
             with self.subTest(cli=cli_name, args=args):
                 cli = getattr(service, cli_name)
-                # select_daily 是 RPC 适配层：daily.select 的契约是返回 null，
-                # 它读写入结果只在失败时转成异常；其余 CLI 出口原样返回。
-                outcome = (
-                    config_mod.DailyTaskResult(True, "", [], [])
-                    if cli_name == "select_daily"
-                    else sentinel.result
-                )
                 with patch.object(
-                    service, original_name, return_value=outcome
+                    service, original_name, return_value=sentinel.result
                 ) as original:
-                    expected = None if cli_name == "select_daily" else sentinel.result
-                    self.assertIs(cli(*args), expected)
+                    self.assertIs(cli(*args), sentinel.result)
                     original.assert_called_once_with(
                         *forwarded_args, **forwarded_kwargs
                     )
@@ -86,7 +78,6 @@ class TaskEditingTests(unittest.TestCase):
     def setUp(self):
         self.service = AppService()
         self.select_daily = self.service.set_script_daily_task
-        self.write_daily = self.service.set_script_daily_task
         self.enable_daily = self.service.set_script_daily_enabled
         self.select_weekly = self.service.set_script_weekly_task
         # 查询坏了也不能影响独立写入；菜单物化同样不应是写操作的前置条件。
@@ -168,26 +159,17 @@ class TaskEditingTests(unittest.TestCase):
             patch.object(daily_mod, "save_script_config", side_effect=save)
         )
 
-    def test_unselected_task_is_noop_and_unadapted_script_reports_reason(self):
-        """没打算选副本 → 不写盘（GUI 入口另返回 skipped 结果）。"""
-        for args, kwargs in (
-            (("脚本",), {}),
-            (("脚本",), {"task_name": None}),
-            (("脚本",), {"task_name": ""}),
-            (("脚本",), {"task_name": "未选择"}),
-            (("自定义", "日常", "材料", 1), {}),
-        ):
-            with self.subTest(args=args, kwargs=kwargs):
-                result = self.select_daily(*args, **kwargs)
-                self.assertTrue(result.skipped)
-        unadapted = self.select_daily("自定义", "日常", "材料", 1)
-        self.assertTrue(unadapted.skipped, "未适配脚本没有副本概念，属无事可做")
+    def test_unselected_or_unadapted_daily_is_noop(self):
+        self.assertIsNone(self.select_daily("脚本"))
+        for task in (None, "", "未选择"):
+            with self.subTest(task=task):
+                self.assertIsNone(self.select_daily("脚本", task_name=task))
+        self.assertIsNone(self.select_daily("自定义", "日常", "材料", 1))
         self.assertEqual(self.reads, [])
         self.assertEqual(self.saves, [])
 
     def test_static_display_name_is_mapped_and_selection_enables_daily(self):
-        result = self.select_daily("脚本", "日常", "材料", "第一项")
-        self.assertTrue(result.applied)
+        self.assertIsNone(self.select_daily("脚本", "日常", "材料", "第一项"))
         self.assertEqual(
             self.saves,
             [
@@ -202,36 +184,25 @@ class TaskEditingTests(unittest.TestCase):
             ("资源菜单之外的副本", "资源菜单之外的副本"),
         ):
             with self.subTest(sequence=sequence):
-                result = self.select_daily("脚本", "动态日常", "材料", sequence)
-                self.assertTrue(result.applied)
+                self.assertIsNone(
+                    self.select_daily("脚本", "动态日常", "材料", sequence)
+                )
                 self.assertEqual(
                     self.files["dynamic.json"],
                     {"task": "material", "sequence": expected, "enabled": True},
                 )
 
-    def test_invalid_static_selection_reports_reason_and_candidates(self):
-        """选择对不上时报原因与候选，不抛错也不写盘。"""
-        cases = (
-            ("未知日常", "材料", 1, "未找到该日常"),
-            ("日常", "未知任务", 1, "未声明的一级项"),
-            ("日常", "材料", None, "缺少二级选项"),
-            ("日常", "材料", "未知二级项", "未适配的二级值"),
-        )
-        for daily, task, sequence, reason in cases:
+    def test_invalid_static_selection_retains_adapter_assertion(self):
+        for daily, task, sequence in (
+            ("未知日常", "材料", 1),
+            ("日常", "未知任务", 1),
+            ("日常", "材料", None),
+            ("日常", "材料", "未知二级项"),
+        ):
             with self.subTest(daily=daily, task=task, sequence=sequence):
-                result = self.select_daily("脚本", daily, task, sequence)
-                self.assertFalse(result.applied)
-                self.assertIn(reason, result.reason)
+                with self.assertRaises(AssertionError):
+                    self.select_daily("脚本", daily, task, sequence)
                 self.assertEqual(self.saves, [])
-
-    def test_unknown_daily_lists_declared_daily_names(self):
-        result = self.select_daily("脚本", "未知日常", "材料", 1)
-        self.assertEqual(result.daily_names, ["日常", "动态日常", "无开关日常"])
-
-    def test_static_selection_returns_applied(self):
-        result = self.select_daily("脚本", "日常", "材料", "第一项")
-        self.assertTrue(result.applied)
-        self.assertEqual(result.reason, "")
 
     def test_enable_only_changes_target_switch_without_reading_selections(self):
         self.files["daily.json"]["enabled"] = True
@@ -362,7 +333,7 @@ class CliTaskEditingTests(TaskEditingTests):
 
     def setUp(self):
         super().setUp()
-        self.select_daily = self.service.set_script_daily_task
+        self.select_daily = self.service.select_daily
         self.enable_daily = self.service.enable_daily
         self.select_weekly = self.service.select_weekly
 
