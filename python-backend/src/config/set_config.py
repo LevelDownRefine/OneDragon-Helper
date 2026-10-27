@@ -37,11 +37,7 @@ class DailyTaskResult(NamedTuple):
     Attributes:
         applied: 是否真的写入了。
         reason: 未写入的原因；成功时为空串。
-        daily_names: 该脚本声明的日常展示名，供调用方给出候选。
-        task_names: 该日常声明的一级项展示名。
-        rejected: True 表示失败源于适配器内部类型校验（值类型不对），
-            而不是名字找不到。两者对调用方含义不同：名字错可以改正后重试，
-            类型错说明声明与脚本实际不符，属内部缺陷。
+        daily_names: 该脚本声明的日常展示名，供调用方定位「是哪个日常段」。
         skipped: True 表示这次调用本来就没打算写（未选副本 / 脚本未适配），
             属正常流程，不是失败。与 ``applied=False`` 是两回事。
     """
@@ -49,8 +45,6 @@ class DailyTaskResult(NamedTuple):
     applied: bool
     reason: str
     daily_names: list[str]
-    task_names: list[str]
-    rejected: bool = False
     skipped: bool = False
 
     def describe(self, script_name: str) -> str:
@@ -62,8 +56,6 @@ class DailyTaskResult(NamedTuple):
         parts = [f"{script_name}：未写入副本选择（{self.reason}）"]
         if self.daily_names:
             parts.append(f"当前日常：{'、'.join(self.daily_names)}")
-        if self.task_names:
-            parts.append(f"当前可选副本：{'、'.join(self.task_names)}")
         return "；".join(parts)
 
 
@@ -179,10 +171,7 @@ class ScriptConfig:
         """
         if not daily_display_name:
             return DailyTaskResult(
-                False,
-                "必须指定日常（同一脚本可能有多个日常段）",
-                self.daily_names(),
-                [],
+                False, "必须指定日常（同一脚本可能有多个日常段）", self.daily_names()
             )
         matches = [
             daily for daily in self._dailies if daily.display_name == daily_display_name
@@ -190,7 +179,7 @@ class ScriptConfig:
         if len(matches) == 1:
             return matches[0]
         reason = "日常名不唯一" if matches else "未找到该日常"
-        return DailyTaskResult(False, reason, self.daily_names(), [])
+        return DailyTaskResult(False, reason, self.daily_names())
 
     def daily_names(self) -> list[str]:
         """本脚本声明的日常展示名（同一脚本可能有多个日常段）。"""
@@ -533,42 +522,26 @@ def set_config(
         流程；``applied=False`` 且非 ``skipped`` 时才是名字对不上或适配器拒绝。
     """
     if not task_name or task_name == "未选择":
-        return DailyTaskResult(True, "", [], [], skipped=True)
+        return DailyTaskResult(True, "", [], skipped=True)
 
     # 自定义脚本（不在注册表）没有副本概念：与「名字写错」不同，属合法的无事可做。
     if script_name not in _CONFIGS:
         logger.info(f"[set_config] 进程 {script_name} 无副本适配（自定义脚本），跳过")
-        return DailyTaskResult(True, "", [], [], skipped=True)
+        return DailyTaskResult(True, "", [], skipped=True)
 
     config = _CONFIGS[script_name]()
     resolved = config._resolve_daily(daily_display_name or "")
     if isinstance(resolved, DailyTaskResult):
         return resolved
     daily = resolved
-    # 选择合法性（名字类失败，可改正后重试）与 update 的其余断言（声明与脚本
-    # 实际不符，属内部缺陷）分开报：前者先判，后者在写入路径上才可能出现。
-    try:
-        daily.check_fields(task_name, sequence)
-    except AssertionError as exc:
-        return DailyTaskResult(
-            False,
-            str(exc).split("] ", 1)[-1],
-            config.daily_names(),
-            daily.task_names(),
-        )
     try:
         daily.update(task_name, sequence)
     except AssertionError as exc:
-        return DailyTaskResult(
-            False,
-            str(exc).split("] ", 1)[-1],
-            config.daily_names(),
-            daily.task_names(),
-            rejected=True,
-        )
+        # update 内部会校验选择；这里只把断言翻成返回值，不另做一次校验。
+        return DailyTaskResult(False, str(exc).split("] ", 1)[-1], config.daily_names())
     config.set_daily_enabled(daily_display_name, True)
     # 成功时没有消费者读候选，不构造（每日写入路径上省两次遍历）。
-    return DailyTaskResult(True, "", [], [])
+    return DailyTaskResult(True, "", [])
 
 
 def get_daily_map(script_name: str | None = None) -> dict:

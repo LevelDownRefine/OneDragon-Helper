@@ -558,8 +558,6 @@ class TestWeeklyAdapter(WeeklyTestCase):
         with (
             patch.object(daily, "update") as update,
             patch.object(daily, "set_enabled") as enable,
-            # 本用例只验「用缓存对象」，选择合法性另有用例覆盖。
-            patch.object(daily, "check_fields"),
         ):
             config_mod.set_config("ok-ww", daily.display_name, "材料", 1)
             config_mod.set_weekly_task("ok-ww", "独有周常", "副本")

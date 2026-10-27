@@ -37,8 +37,6 @@ _REASON_UNKNOWN = "未找到该任务"
 _REASON_AMBIGUOUS = "同名任务不唯一"
 _REASON_NO_SLOT = "任务无开关记录"
 _REASON_NO_CONFIG = "原生配置缺失或脚本未安装"
-#: 脚本压根没在 task_switch_list.yml 里声明任务开关（与「声明了但读不到」不同）。
-REASON_NO_SWITCH = "脚本未声明任务开关"
 
 
 class SwitchWriteResult(NamedTuple):

@@ -7,7 +7,7 @@ from pathlib import Path
 from unittest import mock
 from unittest.mock import patch
 
-from src.config.native_task_switch import REASON_NO_SWITCH, SwitchWriteResult
+from src.config.native_task_switch import SwitchWriteResult
 from src.service import app_service, task_service
 from src.service.app_service import AppService
 
@@ -190,7 +190,7 @@ class SetScriptSwitchesTests(unittest.TestCase):
         with patch.object(app_service, "native_task_switch_of", return_value=None):
             result = AppService().set_script_switches("自定义脚本", {"任意": True})
         self.assertFalse(result.ok)
-        self.assertEqual(result.reasons, {"任意": REASON_NO_SWITCH})
+        self.assertEqual(result.reasons, {"任意": "脚本未声明任务开关"})
         self.assertEqual(result.candidates, [])
 
     def test_empty_states_reports_success(self):

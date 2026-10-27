@@ -228,10 +228,6 @@ class TaskEditingTests(unittest.TestCase):
         result = self.select_daily("脚本", "未知日常", "材料", 1)
         self.assertEqual(result.daily_names, ["日常", "动态日常", "无开关日常"])
 
-    def test_unknown_task_lists_declared_task_names(self):
-        result = self.select_daily("脚本", "日常", "未知任务", 1)
-        self.assertEqual(result.task_names, ["材料"])
-
     def test_static_selection_returns_applied(self):
         result = self.select_daily("脚本", "日常", "材料", "第一项")
         self.assertTrue(result.applied)

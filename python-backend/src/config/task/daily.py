@@ -245,43 +245,6 @@ class Daily(TaskSourceMixin):
             field == self.task_field for field in self.option_fields.values()
         )
 
-    def task_names(self) -> list[str]:
-        """本日常声明的一级项展示名，供调用方在写错时给出候选。"""
-        return list(self.option_fields)
-
-    def check_fields(self, task_name: str, sequence: str | int | None = None) -> None:
-        """校验一次副本选择，不读不写。
-
-        :meth:`_fields` 把校验与取值混在一起，非交互调用方要先单独试一次才能给出
-        候选；这两步共用同一份判断，避免两处口径漂移。
-
-        Args:
-            task_name: 一级项展示名。
-            sequence: 二级项物理值；无二级时省略。
-
-        Raises:
-            AssertionError: 无选项落点、一级项未声明、二级必填却缺失，
-                或二级取值不在声明里。
-        """
-        assert self.option_fields, (
-            f"[daily][{self.display_name}] 无选项落点，不能作为副本选择写入"
-        )
-        assert task_name in self.option_fields, (
-            f"[daily][{self.display_name}] 未声明的一级项: {task_name}"
-        )
-        if sequence is None:
-            assert not self._sequence_required, (
-                f"[daily][{self.display_name}] {task_name} 缺少二级选项"
-            )
-            return
-        # 静态枚举的二级可传展示名；资源展开的二级不校验。
-        sequence_values = self._sequence_values.get(task_name, {})
-        if sequence_values:
-            sequence = sequence_values.get(sequence, sequence)
-            assert sequence in sequence_values.values(), (
-                f"[daily][{self.display_name}] 未适配的二级值: {sequence!r}"
-            )
-
     def _fields(
         self, task_name: str, sequence: str | int | None = None
     ) -> dict[str, Any]:
@@ -298,22 +261,32 @@ class Daily(TaskSourceMixin):
             AssertionError: 无选项落点、一级项未声明、二级必填却缺失，
                 或二级取值不在声明里。
         """
-        self.check_fields(task_name, sequence)
+        assert self.option_fields, (
+            f"[daily][{self.display_name}] 无选项落点，不能作为副本选择写入"
+        )
+        assert task_name in self.option_fields, (
+            f"[daily][{self.display_name}] 未声明的一级项: {task_name}"
+        )
         values: dict[str, Any] = {}
         if self.task_field is not None:
             values[self.task_field] = self.task_map[task_name]
-        if sequence is not None:
+        if sequence is None:
+            assert not self._sequence_required, (
+                f"[daily][{self.display_name}] {task_name} 缺少二级选项"
+            )
+        else:
+            # 静态枚举的二级可传展示名；资源展开的二级不校验。
             sequence_values = self._sequence_values.get(task_name, {})
-            # 静态枚举的二级可传展示名，落盘用其物理值。
             if sequence_values:
                 sequence = sequence_values.get(sequence, sequence)
+                assert sequence in sequence_values.values(), (
+                    f"[daily][{self.display_name}] 未适配的二级值: {sequence!r}"
+                )
             values[self.option_fields[task_name]] = sequence
         return values
 
     def update(self, task_name: str, sequence: str | int | None = None) -> bool:
         """设置该日常的副本：读 config → 写数据段 → 有改动才落盘。
-
-        校验只在 ``_fields()`` 里做一次；调用方若已单独预检过，这里不会重复校验。
 
         Args:
             task_name: 一级项展示名。

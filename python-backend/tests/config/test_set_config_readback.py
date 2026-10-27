@@ -399,7 +399,7 @@ class TestSetDailyTaskChecked(unittest.TestCase):
         self.assertIn("每日任务", result.daily_names)
         read.assert_not_called()
 
-    def test_unknown_task_reports_candidates_without_writing(self):
+    def test_unknown_task_reports_reason_without_writing(self):
         saved = []
         with (
             patch.object(Daily, "_load_daily_config", return_value={}),
@@ -410,7 +410,6 @@ class TestSetDailyTaskChecked(unittest.TestCase):
             result = set_config("ok-ww", "每日任务", "不存在的副本", None)
         self.assertFalse(result.applied)
         self.assertIn("未声明的一级项", result.reason)
-        self.assertIn("凝素领域", result.task_names)
         self.assertEqual(saved, [])
 
     def test_invalid_sequence_reports_reason(self):
@@ -430,4 +429,4 @@ class TestSetDailyTaskChecked(unittest.TestCase):
             result = set_config("ok-ww", "每日任务", "不存在的副本", None)
         text = result.describe("ok-ww")
         self.assertIn("未写入", text)
-        self.assertIn("当前可选副本", text)
+        self.assertIn("当前日常", text)
