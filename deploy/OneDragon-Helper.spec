@@ -59,7 +59,8 @@ for _ssl_name in ("libssl-3-x64.dll", "libcrypto-3-x64.dll"):
     _extra_dlls.append((_found, "."))
 
 # --- 隐式导入：动态加载的凭据后端 ---
-hiddenimports = []
+# ShellLink.GetPath 的时间字段由 pywin32 动态加载，静态分析无法发现。
+hiddenimports = ['win32timezone']
 # keyring 的凭据后端（Windows/macOS/Linux）经 importlib 动态加载，PyInstaller 不会
 # 自动跟随；显式收集全部子模块，避免冻结后运行时找不到 Windows 凭据管理器后端。
 hiddenimports += collect_submodules('keyring')
