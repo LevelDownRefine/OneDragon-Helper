@@ -1,16 +1,16 @@
 """启动/关机确认共用倒计时契约；自动启动仍受用户设置约束。"""
 
 import unittest
-from types import SimpleNamespace
+from dataclasses import asdict
 from unittest import mock
 
 from PySide6.QtWidgets import QDialog, QPushButton
 
+from gui.cli_client import CliFailure
 from gui.shutdown_dialog import ShutdownConfirmDialog, confirm_shutdown
 from gui.startup_dialog import StartupConfirmDialog, confirm_startup
-from src.service.daily_plan import DailyPlanOptions
-from src.service.schedule import StartupOptions
-from tests.gui.helpers import get_app
+from src.service.schedule import RunOptions, StartupOptions
+from tests.gui.helpers import drain_events, get_app, make_bridge
 
 DIALOGS = (
     (
@@ -99,9 +99,20 @@ class TestCountdownDialogs(unittest.TestCase):
 
 
 class TestAutoLaunchPreference(unittest.TestCase):
-    def test_ineligible_startup_never_prompts_or_launches(self):
-        from gui.main_window import QmlBridge
+    def _bridge(self, options, *, planned=False, enabled=True):
+        view = {
+            "startup": asdict(options),
+            "daily_enabled": planned,
+            "run_options": asdict(RunOptions()),
+            "shutdown_supported": True,
+        }
+        bridge = make_bridge(responses={"startup.view": view})
+        bridge.game_list._set_enabled([enabled] * len(bridge.games))
+        bridge.launch.launchAll = mock.Mock()
+        self.addCleanup(bridge.test_client.close)
+        return bridge
 
+    def test_ineligible_startup_never_prompts_or_launches(self):
         for name, options, planned, enabled in (
             ("daily_plan", StartupOptions(), True, True),
             ("disabled", StartupOptions(False, 45), False, True),
@@ -111,37 +122,22 @@ class TestAutoLaunchPreference(unittest.TestCase):
                 self.subTest(name=name),
                 mock.patch("gui.startup_dialog.confirm_startup") as confirm,
             ):
-                bridge = self._bridge(options)
-                bridge.app_service.load_daily_plan.return_value = DailyPlanOptions(
-                    planned
-                )
-                bridge.game_list.enabled = [enabled]
-                QmlBridge.maybe_auto_launch(bridge)
+                bridge = self._bridge(options, planned=planned, enabled=enabled)
+                bridge.maybe_auto_launch()
+                drain_events()
                 confirm.assert_not_called()
                 bridge.launch.launchAll.assert_not_called()
-
-    def _bridge(self, options):
-        bridge = SimpleNamespace(
-            _cli_session=None,
-            game_list=SimpleNamespace(enabled=[True]),
-            app_service=mock.Mock(),
-            launch=mock.Mock(),
-            toastRequested=mock.Mock(),
-        )
-        bridge.app_service.load_startup_options.return_value = options
-        bridge.app_service.load_daily_plan.return_value = DailyPlanOptions()
-        return bridge
+                self.assertIn(("startup.view", {}), bridge.test_client.requests)
 
     @mock.patch("gui.startup_dialog.confirm_startup")
     def test_configured_delay_and_confirmation_control_launch(self, confirm):
-        from gui.main_window import QmlBridge
-
         for accepted in (False, True):
             with self.subTest(accepted=accepted):
                 bridge = self._bridge(StartupOptions(True, 125))
                 confirm.reset_mock()
                 confirm.return_value = accepted
-                QmlBridge.maybe_auto_launch(bridge)
+                bridge.maybe_auto_launch()
+                drain_events()
                 confirm.assert_called_once_with(125)
                 if accepted:
                     bridge.launch.launchAll.assert_called_once_with(confirm=False)
@@ -150,12 +146,12 @@ class TestAutoLaunchPreference(unittest.TestCase):
 
     @mock.patch("gui.startup_dialog.confirm_startup")
     def test_read_failure_cancels_startup_and_informs_user(self, confirm):
-        from gui.main_window import QmlBridge
-
         bridge = self._bridge(StartupOptions())
-        bridge.app_service.load_startup_options.side_effect = OSError("locked")
-        with self.assertLogs("gui.main_window", level="ERROR"):
-            QmlBridge.maybe_auto_launch(bridge)
+        bridge.test_client.responses["startup.view"] = CliFailure(-32002, "locked")
+        messages = []
+        bridge.toastRequested.connect(messages.append)
+        bridge.maybe_auto_launch()
+        drain_events()
         confirm.assert_not_called()
         bridge.launch.launchAll.assert_not_called()
-        self.assertIn("已取消自动启动", bridge.toastRequested.emit.call_args.args[0])
+        self.assertEqual(messages, ["读取启动设置失败，已取消自动启动：locked"])

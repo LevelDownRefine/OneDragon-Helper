@@ -491,9 +491,8 @@ def _run_run_chain(args) -> int:
 def _run_scheduled(args) -> int:
     """CLI 出口：调度运行入口，真实实现见 ``chain_service.schedule_run``。
 
-    本函数在独立控制台进程中运行（由 ``utils_runner.spawn_schedule_run`` 以
-    ``CREATE_NEW_CONSOLE`` 起），故等待阻塞无害；关闭该控制台即取消。链在点火时
-    才生成（按当天星期）。
+    本函数处理独立 CLI 的 ``--schedule-run`` 出口，等待期间阻塞当前进程；
+    关闭控制台即取消。链在点火时才生成（按当天星期）。
     """
     app_service = AppService()
     all_config_data = app_service.load_config()

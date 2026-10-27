@@ -8,7 +8,7 @@
 
 对外接口：
 - ``RunConfirmDialog``：运行确认弹窗，构造签名含 enabled_count 与
-  ``RunOptions``（初始勾选值，经 AppService.load_run_options 取自 schedule.yml），
+  ``RunOptions``（初始勾选值来自 CLI 运行或设置视图），
   ``run_options`` 返回用户改后的 ``RunOptions``；取消（reject）不返回、不落盘。
 """
 
@@ -23,8 +23,7 @@ class RunConfirmDialog(FormDialogBase):
     """「启动全部」前的确认弹窗，按生命周期三段（运行前/中/后配置）排列七项勾选。
 
     复用 ``FormDialogBase`` 的样式与控件构造；accept 后经 ``run_options`` 属性返回
-    勾选项，写盘由调用方经 ``AppService.save_schedule`` 委托 ``src.service.schedule.save_schedule``
-    （写 schedule.yml）。取消（reject）不返回、不落盘。
+    勾选项；提交由调用方经 CLI 完成，成功回执后关闭。取消不提交。
     """
 
     def __init__(

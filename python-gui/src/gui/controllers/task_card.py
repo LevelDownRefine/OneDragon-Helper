@@ -1,25 +1,16 @@
-"""任务卡控制器：日常副本 / 周常周几（数据 + 选择持久化）。
+"""任务卡视图：日常副本 / 周常周几的标签、选项与缓存。
 
-独立 QObject，自管状态（_daily_map_cache）。当前游戏经构造注入的
-game_list 引用读取。日常菜单按脚本首次访问时缓存；日常行的 chip 文案
-每次求值时经 get_daily_readback 反读一次（一次覆盖该脚本全部日常）。
-启用控制：脚本级启用靠控制模式、日常级开关靠 setDailyEnabled（仅声明了日常开关的脚本，如异环）、
-周常靠周几起（均在别处实现）。
+独立 QObject。数据源为 CLI ``script.view``（与 Rust 前端 ``script.view``
+同一聚合视图）：日常/周常行、下拉选项与周几起一次取全，控制器只做视图→UI 行的
+展示衍生。当前游戏经构造注入的 game_list 引用读取；视图按脚本缓存，
+``refresh()``（写操作后）与 ``build_daily_cache()``（列表重载）失效重取。
+启用控制：脚本级启用靠控制模式、日常级开关靠 setDailyEnabled（仅声明了日常
+开关的脚本，如异环）、周常靠周几起（均在别处实现）。
 """
 
-import logging
+from PySide6.QtCore import QObject, Signal
 
-from PySide6.QtCore import QObject, Signal, Slot
-from ruamel.yaml.error import YAMLError
-
-from src.config.set_config import (
-    get_daily_readback,
-    get_weekly_task,
-    is_adapted,
-)
 from src.utils.utils_weekly import DISABLED_START_DAY
-
-logger = logging.getLogger(__name__)
 
 # 周常「周几以后开始执行」：值 1=周一 ~ 7=周日（对齐 get_week_num 的 0=周一 偏移 +1）；
 # DISABLED_START_DAY（0）= 不启用。
@@ -42,18 +33,52 @@ _EMPTY_GAME = {
     "color": "",
 }
 
+# 空视图：无脚本（哨兵）或脚本已被移除时收缩卡片（与旧直读口径一致：空列表）。
+_EMPTY_VIEW = {"script": {"adapted": False}, "dailies": [], "weeklies": []}
+
 
 class TaskCardController(QObject):
     taskStateChanged = Signal()
     toastRequested = Signal(str)
 
-    def __init__(self, game_list, app_service, toast, parent=None):
+    def __init__(self, game_list, toast, parent=None):
         super().__init__(parent)
         self._game_list = game_list
-        self._app_service = app_service
         self._toast = toast
-        # 菜单按需缓存；重载脚本列表时失效，以重新读取路径及本地资源。
-        self._daily_map_cache: dict = {}
+        # 聚合视图缓存：QML 的行属性与下拉共用一份；refresh / build_daily_cache 失效。
+        self._view: dict | None = None
+        self._view_script = ""
+
+    # ── 视图 ─────────────────────────────────────────────────────────
+    def _fetch_view(self, script_name: str) -> dict | None:
+        """视图尚未到达时返回空；CLI 子类负责异步请求。"""
+        return None
+
+    def _card_view(self) -> dict:
+        """当前脚本的任务卡视图；同一脚本在两次失效之间只取一次。
+
+        取数经 ``_fetch_view``（同步返回视图）；异步模式取数为 None 时缓存空
+        视图（响应到达后由子类直接回填 ``_view`` 并发信号）。脚本为空
+        （config 删空哨兵）或已被移除（列表重载随后跟上）时同样收缩为空视图。
+
+        Returns:
+            ``script_view`` 的聚合结果（dailies / weeklies）。
+        """
+        script_name = self._current["script_name"]
+        if self._view is not None and self._view_script == script_name:
+            return self._view
+        view = self._fetch_view(script_name) if script_name else None
+        if view is None:
+            view = _EMPTY_VIEW
+        assert all(key in view for key in ("script", "dailies", "weeklies"))
+        assert "adapted" in view["script"]
+        self._view = view
+        self._view_script = script_name
+        return view
+
+    def _invalidate_view(self) -> None:
+        self._view = None
+        self._view_script = ""
 
     # ── 读接口（供 QmlBridge 委托）────────────────────────────────────
     @property
@@ -69,54 +94,34 @@ class TaskCardController(QObject):
 
     @property
     def task_adapted(self) -> bool:
-        """当前游戏是否已注册副本适配（决定日常/周常行显隐）。"""
-        return is_adapted(self._current["script_name"])
+        """当前游戏是否已注册副本适配（视图 script.adapted，决定行显隐）。"""
+        return bool(self._card_view()["script"]["adapted"])
 
     @property
     def daily_items(self) -> list[dict]:
         """当前脚本的日常列表（供 QML 多日常布局）。
 
-        一次反读拿到该脚本全部日常的已选项与开关（get_daily_readback），逐行生成
-        {name, task_label, can_disable, disabled}：task_label 为 chip 文字，优先用反读到的
-        副本（+二级选项），无真相回退该日常声明的首个选项（绝区零/崩铁的 set_daily_task
-        为 no-op，反读恒无真相，故回退声明项——即 UI 上直接呈现为已选状态）；该日常被停用时
-        显示「不启用」。can_disable 由脚本是否声明日常开关（enabled 非 None）推导，
+        视图行已并入反读真相（task/sequence/enabled）与声明菜单（options），
+        此处逐行生成 {name, task_label, can_disable, disabled}：task_label 为 chip
+        文字，优先用反读到的副本（+二级选项），无真相回退该日常声明的首个选项
+        （绝区零/崩铁的 set_daily_task 为 no-op，反读恒无真相，故回退声明项——
+        即 UI 上直接呈现为已选状态）；该日常被停用时显示「不启用」。
+        can_disable 由脚本是否声明日常开关（enabled 非 None）推导，
         disabled 为当前是否已停用。
         """
-        script_name = self._current["script_name"]
-        options_by_daily = {
-            daily["display_name"]: daily["options"]["values"]
-            for daily in self._dailies_of(script_name)
-        }
         items = []
-        for record in get_daily_readback(script_name):
-            name = record["name"]
-            options = options_by_daily.get(name, [])
+        for daily in self._card_view()["dailies"]:
+            assert all(key in daily for key in ("name", "task", "sequence", "enabled"))
+            assert "options" in daily and "values" in daily["options"]
             items.append(
                 {
-                    "name": name,
-                    "task_label": self._daily_label(record, options),
-                    "can_disable": record["enabled"] is not None,
-                    "disabled": record["enabled"] is False,
+                    "name": daily["name"],
+                    "task_label": self._daily_label(daily, daily["options"]["values"]),
+                    "can_disable": daily["enabled"] is not None,
+                    "disabled": daily["enabled"] is False,
                 }
             )
         return items
-
-    def _dailies_of(self, script_name: str) -> list:
-        """某脚本各日常的物化声明（词汇与声明一致）；无数据返回空列表。"""
-        if not script_name:
-            return []
-        if script_name not in self._daily_map_cache:
-            menus = self._app_service.get_daily_map(script_name)
-            # 自定义脚本没有日常声明，也缓存空结果。
-            if script_name not in menus:
-                menus[script_name] = {"dailies": []}
-            assert script_name in menus
-            self._daily_map_cache[script_name] = menus[script_name]
-        assert script_name in self._daily_map_cache
-        menu = self._daily_map_cache[script_name]
-        assert "dailies" in menu
-        return menu["dailies"]
 
     def daily_options(self, daily_name: str) -> list:
         """某日常的副本下拉数据（QML 按行调用）。
@@ -128,10 +133,11 @@ class TaskCardController(QObject):
             该日常一级选项的物化声明列表（display_name/physical_name/子选项组）；
             未知日常返回空列表。
         """
-        script_name = self._current["script_name"]
-        for daily in self._dailies_of(script_name):
-            if daily["display_name"] == daily_name:
-                return daily["options"]["values"]
+        for daily in self._card_view()["dailies"]:
+            if daily["name"] != daily_name:
+                continue
+            assert "options" in daily and "values" in daily["options"]
+            return daily["options"]["values"]
         return []
 
     @property
@@ -140,7 +146,7 @@ class TaskCardController(QObject):
 
         唯一真相源为 weekly_task_list.yml：声明了该脚本周常即支持。
         """
-        return bool(self._app_service.get_weekly_map(self._current["script_name"]))
+        return bool(self._card_view()["weeklies"])
 
     @staticmethod
     def _start_day_label(start_day: int | None) -> str:
@@ -179,33 +185,28 @@ class TaskCardController(QObject):
     def weekly_items(self) -> list[dict]:
         """当前脚本支持的周常列表（供 QML 多周常布局）。
 
-        每条周常：{name, has_task, task_label, start_set, start_label}。has_task 由物化声明
-        是否含 options（且有内容）推导；task_label 为已选副本名，需选而未选时返回
+        每条周常：{name, has_task, task_label, start_set, start_label}。has_task 由
+        声明是否含选项（且有内容）推导；task_label 为已选副本名，需选而未选时返回
         「选择副本」、无需选返回空。start_label 为该条周常的「周几起」文字（未设 →
-        「选择周几」），start_set 供 QML 区分未设置时的文字配色。
-        声明（支持哪些周常/可选副本）来自 weekly_task_list.yml；已选副本反读子脚本
-        config（如 M7A instance_names）、周几起反读 ``weekly.yml``——周常侧无 no-op
-        脚本，故不设回退。
+        「选择周几」），start_set 供 QML 区分未设置时的文字配色。声明与已选副本、
+        周几起均来自聚合视图——周常侧无 no-op 脚本，故不设回退。
         """
-        script_name = self._current["script_name"]
-        defs = self._app_service.get_weekly_map(script_name)
-        if not defs:
-            return []
         items = []
-        for d in defs:
-            name = d["display_name"]
-            has_task = "options" in d and bool(d["options"]["values"])
+        for weekly in self._card_view()["weeklies"]:
+            assert all(
+                key in weekly for key in ("name", "options", "task", "start_day")
+            )
+            has_task = weekly["options"] is not None and bool(
+                weekly["options"]["values"]
+            )
             label = ""
             if has_task:
-                # 反读子脚本 config（真相源，如 M7A instance_names）
-                label = "选择副本"
-                cfg_task = get_weekly_task(script_name, name)
-                if cfg_task:
-                    label = cfg_task
-            start_day = self._app_service.get_weekly_start_for(script_name, name)
+                # 已选副本反读自子脚本 config（真相源，如 M7A instance_names）
+                label = weekly["task"] or "选择副本"
+            start_day = weekly["start_day"]
             items.append(
                 {
-                    "name": name,
+                    "name": weekly["name"],
                     "has_task": has_task,
                     "task_label": label,
                     "start_set": start_day is not None,
@@ -225,21 +226,20 @@ class TaskCardController(QObject):
         Returns:
             一级选项的物化声明列表（含「无」）；该周常未声明副本清单时返回空列表。
         """
-        script_name = self._current["script_name"]
-        for d in self._app_service.get_weekly_map(script_name):
-            if d["display_name"] != weekly_name:
+        for weekly in self._card_view()["weeklies"]:
+            if weekly["name"] != weekly_name:
                 continue
-            return d["options"]["values"] if "options" in d else []
+            return weekly["options"]["values"] if weekly["options"] else []
         return []
 
-    # ── 菜单缓存──────────────────────────────────────────────────────
+    # ── 视图缓存失效──────────────────────────────────────────────────
     def build_daily_cache(self):
-        """清空旧菜单并构建当前脚本菜单，其余脚本首次访问时再构建。"""
-        self._daily_map_cache.clear()
-        self._dailies_of(self._current["script_name"])
+        """列表重载后失效视图缓存（菜单词汇与本地资源按新列表重取）。"""
+        self._invalidate_view()
 
     def refresh(self):
-        """切换游戏后发信号触发 QML 重读任务卡。"""
+        """写操作后失效缓存并发信号，触发 QML 以新视图重读任务卡。"""
+        self._invalidate_view()
         self.taskStateChanged.emit()
 
     def _daily_label(self, record: dict, values: list) -> str:
@@ -280,75 +280,3 @@ class TaskCardController(QObject):
                     if child["physical_name"] == sequence:
                         return f"{task_name} · {child['display_name']}"
         return task_name
-
-    # ── 交互 ───────────────────────────────────────────────────────────
-    @Slot(str, str, "QVariant")
-    def selectDaily(self, daily_name: str, task_name: str, sequence):
-        """选择某日常的副本（实时落盘子脚本 config，并启用该日常）。
-
-        绝区零/崩铁的 set_daily_task 为 no-op（上游已支持到无需本工具配置），
-        其日常副本直接取 daily_task_list.yml 声明选项，不经本方法持久化。
-
-        Args:
-            daily_name: 日常展示名（该行所属日常）。
-            task_name: 选中的副本名（来自 daily_options）。
-            sequence: 选中的二级选项值；该副本无二级选项时为 None。
-        """
-        script_name = self._current["script_name"]
-        # 实时落盘子脚本 config（与周常副本 selectWeekly 一致，经 service）；
-        # 未选择选项已移除，下拉只含真实副本，此处不再区分清空调度。
-        if task_name:
-            self._app_service.set_script_daily_task(
-                script_name,
-                task_name=task_name,
-                sequence=sequence,
-                daily_display_name=daily_name,
-            )
-        self.refresh()
-
-    @Slot(str, bool)
-    def setDailyEnabled(self, daily_name: str, enabled: bool):
-        """启用/停用某日常（写子脚本 config 的日常开关，不动副本选择）。
-
-        Args:
-            daily_name: 日常展示名。
-            enabled: 目标启用状态。
-        """
-        script_name = self._current["script_name"]
-        self._app_service.set_script_daily_enabled(script_name, daily_name, enabled)
-        self.refresh()
-
-    @Slot(str, str)
-    def selectWeekly(self, weekly_name: str, task_name: str):
-        """选择某周常的副本（写回脚本自身 config）。
-
-        Args:
-            weekly_name: 周常名（如「历战余响」）。
-            task_name: 选中的副本名（来自 weekly_task_options）。
-        """
-        script_name = self._current["script_name"]
-        # 写回脚本自身 config（如 M7A config.yaml 的 instance_names[weekly_name]），经 service
-        self._app_service.set_script_weekly_task(script_name, weekly_name, task_name)
-        self.refresh()
-
-    @Slot(str, int)
-    def selectWeeklyStart(self, weekly_name: str, start_day: int):
-        """选择某条周常的起始日（周几起）。
-
-        意图写 weekly.yml（先），再同步该条的游戏侧字段（后）。后者要求游戏原生
-        config 可用，其缺失/损坏/不可写属可预期状态：意图已落盘，界面下次刷新即按
-        新值显示。故此处不让异常抛回 QML——抛回会跳过 onClicked 里后续的关下拉，
-        且界面静默（错误只进日志）。
-
-        Args:
-            weekly_name: 周常名（如「历战余响」）。
-            start_day: 周几起（0=不启用，1=周一 ~ 7=周日）。
-        """
-        script_name = self._current["script_name"]
-        try:
-            self._app_service.set_weekly_start_for(script_name, weekly_name, start_day)
-        except (AssertionError, OSError, ValueError, YAMLError) as exc:
-            logger.warning("周几起未同步到游戏配置：%s: %s", type(exc).__name__, exc)
-            self._toast(f"{weekly_name} 已记录，但未能写入游戏配置：{exc}")
-        finally:
-            self.refresh()

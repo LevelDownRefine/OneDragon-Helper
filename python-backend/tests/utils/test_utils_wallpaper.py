@@ -230,7 +230,3 @@ class WallpaperTests(unittest.TestCase):
             wallpaper.wallpaper_view("script")["cache"], video_preview_path(str(video))
         )
         self.assertEqual(state["mode"], "video")
-
-
-if __name__ == "__main__":
-    unittest.main()

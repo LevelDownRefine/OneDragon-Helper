@@ -12,29 +12,25 @@ class TestGameIconHint(unittest.TestCase):
         code = textwrap.dedent(
             """
             from pathlib import Path
-            from unittest.mock import patch
+            from unittest.mock import Mock, patch
             from PySide6.QtCore import QPointF, Qt, QUrl
             from PySide6.QtGui import QIcon
             from PySide6.QtQml import QQmlApplicationEngine, qmlRegisterSingletonInstance
             from PySide6.QtTest import QTest
-            from gui.controllers.background import BackgroundController
             from gui.icons import UiIconProvider
             from gui.main_window import QmlBridge
-            from src.service.app_service import AppService
             from tests.gui.helpers import get_app, make_bridge
 
             get_app()
             icon_path = str(Path("assets/ds.ico").resolve())
-            with (
-                patch.object(AppService, "get_daily_map", return_value={}),
-                patch.object(AppService, "get_weekly_map", return_value=[]),
-                patch.object(BackgroundController, "resolve_bg", return_value=None),
-                patch("gui.controllers.task_card.get_daily_readback", return_value=[]),
-                patch.object(AppService, "game_icon_path", return_value={"path": icon_path}) as read_path,
-                patch("src.config.set_config.get_game_exe_path", return_value=icon_path),
-                patch("gui.icons._exe_icon", return_value=QIcon(icon_path)),
-            ):
-                bridge = make_bridge()
+            read_path = Mock(return_value=icon_path)
+            with patch("gui.icons._exe_icon", return_value=QIcon(icon_path)):
+                bridge = make_bridge(responses={
+                    "script.icon_path": lambda params: {
+                        "script_name": params["script_name"], "path": read_path(params["script_name"])
+                    }
+                })
+                read_path.reset_mock()
                 qmlRegisterSingletonInstance(QmlBridge, "OneDragonHelper", 1, 0, "Bridge", bridge)
                 engine = QQmlApplicationEngine()
                 engine.addImageProvider("scripticon", bridge.game_list.icon_provider)
@@ -79,7 +75,7 @@ class TestGameIconHint(unittest.TestCase):
                     launch.assert_called_once_with()
 
                 # 鼠标仍停在按钮上时切换脚本，旧图必须立即变为文字。
-                read_path.return_value = {"path": None}
+                read_path.return_value = None
                 bridge.selectGame(1)
                 QTest.qWait(200)
                 assert hint.isVisible() and label.isVisible() and not icon.isVisible()
@@ -90,10 +86,10 @@ class TestGameIconHint(unittest.TestCase):
                 hover("linkButton_home")
                 assert not hint.isVisible()
                 assert find_item("linkHintText_home").property("text") == "项目主页"
-                read_path.return_value = {"path": icon_path}
+                read_path.return_value = icon_path
                 hover("linkButton_game")
                 assert icon.isVisible() and not label.isVisible()
-                read_path.return_value = {"path": None}
+                read_path.return_value = None
                 bridge.gamesChanged.emit()
                 QTest.qWait(200)
                 assert label.isVisible() and not icon.isVisible()
@@ -116,6 +112,7 @@ class TestGameIconHint(unittest.TestCase):
                 ),
             },
             capture_output=True,
+            errors="replace",
             text=True,
             timeout=30,
         )

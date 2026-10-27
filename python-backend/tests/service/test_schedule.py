@@ -24,6 +24,7 @@ from src.service.schedule import (
     apply_run_options,
     build_pre_run_pipeline,
     load_run_options,
+    run_launch_kwargs,
 )
 from src.utils.utils_io import load_data, save_data
 from src.utils.utils_runner import ProcessTarget
@@ -521,6 +522,46 @@ class TestLoadRunOptions(unittest.TestCase):
         self.assertEqual(opts.email, "a@qq.com")
         self.assertEqual(opts.smtp_host, "smtp.163.com")
         self.assertEqual(opts.smtp_port, "994")
+
+
+class TestRunLaunchKwargs(unittest.TestCase):
+    """run_launch_kwargs：每日计划的 RunOptions → 调度启动参数。"""
+
+    def test_defaults_map_to_immediate_clean_run(self):
+        self.assertEqual(
+            run_launch_kwargs(RunOptions()),
+            {
+                "mute": False,
+                "unmute": False,
+                "shutdown_delay": None,
+                "close_running": True,
+            },
+        )
+
+    def test_shutdown_gate_requires_enabled_and_positive(self):
+        for enabled, delay, expected in (
+            (True, 45, 45),
+            (False, 45, None),
+            (True, 0, None),
+            (False, 0, None),
+        ):
+            with self.subTest(enabled=enabled, delay=delay):
+                kwargs = run_launch_kwargs(
+                    RunOptions(shutdown_enabled=enabled, shutdown_delay=delay)
+                )
+                self.assertEqual(kwargs["shutdown_delay"], expected)
+
+    def test_switches_pass_through(self):
+        kwargs = run_launch_kwargs(
+            RunOptions(
+                mute_enabled=True,
+                unmute_enabled=True,
+                close_running_enabled=False,
+            )
+        )
+        self.assertTrue(kwargs["mute"])
+        self.assertTrue(kwargs["unmute"])
+        self.assertFalse(kwargs["close_running"])
 
 
 class TestApplyRunOptions(unittest.TestCase):

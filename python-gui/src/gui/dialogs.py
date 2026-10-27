@@ -2,12 +2,12 @@
 
 自包含模块：样式常量（原 src/gui/theme.py 子集）与工具函数（styled_msg_box，
 原 src/gui/utils.py）已并入本文件（2026-08-16），src/gui 其余
-模块随之删除。依赖仅剩 config/service 业务层与 PySide6。
+模块随之删除。弹窗只渲染 CLI 提供的视图并收集表单。
 
 对外接口：
 - ``SingleScriptConfigDialog``：单脚本配置弹窗（名称/路径/类型/参数/完成检测/
   关闭脚本/关闭游戏/阻塞/游戏进程/每周超时/任务开关），保存后经 ``pending_changes`` 返回，
-  写盘由调用方经 ``AppService.update_script`` 委托 ``src.service.script_service.update``。脚本删除改由左侧列表交互完成。
+  由外部提交回调经 CLI 校验和保存，成功回执后关闭。脚本删除改由左侧列表交互完成。
 - 「启动全部」前的运行确认弹窗已独立为 ``src/gui/run_confirm_dialog.py``
   （单一职责：仅承载运行前确认交互，复用本模块的基类与主题常量）。
 """
@@ -40,8 +40,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from src.service.app_service import AppService
-from src.service.script_service import InvalidScript, ScriptEdit
+from src.service.script_service import ScriptEdit
 
 # ═══════════════════════ 弹窗样式（原 src/gui/theme.py 子集，2026-08-16 并入）═══════
 # 与 QML Theme.js 保持同一套蓝灰配色。
@@ -593,8 +592,9 @@ class SingleScriptConfigDialog(FormDialogBase):
         display_name,
         script_path="",
         parent=None,
-        app_service=None,
-        edit_view=None,
+        *,
+        edit_view,
+        submit,
     ):
         super().__init__(parent)
         self.setWindowTitle(f"配置 {display_name}")
@@ -604,20 +604,17 @@ class SingleScriptConfigDialog(FormDialogBase):
         )
         self.display_name = display_name  # 展示名
         self.script_path = script_path
-        self._app_service = (app_service or AppService()) if edit_view is None else None
+        assert callable(submit)
+        assert all(
+            key in edit_view for key in ("script", "weekly_timeouts", "switches")
+        )
         self._edit_view = edit_view
+        self.saveRequested.connect(submit)
         self.pending_changes: ScriptEdit | None = None
         # 原生任务开关：构造期读一次，init_ui 按它建行、load_data 按它回显
-        self._switches = (
-            edit_view["switches"]
-            if edit_view is not None
-            else self._app_service.get_script_switches(self.script_name)
-        )
-        self._task_options = (
-            edit_view.get("task_options", [])  # 旧表单响应未包含附带选项。
-            if edit_view is not None
-            else self._app_service.get_script_options(self.script_name)
-        )
+        self._switches = edit_view["switches"]
+        # 旧表单响应未包含附带选项。
+        self._task_options = edit_view.get("task_options", [])
         self._original_options = {
             row["id"]: deepcopy(row["value"]) for row in self._task_options
         }
@@ -909,15 +906,8 @@ class SingleScriptConfigDialog(FormDialogBase):
             and int(text) > 0
         )
 
-    def _find_script_data(self) -> dict:
-        """从 config.yml 读取本脚本的完整数据字典；脚本不在表中返回空 dict。"""
-        if self._edit_view is not None:
-            return self._edit_view["script"]
-        script = self._app_service.get_script(self.script_name)
-        return script if script is not None else {}
-
     def load_data(self):
-        script_data = self._find_script_data()
+        script_data = self._edit_view["script"]
 
         # 脚本名称
         self.name_input.setText(self.display_name)
@@ -953,11 +943,7 @@ class SingleScriptConfigDialog(FormDialogBase):
         self._update_no_log_controls()
 
         # 每周超时
-        timeouts = (
-            self._edit_view["weekly_timeouts"]
-            if self._edit_view is not None
-            else self._app_service.weekly_inputs(self.script_name)
-        )
+        timeouts = self._edit_view["weekly_timeouts"]
         for idx, timeout_edit in enumerate(self.timeout_inputs):
             timeout_edit.setText(str(timeouts[idx]))
 
@@ -966,10 +952,7 @@ class SingleScriptConfigDialog(FormDialogBase):
             self.switch_checks[switch["name"]].setChecked(switch["enabled"])
 
     def save_data(self):
-        """收集表单数据存入 self.pending_changes 后 accept()；写盘由调用方完成。
-
-        返回完整 ScriptEdit；校验与保存流程归 service.script_service。
-        """
+        """收集 ScriptEdit 并请求外部提交，收到成功回执后由调用方关闭表单。"""
         if self.kill_game_cb.isChecked() and not self.game_process_input.text().strip():
             show_warning(
                 self,
@@ -1016,16 +999,8 @@ class SingleScriptConfigDialog(FormDialogBase):
             },
             task_options=self._collect_task_options(),
         )
-        if self._edit_view is not None:
-            self.pending_changes = edit
-            self.saveRequested.emit(edit)
-            return
-        try:
-            self.pending_changes = self._app_service.validate_script_edit(edit)
-        except InvalidScript as exc:
-            show_warning(self, str(exc))
-            return
-        self.accept()
+        self.pending_changes = edit
+        self.saveRequested.emit(edit)
 
     def _collect_task_options(self) -> dict:
         """只提交相对打开时发生变化的选项；未触碰的原生字段不回写。"""

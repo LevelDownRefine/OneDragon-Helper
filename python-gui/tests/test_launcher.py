@@ -6,12 +6,14 @@ import tempfile
 import time
 import unittest
 from contextlib import ExitStack
+from pathlib import Path
 from unittest.mock import ANY, Mock, patch
 
 # 在导入 PySide6 相关模块之前设置 offscreen 平台插件（CI 无显示器环境）
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from gui import launcher
+from src.config.generate_config import config_workflow
 
 
 class TestInitConfig(unittest.TestCase):
@@ -45,7 +47,7 @@ class TestInitConfig(unittest.TestCase):
         )
         mock_weekly_path.return_value = os.path.join(self.temp_dir.name, "weekly.yml")
         with patch("src.config.set_config.ArknightsConfig._init_config") as init:
-            launcher.config_workflow()
+            config_workflow()
 
         # 首次运行时，config.yml / schedule.yml / weekly.yml 均应从模板生成
         mock_generate_config.assert_called_once()
@@ -56,81 +58,77 @@ class TestInitConfig(unittest.TestCase):
 
 
 class TestMainStartupOrder(unittest.TestCase):
-    """main() 初始化顺序：日志必须先于 config_workflow。"""
-
-    def test_setup_logging_precedes_config_workflow(self):
-        """config_workflow 的 init 对齐会产生 WARNING（如补缺失字段），
-        若晚于 setup_logging 则进日志文件可追溯；顺序回归即本测试红。"""
+    def test_backend_logging_precedes_config_generation(self):
         order = []
         with (
             patch.object(
                 launcher,
                 "setup_logging",
-                side_effect=lambda **_: order.append("setup_logging"),
+                side_effect=lambda **_: order.append("logging"),
             ),
             patch.object(
                 launcher,
                 "install_crash_hooks",
-                side_effect=lambda: order.append("install_crash_hooks"),
+                side_effect=lambda: order.append("hooks"),
             ),
-            patch.object(
-                launcher,
-                "config_workflow",
-                side_effect=lambda: order.append("config_workflow"),
+            patch(
+                "src.config.generate_config.config_workflow",
+                side_effect=lambda: order.append("config"),
             ),
-            patch.object(launcher, "run_cli", return_value=0),
-            patch.object(sys, "argv", ["OneDragon-Helper"]),
+            patch("src.cli.run_cli", return_value=0),
+            patch.object(sys, "argv", ["gui", "--version"]),
             self.assertRaises(SystemExit),
         ):
             launcher.main()
-        self.assertEqual(
-            order, ["setup_logging", "install_crash_hooks", "config_workflow"]
-        )
+        self.assertEqual(order, ["logging", "hooks", "config"])
 
-
-class TestMainLogRole(unittest.TestCase):
-    """GUI 与运行类出口分文件落盘（两侧会同时持有各自的日志文件）。"""
-
-    def test_run_entries_log_to_plan_file(self):
-        for argv, role in (
-            (["OneDragon-Helper"], "gui"),
-            (["OneDragon-Helper", "--dump-config"], "gui"),
-            (["OneDragon-Helper", "--run-daily"], "plan"),
-            (["OneDragon-Helper", "--schedule-run", "now"], "plan"),
-            (["OneDragon-Helper", "--run-chain", "plan.yml"], "plan"),
-        ):
-            with self.subTest(argv=argv):
-                with (
-                    patch.object(launcher, "setup_logging") as logging_setup,
-                    patch.object(launcher, "install_crash_hooks"),
-                    patch.object(launcher, "config_workflow"),
-                    patch.object(launcher, "run_cli", return_value=0),
-                    patch.object(sys, "argv", argv),
-                    self.assertRaises(SystemExit),
-                ):
-                    launcher.main()
-                self.assertEqual(logging_setup.call_args.kwargs, {"role": role})
-
-
-class TestStartupTimer(unittest.TestCase):
-    """启动打点基准按调用复位。
-
-    基准若停在模块导入时刻，同一进程内多次调用 main()（如 tests/test_cli.py 逐个 CLI
-    出口）会把上一次的耗时累加进来，日志里打出十几万毫秒的假数字。
-    """
-
-    def test_main_resets_baseline(self):
-        launcher._STARTUP_T0 -= 3600.0  # 模拟上一次调用已过去一小时
+    def test_gui_does_not_generate_business_config(self):
         with (
             patch.object(launcher, "setup_logging"),
             patch.object(launcher, "install_crash_hooks"),
-            patch.object(launcher, "config_workflow"),
-            patch.object(launcher, "run_cli", return_value=0),
-            patch.object(sys, "argv", ["OneDragon-Helper"]),
-            self.assertRaises(SystemExit),
+            patch("src.config.generate_config.config_workflow") as workflow,
+            patch.object(launcher, "_launch_qml") as window,
+            patch.object(sys, "argv", ["gui"]),
         ):
             launcher.main()
-        self.assertLess(time.perf_counter() - launcher._STARTUP_T0, 1.0)
+        workflow.assert_not_called()
+        window.assert_called_once_with(skip_auto_launch=False)
+
+
+class TestMainLogRole(unittest.TestCase):
+    def test_run_entries_log_to_plan_file(self):
+        for arguments, role in (
+            ([], "gui"),
+            (["--dump-config"], "gui"),
+            (["--run-daily"], "plan"),
+            (["--schedule-run", "now"], "plan"),
+            (["--run-chain", "plan.yml"], "plan"),
+        ):
+            with (
+                self.subTest(arguments=arguments),
+                patch.object(launcher, "setup_logging") as setup,
+                patch.object(launcher, "install_crash_hooks"),
+                patch("src.config.generate_config.config_workflow"),
+                patch("src.cli.run_cli", return_value=0),
+                patch.object(launcher, "_launch_qml", side_effect=SystemExit(0)),
+                patch.object(sys, "argv", ["gui", *arguments]),
+                self.assertRaises(SystemExit),
+            ):
+                launcher.main()
+            setup.assert_called_once_with(role=role)
+
+
+class TestStartupTimer(unittest.TestCase):
+    def test_main_resets_baseline(self):
+        launcher._STARTUP_T0 -= 3600
+        with (
+            patch.object(launcher, "setup_logging"),
+            patch.object(launcher, "install_crash_hooks"),
+            patch.object(launcher, "_launch_qml"),
+            patch.object(sys, "argv", ["gui"]),
+        ):
+            launcher.main()
+        self.assertLess(time.perf_counter() - launcher._STARTUP_T0, 1)
 
 
 class TestUpdateRestart(unittest.TestCase):
@@ -140,7 +138,6 @@ class TestUpdateRestart(unittest.TestCase):
                 for name in (
                     "setup_logging",
                     "install_crash_hooks",
-                    "config_workflow",
                     "_clear_qml_cache",
                     "_install_qt_message_logger",
                     "QApplication",
@@ -148,14 +145,10 @@ class TestUpdateRestart(unittest.TestCase):
                     "install_file_drop",
                 ):
                     stack.enter_context(patch.object(launcher, name))
-                stack.enter_context(
-                    patch.object(launcher, "run_cli", return_value=None)
-                )
+                stack.enter_context(patch.object(sys, "frozen", False, create=True))
                 stack.enter_context(
                     patch.object(
-                        sys,
-                        "argv",
-                        ["OneDragon-Helper", *(["--after-update"] if skip else [])],
+                        sys, "argv", ["gui", *(["--after-update"] if skip else [])]
                     )
                 )
                 engine = stack.enter_context(
@@ -174,8 +167,10 @@ class TestUpdateRestart(unittest.TestCase):
                 bridge.assert_called_once_with(
                     cli_client=client.return_value, cli_client_factory=ANY
                 )
-                factory = bridge.call_args.kwargs["cli_client_factory"]
-                self.assertIs(factory(), client.return_value)
+                assert "cli_client_factory" in bridge.call_args.kwargs
+                self.assertIs(
+                    bridge.call_args.kwargs["cli_client_factory"](), client.return_value
+                )
                 if skip:
                     timer.singleShot.assert_called_once()
                     timer.singleShot.call_args.args[1]()
@@ -185,13 +180,13 @@ class TestUpdateRestart(unittest.TestCase):
                 else:
                     timer.singleShot.assert_not_called()
 
-    def test_shutdown_confirmation_entry_does_not_initialize_or_launch_scripts(self):
-        for confirmed, exit_code in ((True, 42), (False, 0)):
+    def test_shutdown_confirmation_does_not_initialize_or_launch_scripts(self):
+        for confirmed, code in ((True, 42), (False, 0)):
             with (
                 self.subTest(confirmed=confirmed),
                 patch.object(sys, "argv", ["gui", "--shutdown-confirm", "45"]),
                 patch.object(launcher, "QApplication"),
-                patch.object(launcher, "config_workflow") as workflow,
+                patch("src.config.generate_config.config_workflow") as workflow,
                 patch.object(launcher, "_launch_qml") as window,
                 patch(
                     "gui.shutdown_dialog.confirm_shutdown", return_value=confirmed
@@ -199,10 +194,91 @@ class TestUpdateRestart(unittest.TestCase):
                 self.assertRaises(SystemExit) as result,
             ):
                 launcher.main()
-            self.assertEqual(result.exception.code, exit_code)
+            self.assertEqual(result.exception.code, code)
             confirm.assert_called_once_with(45)
             workflow.assert_not_called()
             window.assert_not_called()
+
+
+class TestCliBackendRouting(unittest.TestCase):
+    def _launch(self, root, *, frozen):
+        with ExitStack() as stack:
+            for name in (
+                "_clear_qml_cache",
+                "_install_qt_message_logger",
+                "QApplication",
+                "QTimer",
+                "qmlRegisterSingletonInstance",
+                "install_file_drop",
+            ):
+                stack.enter_context(patch.object(launcher, name))
+            stack.enter_context(patch.object(sys, "frozen", frozen, create=True))
+            stack.enter_context(patch("src.utils.get_root_dir", return_value=str(root)))
+            stack.enter_context(
+                patch.object(launcher.os.path, "isfile", return_value=True)
+            )
+            stack.enter_context(
+                patch.object(
+                    launcher, "resolve_script_path", return_value=str(root / "main.qml")
+                )
+            )
+            engine = stack.enter_context(
+                patch.object(launcher, "QQmlApplicationEngine")
+            )
+            engine.return_value.rootObjects.return_value = [Mock()]
+            client = stack.enter_context(patch("gui.cli_client.CliClient"))
+            client.return_value.running = False
+            bridge = stack.enter_context(patch.object(launcher, "QmlBridge"))
+            warning = stack.enter_context(patch("gui.dialogs.show_warning"))
+            with self.assertRaises(SystemExit) as result:
+                launcher._launch_qml(skip_auto_launch=True)
+            return client, bridge, warning, result.exception.code
+
+    def test_source_uses_python_module_without_cli_executable(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            client, bridge, warning, _ = self._launch(root, frozen=False)
+        self.assertEqual(
+            client.call_args.args[:3],
+            (
+                sys.executable,
+                ["-m", "src.headless", "serve", "--stdio"],
+                str(root / "python-backend"),
+            ),
+        )
+        assert "cli_client" in bridge.call_args.kwargs
+        self.assertIs(bridge.call_args.kwargs["cli_client"], client.return_value)
+        warning.assert_not_called()
+
+    def test_frozen_uses_bundled_cli(self):
+        from src.update import CLI_EXE, QT_CLI_EXE
+
+        for relative in (CLI_EXE, QT_CLI_EXE):
+            with (
+                self.subTest(relative=relative),
+                tempfile.TemporaryDirectory() as directory,
+            ):
+                root = Path(directory)
+                executable = root / relative
+                executable.parent.mkdir(parents=True, exist_ok=True)
+                executable.touch()
+                client, bridge, warning, _ = self._launch(root, frozen=True)
+            self.assertEqual(
+                client.call_args.args[:3],
+                (str(executable), ["serve", "--stdio"], str(root)),
+            )
+            assert "cli_client" in bridge.call_args.kwargs
+            self.assertIs(bridge.call_args.kwargs["cli_client"], client.return_value)
+            warning.assert_not_called()
+
+    def test_frozen_without_cli_fails_before_constructing_bridge(self):
+        with tempfile.TemporaryDirectory() as directory:
+            client, bridge, warning, code = self._launch(Path(directory), frozen=True)
+        client.assert_not_called()
+        bridge.assert_not_called()
+        self.assertEqual(code, 2)
+        warning.assert_called_once()
+        self.assertIn("发布包不完整", warning.call_args.args[1])
 
 
 class TestQtMessageLogger(unittest.TestCase):

@@ -26,7 +26,7 @@ class TestSharedLayout(unittest.TestCase):
             from gui.icons import UiIconProvider
             from gui.main_window import QmlBridge
             from src.utils.utils_sub_config import resolve_script_path
-            from tests.gui.helpers import make_bridge
+            from tests.gui.helpers import drain_events, make_bridge, script_view
 
             with tempfile.TemporaryDirectory() as directory:
                 qml_dir = Path(directory) / "qml"
@@ -45,55 +45,61 @@ class TestSharedLayout(unittest.TestCase):
                     assert layout.count(old) == 1, old
                     layout = layout.replace(old, new)
                 layout_path.write_text(layout, encoding="utf-8")
-                weekly = [{"display_name": "周常", "options": {"values": [
-                    {"display_name": f"副本{i}", "physical_name": f"副本{i}"}
-                    for i in range(30)
-                ]}}]
-                with (
-                    patch("src.service.app_service.get_daily_map", return_value={}),
-                    patch("src.service.app_service.get_weekly_map", return_value=weekly),
-                    patch("gui.controllers.task_card.get_daily_readback", return_value=[]),
-                    patch("gui.controllers.task_card.get_weekly_task", return_value=None),
-                ):
-                    bridge = make_bridge()
-                    qmlRegisterSingletonInstance(
-                        QmlBridge, "OneDragonHelper", 1, 0, "Bridge", bridge)
-                    engine = QQmlApplicationEngine()
-                    engine.addImageProvider("uiicon", UiIconProvider())
-                    engine.addImageProvider("scripticon", bridge.game_list.icon_provider)
-                    engine.load(QUrl.fromLocalFile(str(qml_dir / "main.qml")))
-                    assert len(engine.rootObjects()) == 1
-                    window = engine.rootObjects()[0]
-                    QTest.qWait(600)
-                    assert (window.width(), window.height()) == (1120, 640)
-                    # 整窗圆角已改由 QML 遮罩承担（QRegion 遮罩是二值区域、必现锯齿），
-                    # Layout 里的 windowCornerRadius 须作用到遮罩半径与尺寸上。
-                    corner = window.findChild(QQuickItem, "cornerMask")
-                    assert window.mask().isEmpty()
-                    assert float(corner.property("radius")) == 28
-                    assert (corner.width(), corner.height()) == (1120, 640)
-                    card = window.findChild(QQuickItem, "cardRoot")
-                    assert card.mapToScene(QPointF()) == QPointF(176, 304)
-                    catcher = window.findChild(QQuickItem, "popupCatcher")
-                    assert catcher.mapToScene(QPointF()) == QPointF(0, 0)
-                    assert (catcher.width(), catcher.height()) == (1120, 640)
-                    popup = window.findChild(QQuickItem, "weeklyPopup")
-                    popup.setProperty("weeklyName", "周常")
-                    popup.setProperty("anchorTop", 60)
-                    popup.setProperty("anchorBottom", 116)
-                    popup.setProperty("visible", True)
-                    QTest.qWait(100)
-                    # 长列表在上方空间内封顶：距窗口上沿 12，距锚点 6。
-                    top = popup.mapToScene(QPointF()).y()
-                    assert top == 12, top
-                    assert top + popup.height() == 304 + 60 - 6
-                    QTest.mouseClick(window, Qt.LeftButton, pos=QPoint(32, 32))
-                    assert not popup.isVisible()
+                bridge = make_bridge()
+                bridge.test_client.responses["script.view"] = lambda params: {
+                    "script": {"script_name": params["script_name"], "adapted": True},
+                    "dailies": [],
+                    "weeklies": [{
+                        "name": "周常",
+                        "options": {"values": [
+                            {"display_name": f"副本{i}", "physical_name": f"副本{i}"}
+                            for i in range(30)
+                        ]},
+                        "task": None,
+                        "start_day": None,
+                    }],
+                }
+                bridge.task_card.refresh()
+                drain_events()
+                qmlRegisterSingletonInstance(
+                    QmlBridge, "OneDragonHelper", 1, 0, "Bridge", bridge)
+                engine = QQmlApplicationEngine()
+                engine.addImageProvider("uiicon", UiIconProvider())
+                engine.addImageProvider("scripticon", bridge.game_list.icon_provider)
+                engine.load(QUrl.fromLocalFile(str(qml_dir / "main.qml")))
+                assert len(engine.rootObjects()) == 1
+                window = engine.rootObjects()[0]
+                QTest.qWait(600)
+                assert (window.width(), window.height()) == (1120, 640)
+                # 整窗圆角已改由 QML 遮罩承担（QRegion 遮罩是二值区域、必现锯齿），
+                # Layout 里的 windowCornerRadius 须作用到遮罩半径与尺寸上。
+                corner = window.findChild(QQuickItem, "cornerMask")
+                assert window.mask().isEmpty()
+                assert float(corner.property("radius")) == 28
+                assert (corner.width(), corner.height()) == (1120, 640)
+                card = window.findChild(QQuickItem, "cardRoot")
+                assert card.mapToScene(QPointF()) == QPointF(176, 304)
+                catcher = window.findChild(QQuickItem, "popupCatcher")
+                assert catcher.mapToScene(QPointF()) == QPointF(0, 0)
+                assert (catcher.width(), catcher.height()) == (1120, 640)
+                popup = window.findChild(QQuickItem, "weeklyPopup")
+                popup.setProperty("weeklyName", "周常")
+                popup.setProperty("anchorTop", 60)
+                popup.setProperty("anchorBottom", 116)
+                popup.setProperty("visible", True)
+                QTest.qWait(100)
+                # 长列表在上方空间内封顶：距窗口上沿 12，距锚点 6。
+                top = popup.mapToScene(QPointF()).y()
+                assert top == 12, top
+                assert top + popup.height() == 304 + 60 - 6
+                QTest.mouseClick(window, Qt.LeftButton, pos=QPoint(32, 32))
+                assert not popup.isVisible()
             """
         )
         result = subprocess.run(
             [sys.executable, "-c", code],
             capture_output=True,
+            errors="replace",
             text=True,
             timeout=30,
             cwd=os.getcwd(),
@@ -113,7 +119,6 @@ class TestSharedLayout(unittest.TestCase):
         code = textwrap.dedent(
             """
             import os
-            from unittest.mock import patch
 
             os.environ["QT_QPA_PLATFORM"] = "offscreen"
             os.environ["QML_DISABLE_DISK_CACHE"] = "1"
@@ -124,7 +129,7 @@ class TestSharedLayout(unittest.TestCase):
             from gui.icons import UiIconProvider
             from gui.main_window import QmlBridge
             from src.utils.utils_sub_config import resolve_script_path
-            from tests.gui.helpers import make_bridge
+            from tests.gui.helpers import drain_events, make_bridge, script_view
 
             ROW_H = 56
             TOP = 68           # 首行 y（标题行 + 分隔线之下）
@@ -133,71 +138,68 @@ class TestSharedLayout(unittest.TestCase):
 
             state = {"count": 4}
 
-            def fake_readback(*_args, **_kwargs):
-                return [
-                    {"name": f"日常{i}", "task": None, "sequence": None, "enabled": True}
-                    for i in range(state["count"])
-                ]
+            def fake_view(*_args, **_kwargs):
+                return {
+                    "script": {"script_name": _args[0]["script_name"], "adapted": True},
+                    "dailies": [
+                        {"name": f"日常{i}", "task": None, "sequence": None,
+                         "enabled": True, "options": {"values": []}}
+                        for i in range(state["count"])
+                    ],
+                    "weeklies": [],
+                }
 
-            with (
-                patch("src.service.app_service.get_weekly_map", return_value=[]),
-                patch("gui.controllers.task_card.get_daily_readback",
-                      side_effect=fake_readback),
-            ):
-                bridge = make_bridge()
-                qmlRegisterSingletonInstance(
-                    QmlBridge, "OneDragonHelper", 1, 0, "Bridge", bridge)
-                engine = QQmlApplicationEngine()
-                engine.addImageProvider("uiicon", UiIconProvider())
-                engine.addImageProvider("scripticon", bridge.game_list.icon_provider)
-                engine.load(QUrl.fromLocalFile(
-                    resolve_script_path("python-gui/src/gui/qml/main.qml")))
-                assert len(engine.rootObjects()) == 1
-                window = engine.rootObjects()[0]
-                QTest.qWait(500)
-                card = window.findChild(QQuickItem, "cardRoot")
-                flick = window.findChild(QQuickItem, "rowsFlick")
+            bridge = make_bridge()
+            bridge.test_client.responses["script.view"] = fake_view
+            qmlRegisterSingletonInstance(
+                QmlBridge, "OneDragonHelper", 1, 0, "Bridge", bridge)
+            engine = QQmlApplicationEngine()
+            engine.addImageProvider("uiicon", UiIconProvider())
+            engine.addImageProvider("scripticon", bridge.game_list.icon_provider)
+            engine.load(QUrl.fromLocalFile(
+                resolve_script_path("python-gui/src/gui/qml/main.qml")))
+            assert len(engine.rootObjects()) == 1
+            window = engine.rootObjects()[0]
+            QTest.qWait(500)
+            card = window.findChild(QQuickItem, "cardRoot")
+            flick = window.findChild(QQuickItem, "rowsFlick")
 
-                def measure(count):
-                    dailies = [
-                        {"display_name": f"日常{i}", "options": {"values": []}}
-                        for i in range(count)
-                    ]
-                    bridge.task_card._daily_map_cache = {"ok-ww": {"dailies": dailies}}
-                    state["count"] = count
-                    bridge.taskStateChanged.emit()
-                    QTest.qWait(300)
-                    return (round(card.height()), round(flick.height()),
-                            round(flick.property("contentHeight")),
-                            bool(flick.property("interactive")))
+            def measure(count):
+                state["count"] = count
+                bridge.task_card.refresh()  # 失效视图缓存并驱动 QML 重读
+                QTest.qWait(300)
+                return (round(card.height()), round(flick.height()),
+                        round(flick.property("contentHeight")),
+                        bool(flick.property("interactive")))
 
-                # 视口只覆盖标题行下方：滚动内容不会滑进标题行
-                assert round(flick.y()) == TOP, flick.y()
+            # 视口只覆盖标题行下方：滚动内容不会滑进标题行
+            assert round(flick.y()) == TOP, flick.y()
 
-                # 4 行：视口 = 内容高度，卡片自适应，无滚动
-                card_h, flick_h, content_h, interactive = measure(4)
-                assert card_h == TOP + 4 * ROW_H + PAD, (card_h,)
-                assert (flick_h, content_h) == (4 * ROW_H + PAD,) * 2, (flick_h, content_h)
-                assert interactive is False, "行数未超窗口余量时不应滚动"
+            # 4 行：视口 = 内容高度，卡片自适应，无滚动
+            card_h, flick_h, content_h, interactive = measure(4)
+            assert card_h == TOP + 4 * ROW_H + PAD, (card_h,)
+            assert (flick_h, content_h) == (4 * ROW_H + PAD,) * 2, (flick_h, content_h)
+            assert interactive is False, "行数未超窗口余量时不应滚动"
 
-                # 9 行（原神）：视口封顶到窗口余量，内容溢出 → 可滚动
-                card_h, flick_h, content_h, interactive = measure(9)
-                assert card_h == VIEWPORT_MAX, (card_h,)
-                assert flick_h == VIEWPORT_MAX - TOP, (flick_h,)
-                assert content_h == 9 * ROW_H + PAD, (content_h,)
-                assert interactive is True, "行数超出窗口余量时必须能滚动"
+            # 9 行（原神）：视口封顶到窗口余量，内容溢出 → 可滚动
+            card_h, flick_h, content_h, interactive = measure(9)
+            assert card_h == VIEWPORT_MAX, (card_h,)
+            assert flick_h == VIEWPORT_MAX - TOP, (flick_h,)
+            assert content_h == 9 * ROW_H + PAD, (content_h,)
+            assert interactive is True, "行数超出窗口余量时必须能滚动"
 
-                # 滚动后行区随之上移，且裁在视口内（不会滑进标题行）
-                daily = window.findChild(QQuickItem, "dailyArea")
-                flick.setProperty("contentY", 100)
-                QTest.qWait(100)
-                assert round(daily.mapToItem(card, QPointF()).y()) == TOP - 100, (
-                    daily.mapToItem(card, QPointF()).y())
+            # 滚动后行区随之上移，且裁在视口内（不会滑进标题行）
+            daily = window.findChild(QQuickItem, "dailyArea")
+            flick.setProperty("contentY", 100)
+            QTest.qWait(100)
+            assert round(daily.mapToItem(card, QPointF()).y()) == TOP - 100, (
+                daily.mapToItem(card, QPointF()).y())
             """
         )
         result = subprocess.run(
             [sys.executable, "-c", code],
             capture_output=True,
+            errors="replace",
             text=True,
             timeout=60,
             cwd=os.getcwd(),

@@ -3,10 +3,7 @@
 import os
 import tempfile
 import unittest
-from unittest.mock import MagicMock, patch
-
-from src.service.script_service import validate_edit
-from src.utils.utils_io import save_data
+from unittest.mock import Mock, patch
 
 # 在导入 PySide6 之前设置 offscreen 平台插件（CI 无显示器环境）
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -25,6 +22,16 @@ from gui.dialogs import (
 
 # 全局 QApplication 实例（测试共享）
 _app = QApplication.instance() or QApplication([])
+
+
+def _edit_view(script_data=None, *, timeouts=None, switches=None):
+    return {
+        "script_name": "collect_log",
+        "script": {} if script_data is None else script_data,
+        "weekly_timeouts": [3600] * 7 if timeouts is None else timeouts,
+        "switches": [] if switches is None else switches,
+        "task_options": [],
+    }
 
 
 class TestPickFile(unittest.TestCase):
@@ -60,59 +67,35 @@ class TestPickFile(unittest.TestCase):
 
 
 class TestSingleScriptConfigDialogLoad(unittest.TestCase):
-    """测试 SingleScriptConfigDialog.load_data 默认值行为。"""
+    def test_weekly_timeout_loads_supplied_values_without_reading_config(self):
+        for timeouts in ([3600] * 7, [60] * 7):
+            with (
+                self.subTest(timeouts=timeouts),
+                patch(
+                    "src.utils.utils_config.load_config",
+                    side_effect=AssertionError("no reads"),
+                ),
+            ):
+                dialog = SingleScriptConfigDialog(
+                    "collect_log",
+                    "日志分析",
+                    "C:/x.py",
+                    edit_view=_edit_view(timeouts=timeouts),
+                    submit=Mock(),
+                )
+                self.addCleanup(dialog.close)
+                self.assertEqual(
+                    [edit.text() for edit in dialog.timeout_inputs],
+                    [str(value) for value in timeouts],
+                )
 
-    def _make_weekly_file(self, weekly_map):
-        d = self.enterContext(tempfile.TemporaryDirectory())
-        wt = os.path.join(d, "weekly.yml")
-        save_data(
-            wt, {"weekly_start": {}, "weekly_timeouts": weekly_map}, file_format="yaml"
-        )
-        return wt
-
-    def _make_config_file(self):
-        """构造一个最小、存在的 config.yml 供对话框读取（对话框依赖 config.yml 已存在）。"""
-        d = self.enterContext(tempfile.TemporaryDirectory())
-        cfg = os.path.join(d, "config.yml")
-        save_data(cfg, {"script_list": []}, file_format="yaml")
-        return cfg
-
-    def test_weekly_timeout_loads_saved_values_or_defaults(self):
-        for saved, expected in (
-            ({}, ["3600"] * 7),
-            ({"collect_log": [60] * 7}, ["60"] * 7),
-        ):
-            with self.subTest(saved=saved):
-                weekly = self._make_weekly_file(saved)
-                config = self._make_config_file()
-                with (
-                    patch(
-                        "src.utils.utils_config.require_config_yml_path",
-                        return_value=config,
-                    ),
-                    patch(
-                        "src.utils.utils_weekly.get_weekly_yml_path_under_root",
-                        return_value=weekly,
-                    ),
-                ):
-                    dialog = SingleScriptConfigDialog(
-                        "collect_log", "日志分析", "C:/x.py"
-                    )
-                    self.addCleanup(dialog.close)
-                    self.assertEqual(
-                        [edit.text() for edit in dialog.timeout_inputs], expected
-                    )
-
-    def test_init_asserts_when_config_yml_missing(self):
-        """config.yml 缺失属内部错误：构造对话框必须 assert，而非静默返回空数据"""
-        with (
-            patch(
-                "src.utils.utils_config.require_config_yml_path",
-                side_effect=AssertionError("config.yml 缺失"),
-            ),
-            self.assertRaises(AssertionError),
-        ):
+    def test_edit_view_and_external_submit_are_required(self):
+        with self.assertRaises(TypeError):
             SingleScriptConfigDialog("collect_log", "日志分析", "C:/x.py")
+        with self.assertRaises(TypeError):
+            SingleScriptConfigDialog(
+                "collect_log", "日志分析", "C:/x.py", edit_view=_edit_view()
+            )
 
 
 class TestNoLogSettings(unittest.TestCase):
@@ -126,6 +109,7 @@ class TestNoLogSettings(unittest.TestCase):
                 "weekly_timeouts": [3600] * 7,
                 "switches": [],
             },
+            submit=Mock(),
         )
         self.addCleanup(dialog.close)
         return dialog
@@ -179,14 +163,6 @@ class TestNoLogSettings(unittest.TestCase):
 
 
 class TestSingleScriptConfigDialogBlock(unittest.TestCase):
-    """测试 block 字段在配置弹窗的加载与保存。"""
-
-    def _make_config_file(self, script_list):
-        d = self.enterContext(tempfile.TemporaryDirectory())
-        cfg = os.path.join(d, "config.yml")
-        save_data(cfg, {"script_list": script_list}, file_format="yaml")
-        return cfg
-
     def test_block_loads_explicit_value_or_defaults_to_true(self):
         for saved, expected in (
             ({}, True),
@@ -194,48 +170,33 @@ class TestSingleScriptConfigDialogBlock(unittest.TestCase):
             ({"block": False}, False),
         ):
             with self.subTest(saved=saved):
-                config = self._make_config_file(
-                    [
-                        {
-                            "display_name": "日志分析",
-                            "script_type": "python",
-                            "script_path": "C:/x.py",
-                            **saved,
-                        }
-                    ]
+                dialog = SingleScriptConfigDialog(
+                    "collect_log",
+                    "日志分析",
+                    "C:/x.py",
+                    edit_view=_edit_view(saved),
+                    submit=Mock(),
                 )
-                with patch(
-                    "src.utils.utils_config.require_config_yml_path",
-                    return_value=config,
-                ):
-                    dialog = SingleScriptConfigDialog("日志分析", "日志分析", "C:/x.py")
-                    self.addCleanup(dialog.close)
-                    self.assertEqual(dialog.block_cb.isChecked(), expected)
+                self.addCleanup(dialog.close)
+                self.assertEqual(dialog.block_cb.isChecked(), expected)
 
-    def test_save_stores_block_in_pending_changes(self):
-        """保存时把复选框状态存到 pending_changes.config_patch['block']（不再直接写盘）。"""
-        cfg = self._make_config_file(
-            [
-                {
-                    "display_name": "日志分析",
-                    "script_type": "python",
-                    "script_path": "C:/y.py",
-                },
-            ]
+    def test_save_submits_block_and_waits_for_ack(self):
+        submit = Mock()
+        dialog = SingleScriptConfigDialog(
+            "collect_log",
+            "日志分析",
+            "C:/x.py",
+            edit_view=_edit_view(),
+            submit=submit,
         )
-        with (
-            patch(
-                "src.utils.utils_config.require_config_yml_path",
-                return_value=cfg,
-            ),
-            patch("gui.dialogs.styled_msg_box"),
-            patch.object(SingleScriptConfigDialog, "accept"),
-        ):
-            dlg = SingleScriptConfigDialog("日志分析", "日志分析", "C:/y.py")
-            dlg.block_cb.setChecked(False)
-            dlg.save_data()
-        self.assertFalse(dlg.pending_changes.config_patch["block"])
-        self.assertEqual(dlg.pending_changes.display_name, "日志分析")
+        self.addCleanup(dialog.close)
+        dialog.show()
+        dialog.block_cb.setChecked(False)
+        dialog.save_data()
+        submit.assert_called_once_with(dialog.pending_changes)
+        self.assertFalse(dialog.pending_changes.config_patch["block"])
+        self.assertEqual(dialog.pending_changes.display_name, "日志分析")
+        self.assertTrue(dialog.isVisible())
 
 
 class TestGameProcessInputAlwaysEnabled(unittest.TestCase):
@@ -246,12 +207,15 @@ class TestGameProcessInputAlwaysEnabled(unittest.TestCase):
     """
 
     def _make_dialog(self, script_data):
-        app = MagicMock()
-        app.get_script.return_value = script_data
-        app.weekly_inputs.return_value = [3600] * 7
-        return SingleScriptConfigDialog(
-            "collect_log", "日志分析", "C:/x.py", app_service=app
+        dialog = SingleScriptConfigDialog(
+            "collect_log",
+            "日志分析",
+            "C:/x.py",
+            edit_view=_edit_view(script_data),
+            submit=Mock(),
         )
+        self.addCleanup(dialog.close)
+        return dialog
 
     def test_enabled_after_construct(self):
         """构造后游戏进程框即可用"""
@@ -280,21 +244,15 @@ class TestGamePathInput(unittest.TestCase):
     """
 
     def _make_dialog(self, script_data):
-        app = MagicMock()
-        app.validate_script_edit.side_effect = validate_edit
-        self.enterContext(
-            patch(
-                "src.utils.utils_config.load_config", return_value={"script_list": []}
-            )
+        dialog = SingleScriptConfigDialog(
+            "collect_log",
+            "日志分析",
+            "C:/x.py",
+            edit_view=_edit_view(script_data),
+            submit=Mock(),
         )
-        # 仅本脚本标识命中：新标识（改名后）返回 None，避免走进「已存在同标识」分支。
-        app.get_script.side_effect = lambda name: (
-            script_data if name == "collect_log" else None
-        )
-        app.weekly_inputs.return_value = [3600] * 7
-        return SingleScriptConfigDialog(
-            "collect_log", "日志分析", "C:/x.py", app_service=app
-        )
+        self.addCleanup(dialog.close)
+        return dialog
 
     def test_load_restores_game_path(self):
         """打开弹窗时回填条目里已存的 game_path。"""
@@ -333,16 +291,18 @@ class TestGamePathInput(unittest.TestCase):
             dlg.pending_changes.config_patch["game_arguments"], '--profile "中文 空格"'
         )
 
-    def test_save_blocks_when_path_not_exists(self):
-        """填了但文件不存在 → 弹警告并中止保存（不进 accept）。"""
-        dlg = self._make_dialog({})
-        dlg.game_path_input.setText("D:/not/exist/Endfield.exe")
-        with (
-            patch("gui.dialogs.styled_msg_box") as warn,
-            patch.object(SingleScriptConfigDialog, "accept") as accept,
-        ):
-            dlg.save_data()
-        warn.assert_called_once()
+    def test_missing_path_is_submitted_for_server_validation(self):
+        dialog = self._make_dialog({})
+        dialog.game_path_input.setText("D:/not/exist/Endfield.exe")
+        submitted = Mock()
+        dialog.saveRequested.connect(submitted)
+        with patch.object(dialog, "accept") as accept:
+            dialog.save_data()
+        submitted.assert_called_once_with(dialog.pending_changes)
+        self.assertEqual(
+            dialog.pending_changes.config_patch["game_path"],
+            "D:/not/exist/Endfield.exe",
+        )
         accept.assert_not_called()
 
     def test_empty_skips_existence_check(self):
@@ -358,8 +318,6 @@ class TestGamePathInput(unittest.TestCase):
 
     def test_invalid_form_stays_open_without_pending_write(self):
         for field, value in (
-            ("name_input", " "),
-            ("path_input", " "),
             ("timeout", "86401"),
             ("timeout", "1.5"),
         ):
@@ -383,25 +341,16 @@ class TestGamePathInput(unittest.TestCase):
 class TestSingleScriptConfigDialogSwitches(unittest.TestCase):
     """任务开关区：按服务给出的清单建行、回显勾选态、随保存回传。"""
 
-    @staticmethod
-    def _service(switches):
-        """桩服务：开关清单由用例给定，其余表单数据取默认值。"""
-        service = MagicMock()
-        service.get_script.return_value = None
-        service.validate_script_edit.side_effect = validate_edit
-        service.weekly_inputs.return_value = [60] * 7
-        service.get_script_switches.return_value = switches
-        service.get_script_options.return_value = []
-        return service
-
     def _make_dialog(self, switches):
-        return SingleScriptConfigDialog(
+        dialog = SingleScriptConfigDialog(
             "BetterGI",
             "原神",
             "C:/BetterGI.exe",
-            None,
-            app_service=self._service(switches),
+            edit_view=_edit_view(timeouts=[60] * 7, switches=switches),
+            submit=Mock(),
         )
+        self.addCleanup(dialog.close)
+        return dialog
 
     def test_rows_render_with_checked_state(self):
         """逐行一个复选框，行名取任务名、勾选态取当前开关。"""
@@ -428,27 +377,11 @@ class TestSingleScriptConfigDialogSwitches(unittest.TestCase):
         assert dlg.pending_changes is not None
         self.assertEqual(dlg.pending_changes.switches, {"领取邮件": True, "周常": True})
 
-    def test_no_section_when_script_undeclared(self):
-        """真实 AppService：未声明该特性的脚本不建区，保存回传空状态。"""
-        directory = self.enterContext(tempfile.TemporaryDirectory())
-        cfg = os.path.join(directory, "config.yml")
-        save_data(cfg, {"script_list": []}, file_format="yaml")
-        weekly = os.path.join(directory, "weekly.yml")
-        save_data(
-            weekly, {"weekly_start": {}, "weekly_timeouts": {}}, file_format="yaml"
-        )
-        with (
-            patch("src.utils.utils_config.require_config_yml_path", return_value=cfg),
-            patch(
-                "src.utils.utils_weekly.get_weekly_yml_path_under_root",
-                return_value=weekly,
-            ),
-        ):
-            dlg = SingleScriptConfigDialog("collect_log", "日志分析", "C:/x.py")
-            dlg.save_data()
-        self.assertEqual(dlg.switch_checks, {})
-        assert dlg.pending_changes is not None
-        self.assertEqual(dlg.pending_changes.switches, {})
+    def test_no_section_when_script_has_no_switches(self):
+        dialog = self._make_dialog([])
+        dialog.save_data()
+        self.assertEqual(dialog.switch_checks, {})
+        self.assertEqual(dialog.pending_changes.switches, {})
 
 
 class TestFramelessDialogs(unittest.TestCase):
@@ -470,14 +403,15 @@ class TestFramelessDialogs(unittest.TestCase):
         self.assertEqual(QColor(BG_DIALOG).alpha(), 235)
 
     def _single_script_dialog(self):
-        app = MagicMock()
-        app.get_script.return_value = {}
-        app.weekly_inputs.return_value = [3600] * 7
-        dlg = SingleScriptConfigDialog(
-            "collect_log", "日志分析", "C:/x.py", app_service=app
+        dialog = SingleScriptConfigDialog(
+            "collect_log",
+            "日志分析",
+            "C:/x.py",
+            edit_view=_edit_view(),
+            submit=Mock(),
         )
-        self.addCleanup(dlg.close)
-        return dlg
+        self.addCleanup(dialog.close)
+        return dialog
 
     def test_single_script_dialog_frameless(self):
         self._assert_round(self._single_script_dialog(), alpha=255)

@@ -33,24 +33,19 @@ class TestGameIconProvider(unittest.TestCase):
 
     def test_missing_path_or_icon_returns_null_pixmap(self):
         provider = GameIconProvider()
-        with patch("src.config.set_config.get_game_exe_path", return_value=""):
-            self.assertTrue(provider.requestPixmap("ok-ww", None, QSize()).isNull())
-        with (
-            patch("src.config.set_config.get_game_exe_path", return_value="C:/g.exe"),
-            patch("gui.icons.get_exe_icon", return_value=None),
-        ):
+        provider.paths["ok-ww"] = ""
+        self.assertTrue(provider.requestPixmap("ok-ww", None, QSize()).isNull())
+        with patch("gui.icons.get_exe_icon", return_value=None):
+            provider.paths["ok-ww"] = "C:/g.exe"
             self.assertTrue(provider.requestPixmap("ok-ww", None, QSize()).isNull())
 
     def test_resolves_game_exe_and_requests_256px_pixmap(self):
-        provider = GameIconProvider()
+        provider = GameIconProvider({"ok-ww": "C:/g.exe"})
         source = QPixmap(256, 256)
         source.fill(QColor("#348FCA"))
         icon = MagicMock()
         icon.pixmap.return_value = source
-        with (
-            patch("src.config.set_config.get_game_exe_path", return_value="C:/g.exe"),
-            patch("gui.icons.get_exe_icon", return_value=icon),
-        ):
+        with patch("gui.icons.get_exe_icon", return_value=icon):
             out = provider.requestPixmap("ok-ww", None, QSize())
         self.assertFalse(out.isNull())
         # 提供器统一请求 256 逻辑像素（命中 exe 原生最高档），交由 QML mipmap 下采样到 128 显示。

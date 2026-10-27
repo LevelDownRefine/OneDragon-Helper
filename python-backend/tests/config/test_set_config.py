@@ -541,8 +541,9 @@ class TestGetGameExePathAdapter(unittest.TestCase):
     """测试适配器接口 get_game_exe_path 的分发逻辑"""
 
     def test_unknown_process_returns_none(self):
-        """未注册（自定义）进程 → None"""
-        got = set_config.get_game_exe_path("不存在")
+        """未注册（自定义）进程 → None（get_script_game_path 隔离，不读真实 config.yml）"""
+        with patch.object(set_config, "get_script_game_path", return_value=""):
+            got = set_config.get_game_exe_path("不存在")
         self.assertIsNone(got)
 
     def test_known_process_dispatches(self):

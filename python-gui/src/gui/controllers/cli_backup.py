@@ -1,9 +1,12 @@
 """备份与恢复通过 CLI 后台任务执行，恢复明确确认且不自动重试。"""
 
-from PySide6.QtWidgets import QDialog, QLabel, QMessageBox, QVBoxLayout
+import os
+
+from PySide6.QtWidgets import QDialog, QFileDialog, QLabel, QMessageBox, QVBoxLayout
 
 from gui.cli_job import CliJob
 from gui.dialogs import FormDialogBase, styled_msg_box
+from src.utils import get_root_dir
 
 
 class JobDialog(FormDialogBase):
@@ -16,6 +19,16 @@ class JobDialog(FormDialogBase):
 
 
 class CliBackupMixin:
+    def _pick_zip(self) -> str:
+        """选择配置备份；取消返回空串。"""
+        path, _selected = QFileDialog.getOpenFileName(
+            None,
+            "选择配置备份",
+            os.path.join(get_root_dir(), "config", "backups"),
+            "配置备份 (*.zip)",
+        )
+        return path
+
     def backupConfig(self):
         self._backup_job("backup.start", {})
 

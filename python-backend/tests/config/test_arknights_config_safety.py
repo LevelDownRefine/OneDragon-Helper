@@ -291,30 +291,74 @@ class TestMaaNativeConfig(unittest.TestCase):
         self.assertEqual(sum(task["Name"] == "理智作战" for task in self.queue()), 1)
         self.assertTrue(self.task("剿灭作战")["IsEnable"])
 
-    def test_gui_three_entries_select_and_disable_through_service(self):
+    def test_gui_three_entries_select_and_disable_through_rpc(self):
+        import importlib.util
+        import sys
         from types import SimpleNamespace
         from unittest.mock import MagicMock
 
-        from gui.controllers.task_card import TaskCardController
-        from src.config.set_config import get_daily_map
-        from src.config.task.task_declarations import get_daily_configs
+        from jsonrpcserver import dispatch_to_serializable
 
+        import tests
+        from gui.cli_client import CliFailure
+        from gui.controllers.cli_task_card import CliTaskCardController
+        from src.config.set_config import get_daily_map, get_daily_readback
+        from src.config.task.task_declarations import get_daily_configs
+        from src.headless import _parse_json, rpc_methods
+        from src.service.app_service import AppService
+
+        helper_path = (
+            Path(tests.__file__).resolve().parents[2]
+            / "python-gui/tests/gui/helpers.py"
+        )
+        spec = importlib.util.spec_from_file_location(
+            "_maa_gui_rpc_helpers", helper_path
+        )
+        helpers = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = helpers
+        spec.loader.exec_module(helpers)
+        helpers.get_app()
         self.cfg._init_config()
-        service = MagicMock()
-        service.get_daily_map.side_effect = get_daily_map
-        service.set_script_daily_task.side_effect = (
-            lambda script, task_name, sequence, daily_display_name: (
-                self.cfg.set_daily_task(daily_display_name, task_name, sequence)
-            )
-        )
-        service.set_script_daily_enabled.side_effect = lambda script, daily, enabled: (
-            self.cfg.set_daily_enabled(daily, enabled)
-        )
+        service = AppService()
+        self.addCleanup(service.close)
+
+        def card_view(script_name):
+            """服务端真实物化菜单和反读原生配置，前端仅接收 JSON 视图。"""
+            menus = get_daily_map(script_name)
+            records = {row["name"]: row for row in get_daily_readback(script_name)}
+            dailies = [
+                {**records[daily["display_name"]], "options": daily["options"]}
+                for daily in menus[script_name]["dailies"]
+            ]
+            return {
+                "script": {
+                    "script_name": script_name,
+                    "display_name": "粥",
+                    "adapted": True,
+                },
+                "dailies": dailies,
+                "weeklies": [],
+            }
+
         game_list = SimpleNamespace(
             current_game={"script_name": "MAA", "display_name": "粥"}
         )
-        controller = TaskCardController(game_list, service, MagicMock())
         with (
+            patch.object(service, "script_view", side_effect=card_view),
+            patch.object(
+                service,
+                "select_daily",
+                side_effect=lambda script_name, daily_name, task_name, sequence: (
+                    self.cfg.set_daily_task(daily_name, task_name, sequence)
+                ),
+            ),
+            patch.object(
+                service,
+                "enable_daily",
+                side_effect=lambda script_name, daily_name, enabled: (
+                    self.cfg.set_daily_enabled(daily_name, enabled)
+                ),
+            ),
             patch(
                 "src.config.set_config.load_daily_map",
                 return_value={"MAA": get_daily_configs("MAA")},
@@ -323,7 +367,29 @@ class TestMaaNativeConfig(unittest.TestCase):
                 daily_mod, "read_activity_stages", return_value=self.stages
             ) as reader,
         ):
+            methods = rpc_methods(service)
+
+            def dispatch(method, params):
+                response = dispatch_to_serializable(
+                    json.dumps(
+                        {"jsonrpc": "2.0", "id": 1, "method": method, "params": params}
+                    ),
+                    methods=methods,
+                    deserializer=_parse_json,
+                )
+                if "error" in response:
+                    error = response["error"]
+                    return CliFailure(error["code"], error["message"])
+                assert "result" in response
+                return response["result"]
+
+            client = helpers.FakeCliClient(handler=dispatch)
+            self.addCleanup(client.close)
+            controller = CliTaskCardController(game_list, client, MagicMock())
+            self.addCleanup(controller.deleteLater)
             controller.build_daily_cache()
+            self.assertEqual(controller.daily_items, [])  # 异步视图到达前收缩为空。
+            helpers.drain_events()
             reader.assert_called_once_with(
                 "MAA", "cache/gui/StageActivityV2.json", "config/gui.new.json"
             )
@@ -333,12 +399,20 @@ class TestMaaNativeConfig(unittest.TestCase):
             )
             self.assertEqual(len(controller.daily_options("理智作战")), 16)
             reader.reset_mock()
-            controller.selectDaily("活动关卡", "AT-7", None)
-            controller.selectDaily("理智作战", "AP-5", None)
-            controller.selectDaily("剩余理智", "1-7", None)
+            for daily, stage in (
+                ("活动关卡", "AT-7"),
+                ("理智作战", "AP-5"),
+                ("剩余理智", "1-7"),
+            ):
+                controller.selectDaily(daily, stage, None)
+                helpers.drain_events()
             controller.setDailyEnabled("理智作战", False)
-            controller.daily_options("活动关卡")
-            reader.assert_not_called()  # 选择关卡和打开已缓存菜单都不重读资源。
+            helpers.drain_events()
+            # 每个成功写入后的刷新只物化一次；同一视图的重复读取不重新加载资源。
+            self.assertEqual(reader.call_count, 4)
+            for daily in ("活动关卡", "理智作战", "剩余理智"):
+                controller.daily_options(daily)
+            self.assertEqual(reader.call_count, 4)
         self.assertEqual(self.task("活动关优先")["StagePlan"], ["AT-7"])
         self.assertFalse(self.task("理智作战")["IsEnable"])
         self.assertTrue(self.task("剩余理智")["IsEnable"])

@@ -9,7 +9,7 @@ notify / close_running）的读写归本模块：``load_schedule`` / ``save_sche
 缺项默认启用 60 秒倒计时，与运行确认窗的 RunOptions 分开读写。
 
 ``ScheduledRun`` 是一个带生命周期的对象，而非纯函数：它在独立控制台进程
-（由 ``utils_runner.spawn_schedule_run`` 以 ``CREATE_NEW_CONSOLE`` 起）中运行，
+（CLI 适配器负责交付运行参数，前端负责启动）中运行，
 故前置阻塞等待（``time.sleep``）无害；关闭该控制台即取消。
 
 编排固定为：pre_run → （等待到点）→ 生成脚本链并运行 → 可选重跑轮 → post_run。
@@ -22,7 +22,7 @@ pre_run / post_run 为可扩展的 step 列表（Callable 序列），由本模�
 import logging
 import re
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 
 import src.utils.utils_config as utils_config
 import src.utils.utils_weekly as utils_weekly
@@ -196,6 +196,54 @@ def load_run_options(schedule: dict | None = None) -> RunOptions:
     """
     data = load_schedule() if schedule is None else schedule
     return _parse_run_options(data)
+
+
+def validate_run_options(
+    options: RunOptions, *, require_shutdown_ui: bool = True
+) -> RunOptions:
+    """校验并整理运行表单或已存选项，独立运行前检查当前前端能力。"""
+    from src.utils.utils_shutdown import shutdown_ui_supported
+
+    assert isinstance(options, RunOptions)
+    values = asdict(options)
+    for key, default in asdict(RunOptions()).items():
+        assert key in values
+        if type(values[key]) is not type(default):
+            raise ValueError(f"运行选项 {key} 类型无效")
+    options = RunOptions(
+        **{
+            key: value.strip() if isinstance(value, str) else value
+            for key, value in values.items()
+        }
+    )
+    if not 0 <= options.shutdown_delay <= 86400:
+        raise ValueError("关机延迟须为 0～86400 秒")
+    if require_shutdown_ui and options.shutdown_enabled and not shutdown_ui_supported():
+        raise ValueError("关机确认入口不可用，请关闭自动关机或重新启动前端")
+    if options.smtp_port and (
+        not options.smtp_port.isdecimal() or not 1 <= int(options.smtp_port) <= 65535
+    ):
+        raise ValueError("SMTP 端口须为 1～65535")
+    if options.auth_code and not options.email:
+        raise ValueError("填写授权码时请同时填写邮箱")
+    return options
+
+
+def run_launch_kwargs(options: RunOptions) -> dict:
+    """每日计划的 RunOptions → 调度启动参数。
+
+    ``shutdown_delay`` 仅在启用且大于 0 时传入，None 表达不关机。
+    """
+    return {
+        "mute": options.mute_enabled,
+        "unmute": options.unmute_enabled,
+        "shutdown_delay": (
+            options.shutdown_delay
+            if options.shutdown_enabled and options.shutdown_delay > 0
+            else None
+        ),
+        "close_running": options.close_running_enabled,
+    }
 
 
 def _dump_run_options(options: RunOptions, base_notify: dict | None = None) -> dict:

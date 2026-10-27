@@ -223,12 +223,7 @@ class ControllerTests(TestCase):
             self.transport.succeeded.emit(3, {"script_name": "renamed"})
             return 1
 
-        with (
-            patch.object(SingleScriptConfigDialog, "exec", edit),
-            patch(
-                "gui.dialogs.AppService", side_effect=AssertionError("no service reads")
-            ),
-        ):
+        with patch.object(SingleScriptConfigDialog, "exec", edit):
             self.games.configCurrent()
             self.transport.succeeded.emit(2, view)
         self.reload.assert_called_once()
@@ -356,7 +351,7 @@ class ControllerTests(TestCase):
         self.assertIn("无效", self.messages[-1])
 
     def test_startup_save_ack_and_error_keep_dialog_input(self):
-        controller = CliSettingsController(Mock(), self.session, self.messages.append)
+        controller = CliSettingsController(self.session, self.messages.append)
         dialog = Mock()
         dialog.startup_options = StartupOptions(False, 12)
         dialog.isVisible.return_value = True
@@ -417,7 +412,7 @@ class ControllerTests(TestCase):
         self.assertIn("cache.jpg", background.background_preview_url)
 
     def test_run_settings_save_uses_shared_options_and_waits_for_ack(self):
-        controller = CliSettingsController(Mock(), self.session, self.messages.append)
+        controller = CliSettingsController(self.session, self.messages.append)
         dialog = Mock()
         dialog.run_options = RunOptions(mute_enabled=True)
 
@@ -444,13 +439,13 @@ class ControllerTests(TestCase):
     ):
         from gui.main_window import QmlBridge
 
-        service = Mock()
-        service.get_registered_script_names.side_effect = AssertionError(
-            "GUI must not read config"
-        )
-        service.load_config.side_effect = AssertionError("GUI must not read config")
-        with patch("gui.main_window.AppService", return_value=service):
+        with patch(
+            "src.service.app_service.AppService",
+            side_effect=AssertionError("GUI must not construct a business service"),
+        ):
             bridge = QmlBridge(self.transport)
+        self.assertFalse(hasattr(bridge, "app_service"))
+        self.assertFalse(hasattr(bridge.links, "_app_service"))
         bridge.maybe_auto_launch()
         self.assertEqual(bridge.game_list.enabled, [])
         self.assertEqual(self.transport.requests, [("app.snapshot", {})])
@@ -460,9 +455,6 @@ class ControllerTests(TestCase):
         self.assertIn("script.icon_path", methods)
         self.assertIn("script.view", methods)
         self.assertIn("startup.view", methods)
-        service.load_config.assert_not_called()
-        service.load_startup_options.assert_not_called()
-        service.load_daily_plan.assert_not_called()
 
     def test_response_validators_reject_wrong_nullable_fields(self):
         valid = {
@@ -503,8 +495,14 @@ class ControllerTests(TestCase):
                     before_request=before_request, invalid_response=invalid_response
                 ):
                     transport = Transport()
-                    with patch("gui.main_window.AppService", return_value=Mock()):
+                    with patch(
+                        "src.service.app_service.AppService",
+                        side_effect=AssertionError(
+                            "GUI must not construct a business service"
+                        ),
+                    ):
                         bridge = QmlBridge(transport)
+                    self.assertFalse(hasattr(bridge, "app_service"))
                     messages = []
                     bridge.toastRequested.connect(messages.append)
                     if not before_request:

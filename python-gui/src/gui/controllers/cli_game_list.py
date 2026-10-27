@@ -13,7 +13,7 @@ class CliGameListController(GameListController):
     loadFailed = Signal()
 
     def __init__(self, session, toast, on_reload, parent=None):
-        super().__init__(None, toast, on_reload, parent)
+        super().__init__(toast, on_reload, parent)
         self._session = session
         self._enabled = []
         self._generation = 0
@@ -115,22 +115,34 @@ class CliGameListController(GameListController):
 
     @Slot("QVariantList", result=bool)
     def dropScripts(self, urls):
+        from gui.controllers.game_list import logger
+
         paths = self._script_drop_paths(urls)
         if not paths or self._mutating:
             self._toast("请拖入有效脚本文件，或等待当前保存完成")
             return False
-        # 返回表示已接受拖入；结果由异步回调通知，不能冒充保存成功。
+        # 返回值仅表示接受；逐项确认后汇总实际保存结果。
         self._mutating = True
         results = []
-        added = 0
+        added = duplicates = failed_count = 0
+
+        def report():
+            if len(paths) == 1:
+                return results[0]
+            summary = f"已添加 {added} 个脚本"
+            if duplicates:
+                summary += f"，重复 {duplicates} 个"
+            if failed_count:
+                summary += f"，失败 {failed_count} 个"
+            return summary + (
+                "\n" + "\n".join(results) if duplicates or failed_count else ""
+            )
 
         def next_path():
             if len(results) == len(paths):
                 self._mutating = False
                 self._on_reload()
-                self._toast("\n".join(results))
-                if added:
-                    self.gameAdded.emit()
+                self._toast(report())
                 return
             path = paths[len(results)]
 
@@ -144,16 +156,28 @@ class CliGameListController(GameListController):
                     raise ValueError("添加响应无效")
                 results.append(f"已添加 {result['display_name']}")
                 added += 1
+                self.gameAdded.emit()
                 next_path()
 
             def failed(failure):
-                results.append(f"{os.path.basename(path)}：{failure.message}")
+                nonlocal duplicates, failed_count
+                duplicate = failure.message.startswith("脚本已存在")
+                duplicates += int(duplicate)
+                failed_count += int(not duplicate)
+                message = (
+                    failure.message
+                    if duplicate and len(paths) == 1
+                    else f"{os.path.basename(path)}：{failure.message}"
+                )
+                results.append(message)
+                logger.warning(
+                    "[file_drop] 添加脚本失败（%s）：%s", failure.code, message
+                )
                 if failure.code == "transport_failed":
                     self._mutating = False
-                    self._toast("\n".join(results))
+                    self._toast(report())
                     if added:
                         self._on_reload()
-                        self.gameAdded.emit()
                     return
                 next_path()
 
@@ -191,12 +215,6 @@ class CliGameListController(GameListController):
                 raise ValueError("脚本编辑数据无效")
             from gui.dialogs import SingleScriptConfigDialog, show_warning
 
-            dialog = SingleScriptConfigDialog(
-                name,
-                view["script"]["display_name"],
-                view["script"]["script_path"],
-                edit_view=view,
-            )
             saving = False
 
             def save(edit):
@@ -228,7 +246,13 @@ class CliGameListController(GameListController):
 
                 self._session.call("script.edit_save", asdict(edit), saved, rejected)
 
-            dialog.saveRequested.connect(save)
+            dialog = SingleScriptConfigDialog(
+                name,
+                view["script"]["display_name"],
+                view["script"]["script_path"],
+                edit_view=view,
+                submit=save,
+            )
             dialog.exec()
 
         self._session.call("script.edit_view", {"script_name": name}, loaded, failed)

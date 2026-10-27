@@ -3,6 +3,7 @@
 import os
 import unittest
 from copy import deepcopy
+from unittest.mock import Mock
 
 os.environ["QT_QPA_PLATFORM"] = "offscreen"
 
@@ -65,6 +66,7 @@ class TestTaskOptionsDialog(unittest.TestCase):
                 "switches": [],
                 "task_options": option_rows(),
             },
+            submit=Mock(),
         )
         self.addCleanup(dialog.close)
         return dialog
@@ -99,7 +101,9 @@ class TestTaskOptionsDialog(unittest.TestCase):
         row = option_rows()[1]
         row.update(group="完成后操作", display_name="完成后操作", tasks=[])
         view["task_options"] = [row]
-        dialog = SingleScriptConfigDialog("demo", "示例", "demo.exe", edit_view=view)
+        dialog = SingleScriptConfigDialog(
+            "demo", "示例", "demo.exe", edit_view=view, submit=Mock()
+        )
         self.addCleanup(dialog.close)
         labels = [
             label
@@ -148,7 +152,9 @@ class TestTaskOptionsDialog(unittest.TestCase):
         dialog = self.dialog()
         view = deepcopy(dialog._edit_view)
         view["task_options"] = []
-        original = SingleScriptConfigDialog("demo", "示例", "demo.exe", edit_view=view)
+        original = SingleScriptConfigDialog(
+            "demo", "示例", "demo.exe", edit_view=view, submit=Mock()
+        )
         self.addCleanup(original.close)
         original.show()
         dialog.show()
@@ -164,7 +170,9 @@ class TestTaskOptionsDialog(unittest.TestCase):
         dialog.close()
         view = deepcopy(dialog._edit_view)
         view["switches"] = [{"name": "领奖", "enabled": False}]
-        dialog = SingleScriptConfigDialog("demo", "示例", "demo.exe", edit_view=view)
+        dialog = SingleScriptConfigDialog(
+            "demo", "示例", "demo.exe", edit_view=view, submit=Mock()
+        )
         self.addCleanup(dialog.close)
         dialog.show()
         self.app.processEvents()

@@ -178,10 +178,11 @@ def _render_icon(
 class GameIconProvider(QQuickImageProvider):
     """QML 游戏图标源：`image://gameicon/<script_name>`。
 
-    按 script_name 经 set_config.get_game_exe_path 解析游戏 exe 路径并取内嵌图标，
-    预渲染 256 档（命中 exe 原生最高档）并裁成圆角，交由 QML 在 `mipmap` 下抗混叠
-    下采样到显示尺寸；渲染与 ScriptIconProvider 共用 `_render_icon`，按 script_name
-    路由随当前游戏切换即时刷新；图标缺失时返回空 pixmap 由 QML 回退文字。
+    按 script_name 从注入路径表读取 CLI 返回的游戏 exe 路径并取内嵌图标，
+    预渲染 256 档（命中 exe 原生最高档）
+    并裁成圆角，交由 QML 在 `mipmap` 下抗混叠下采样到显示尺寸；渲染与
+    ScriptIconProvider 共用 `_render_icon`，按 script_name 路由随当前游戏切换即时
+    刷新；图标缺失时返回空 pixmap 由 QML 回退文字。
     """
 
     # 提供 256 档源，显示端（当前 128）经 mipmap 下采样，2x 近乎无损。
@@ -189,19 +190,13 @@ class GameIconProvider(QQuickImageProvider):
     # 显示端圆角 = 128 / 8 = 16，与底板 24 = 16 + 留白 8 同心；源端同比例取 256 / 8。
     _CORNER_RADIUS = _SOURCE_SIZE // 8
 
-    def __init__(self):
+    def __init__(self, paths=None):
         super().__init__(QQuickImageProvider.Pixmap)
-        self.paths = None
+        self.paths = {} if paths is None else paths
 
     def requestPixmap(self, id: str, size, requestedSize):
-        from src.config.set_config import get_game_exe_path
-
         id = id.split("?", 1)[0]
-        exe_path = (
-            (self.paths[id] if id in self.paths else None)  # noqa: SIM401
-            if self.paths is not None
-            else get_game_exe_path(id)
-        )
+        exe_path = self.paths[id] if id in self.paths else None  # noqa: SIM401
         return _render_icon(
             get_exe_icon(exe_path) if exe_path else None,
             self._SOURCE_SIZE,

@@ -373,6 +373,7 @@ class CliTaskCardTests(unittest.TestCase):
                 "raise SystemExit(1 if valid_script_view(None, 'A') else 0)",
             ],
             capture_output=True,
+            errors="replace",
             text=True,
             timeout=10,
         )

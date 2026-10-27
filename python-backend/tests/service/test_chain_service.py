@@ -145,6 +145,17 @@ class TestScheduleRun(unittest.TestCase):
         )
         patcher.start()
         self.addCleanup(patcher.stop)
+        # weekly.yml 属生成配置：测试隔离，周几起一律视为未设置、超时全部默认。
+        weekly_patcher = patch(
+            "src.utils.utils_weekly.get_weekly_start_map", return_value={}
+        )
+        weekly_patcher.start()
+        self.addCleanup(weekly_patcher.stop)
+        load_weekly_patcher = patch(
+            "src.service.chain_service.load_all_weekly", return_value={}
+        )
+        load_weekly_patcher.start()
+        self.addCleanup(load_weekly_patcher.stop)
 
     def _make_service(self, script_list):
         self._cfg_patch = patch(
@@ -251,6 +262,7 @@ class TestScheduleRun(unittest.TestCase):
                 return_value={"rerun": [], "notify": [], "report": "", "entries": []},
             ),
             patch("src.service.chain_service._run_chain_once_impl"),
+            patch("src.service.schedule.build_post_run_pipeline", return_value=[]),
             patch("src.service.schedule.shutdown_sys"),
         ):
             chain_service.schedule_run({"demo"}, "now")

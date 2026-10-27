@@ -1,4 +1,4 @@
-"""AppService：组合根（composition root），GUI/CLI 唯一服务入口。
+"""AppService：后端业务组合入口。
 
 持有平级 peer 并薄委托，使各 peer 互不越界——链编排归 :mod:`src.service.chain_service` 模块函数（生成/运行/调度/校验），本类只组合它。
 
@@ -14,8 +14,8 @@ peer：
 - 配置备份与恢复（各子脚本 config 打包为 ZIP / 按目录原样回写）：归 :mod:`src.service.backup_service` 模块函数
 - 助手手动更新（检查 / 下载 / 安装交接）：归 :class:`src.update.UpdateService`
 
-GUI（MainWindow）与 CLI（各子命令）都只实例化本类，控制器经构造注入持有它；
-Python GUI 直接调用本类；CLI 在传输边界转换数据，两者共用业务实现。
+两套 GUI 仅通过 CLI 调用本类，CLI 在传输边界转换数据；
+本类仅在后端进程装配，前端不构造或持有服务对象。
 """
 
 import logging
@@ -47,9 +47,11 @@ from src.service.schedule import (
     load_schedule,
     load_startup_options,
     save_schedule,
+    validate_run_options,
 )
 from src.service.script_service import InvalidScript, ScriptEdit
 from src.update import UpdateService, UpdateSession
+from src.utils import get_config_yml_path_under_root
 from src.utils.utils_config import (
     config_file_path,
     get_script,
@@ -64,10 +66,8 @@ from src.utils.utils_runner import (
 )
 from src.utils.utils_sub_config import get_script_name
 from src.utils.utils_wallpaper import (
-    load_wallpapers,
     save_video_preview,
     save_wallpaper_cache,
-    save_wallpapers,
     set_wallpaper,
     video_preview_path,
     wallpaper_view,
@@ -80,6 +80,14 @@ from src.utils.utils_weekly import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _validated_run_options(options: RunOptions) -> RunOptions:
+    """将运行选项校验错误转换为统一的业务请求错误。"""
+    try:
+        return validate_run_options(options)
+    except ValueError as exc:
+        raise chain_service.InvalidRunRequest(str(exc)) from exc
 
 
 def _weekly_start_entries(script_name: str) -> dict[str, int]:
@@ -202,7 +210,7 @@ class AppService:
     def saved_run(self, script_names: list[str]) -> RunOptions:
         """自动启动校验名单并读取上次选项，不保存或运行。"""
         chain_service.selected_scripts(script_names)
-        return self.load_run_options()
+        return _validated_run_options(self.load_run_options())
 
     def prepare_run(
         self, script_names: list[str], options: RunOptions, confirm_invalid: bool
@@ -210,13 +218,14 @@ class AppService:
         """确认配置问题后保存选项，反读不含授权码的运行配置。"""
         assert isinstance(options, RunOptions)
         assert type(confirm_invalid) is bool
+        options = _validated_run_options(options)
         scripts = chain_service.selected_scripts(script_names)
         if self.collect_invalid_scripts(scripts) and not confirm_invalid:
             raise chain_service.InvalidRunRequest(
                 "请先确认配置不合法的脚本将在运行时跳过"
             )
         self.apply_run_options(options)
-        return self.load_run_options()
+        return _validated_run_options(self.load_run_options())
 
     def run_batch(self, script_names: list[str], options: RunOptions) -> None:
         return chain_service.run_batch(script_names, options)
@@ -296,6 +305,10 @@ class AppService:
     def get_daily_map(self, script_name: str) -> dict:
         """物化指定脚本的日常菜单。"""
         return get_daily_map(script_name)
+
+    def config_yml_path(self) -> str:
+        """总配置 config.yml 的落点（打开设置用）。"""
+        return get_config_yml_path_under_root()
 
     # ── 游戏侧 config 适配器（src.config.set_config 模块函数）────────────
     # ── 单脚本配置（src.utils.utils_config 模块函数）─────────────────────────
@@ -476,13 +489,6 @@ class AppService:
         return 0 if switch is None else switch.write(states)
 
     # ── 自定义壁纸表（config/wallpaper.json，src.utils.utils_wallpaper）──
-    def load_wallpapers(self) -> dict:
-        """读取壁纸表（{脚本标识: 壁纸路径}）；缺失/损坏返回空 dict。"""
-        return load_wallpapers()
-
-    def save_wallpapers(self, wallpapers: dict) -> None:
-        """原子写回壁纸表。"""
-        return save_wallpapers(wallpapers)
 
     def video_preview_path(self, source_path: str) -> str | None:
         """定位当前视频版本的首帧缓存。"""

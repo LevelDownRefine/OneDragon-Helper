@@ -26,13 +26,13 @@ class RunStarterTests(TestCase):
             child = original(*args, **kwargs)
             self.children.append(child)
             if self.ready_before_delivery is not None:
-                # 此场景先关闭子进程 stdin，再开始交付，排除解释器启动计时。
+                # 等子进程准备就绪后开始交付，排除解释器与控制台启动计时。
                 deadline = time.monotonic() + 5
                 while not self.ready_before_delivery.is_file():
                     if child.poll() is not None:
-                        raise OSError("假进程在关闭 stdin 前退出")
+                        raise OSError("假进程在准备就绪前退出")
                     if time.monotonic() >= deadline:
-                        raise TimeoutError("假进程未报告 stdin 已关闭")
+                        raise TimeoutError("假进程未报告准备就绪")
                     time.sleep(0.01)
             return child
 
@@ -58,8 +58,10 @@ class RunStarterTests(TestCase):
             time.sleep(0.01)
 
     def _target(self, code):
+        # 夹具仅用标准库；Windows venv redirector 另持 stdin 读端，
+        # 也会让 kill 仅结束 launcher，故直接运行基础解释器。
         return {
-            "program": sys.executable,
+            "program": getattr(sys, "_base_executable", sys.executable),
             "args": ["-c", code],
             "cwd": str(self.root),
             "env": {},
@@ -76,10 +78,12 @@ class RunStarterTests(TestCase):
         self.assertIn("结果不确定", self.toast.call_args.args[0])
 
     def test_success_closes_stdin_and_keeps_child_alive_after_deadline(self):
+        self.ready_before_delivery = self.root / "stdin-ready"
         self.controller._starter._timeout_seconds = 2
         self.controller._starter.start(
             self._target(
                 "import sys,time; from pathlib import Path; "
+                "Path('stdin-ready').touch(); "
                 "Path('received').write_text(str(len(sys.stdin.read()))); "
                 "time.sleep(30)"
             )

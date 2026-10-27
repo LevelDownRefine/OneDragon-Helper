@@ -22,7 +22,11 @@ import sys
 
 from src.log.monitor import parse_logs
 from src.service.chain_gen import generate_chain_config as _generate_chain_config
-from src.service.schedule import RunOptions, ScheduledRun, _dump_run_options
+from src.service.schedule import (
+    RunOptions,
+    ScheduledRun,
+    _dump_run_options,
+)
 from src.utils import utils_config
 from src.utils.utils_runner import (
     build_run_chain_command as _build_run_chain_command,
@@ -210,8 +214,7 @@ def schedule_run(
 
     完整编排（等待到点 → 生成并运行 → 可选重跑 → post_run）由
     ``src.service.schedule.ScheduledRun`` 拥有；本函数仅作 facade 入口，
-    设计为在独立控制台进程（``utils_runner.spawn_schedule_run`` 以
-    ``CREATE_NEW_CONSOLE`` 起）中运行。
+    设计为在独立 CLI 运行进程中执行；进程交接由入口适配。
 
     Args:
         enabled_keys: 纳入链的脚本唯一标识集合；None/空集合表示不纳入任何脚本

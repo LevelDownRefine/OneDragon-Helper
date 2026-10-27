@@ -75,11 +75,29 @@ def video_preview_path(source_path: str) -> str | None:
         [os.path.normcase(os.path.abspath(source_path)), stat.st_size, stat.st_mtime_ns]
     )
     key = hashlib.sha256(identity.encode("utf-8")).hexdigest()
+    return os.path.join(_cache_directory(), f"video_{key}.jpg")
+
+
+def _cache_directory() -> str:
     return os.path.join(
-        os.path.dirname(get_wallpaper_json_path_under_root()),
-        "wallpaper_cache",
-        f"video_{key}.jpg",
+        os.path.dirname(get_wallpaper_json_path_under_root()), "wallpaper_cache"
     )
+
+
+def save_wallpaper_cache_bytes(cache_path: str, data: bytes) -> bool:
+    """原子保存调用方编码好的压缩缓存图（tmp + os.replace）；失败返回 False。
+
+    ``save_wallpaper_cache`` 按来源 token 确定落点并校验 base64/JPEG 后委托到这里。
+    """
+    try:
+        os.makedirs(os.path.dirname(cache_path), exist_ok=True)
+        with open(cache_path + ".tmp", "wb") as stream:
+            stream.write(data)
+        os.replace(cache_path + ".tmp", cache_path)
+    except OSError as e:
+        logger.warning("[wallpaper] 壁纸缓存写入失败(%s)：%s", type(e).__name__, e)
+        return False
+    return True
 
 
 def save_video_preview(source_path: str, cache_path: str, data: bytes) -> bool:
@@ -199,13 +217,5 @@ def save_wallpaper_cache(script_name: str, token: str, jpeg_base64: str) -> bool
     if current["token"] != token:
         return False
     prefix = "video_" if current["mode"] == "video" else "rust_image_"
-    directory = os.path.join(
-        os.path.dirname(get_wallpaper_json_path_under_root()), "wallpaper_cache"
-    )
-    path = os.path.join(directory, f"{prefix}{token}.jpg")
-    os.makedirs(directory, exist_ok=True)
-    temporary = path + ".tmp"
-    with open(temporary, "wb") as stream:
-        stream.write(data)
-    os.replace(temporary, path)
-    return True
+    path = os.path.join(_cache_directory(), f"{prefix}{token}.jpg")
+    return save_wallpaper_cache_bytes(path, data)

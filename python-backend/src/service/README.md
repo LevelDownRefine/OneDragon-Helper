@@ -1,6 +1,6 @@
 # 服务层
 
-`AppService` 是 GUI/CLI 的统一入口：装配平级服务并薄委托，无 Qt 依赖。配置适配归 set_config，执行归 runner，展示状态归前端。
+`AppService` 是后端统一业务入口，由 CLI 装配和调用；两套 GUI 只消费 CLI 协议。它装配平级服务并薄委托，无 Qt 依赖。配置适配归 set_config，执行归 runner，展示状态归前端。
 
 ## 模块职责
 
@@ -8,7 +8,7 @@
 | --- | --- |
 | `app_service.py` | 组合根与公开接口 |
 | `script_service.py`、`task_service.py` | 脚本增删改排序、表单校验、任务查询 |
-| `chain_service.py`、`chain_gen.py` | 链生成、校验和运行命令 |
+| `chain_service.py`、`chain_gen.py` | 链生成、校验和 runner 命令 |
 | `schedule.py`、`run_actions.py` | 运行选项、调度、前后动作与失败重跑 |
 | `daily_plan.py` | 每日计划、Windows 任务注册与状态回读 |
 | `backup_service.py` | 配置 ZIP 备份与恢复 |
@@ -27,7 +27,7 @@
 
 ## 运行与计划
 
-`run.prepare` 保存确认后的选项并返回独立运行命令及 stdin 数据，不在服务进程启动调度。运行进程持锁，依次完成配置准备、运行链、日志分析、重跑与汇总；凭据不进入命令行或查询响应。CLI 字段和进程交接见 [协议](../../../docs/rust-feasibility/headless-cli.md)。
+`AppService.prepare_run` 校验并保存确认后的选项，反读不含授权码的 `RunOptions`；`saved_run` 校验名单和已存选项，不保存或运行。CLI 适配器将业务结果转换为 `run.prepare` / `run.saved` 的独立运行命令及 stdin 数据，前端负责进程启动。运行进程持锁，依次完成配置准备、运行链、日志分析、重跑与汇总；凭据不进入命令行或查询响应。CLI 字段和进程交接见 [协议](../../../docs/rust-feasibility/headless-cli.md)。
 
 手动勾选仅由前端持有。每日计划默认关闭，默认时间 04:10；启用后对所有脚本生效，使用 `schedule.yml` 中独立的 `daily_run` 选项。
 

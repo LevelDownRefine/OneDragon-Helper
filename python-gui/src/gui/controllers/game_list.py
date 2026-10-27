@@ -25,10 +25,7 @@ from gui.icons import (
     _default_icon,
     _exe_icon,
     _render_icon,
-    get_script_icon,
 )
-from src.service.script_service import DuplicateScript, InvalidScript
-from src.utils.utils_sub_config import get_script_name
 
 # 游戏图标停用底色（渐变兜底水印等场景复用）
 C_GAME_DIM = "#161C28"
@@ -48,10 +45,6 @@ class ScriptIconProvider(QQuickImageProvider):
         self._cache: dict[str, QPixmap] = {}
         self.refresh(games)
 
-    def _load_icon(self, script_data: dict) -> QPixmap:
-        # 复用 icons.get_script_icon（exe 内嵌图标 / python 默认图标），渲染与 GameIconProvider 共用
-        return _render_icon(get_script_icon(script_data))
-
     def refresh(self, games: list):
         """全量重算脚本图标到缓存。
 
@@ -63,10 +56,9 @@ class ScriptIconProvider(QQuickImageProvider):
         self._cache = {}
         for game in games:
             name = game["script_name"]
-            self._cache[name] = (
-                _render_icon(_exe_icon(game["icon_path"]) or _default_icon())
-                if "icon_path" in game
-                else self._load_icon(game["script_data"])
+            assert "icon_path" in game
+            self._cache[name] = _render_icon(
+                _exe_icon(game["icon_path"]) or _default_icon()
             )
 
     def requestPixmap(self, id: str, size, requestedSize):
@@ -173,9 +165,8 @@ class GameListController(QObject):
     controlModeChanged = Signal()
     gameAdded = Signal()
 
-    def __init__(self, app_service, toast, on_reload, parent=None):
+    def __init__(self, toast, on_reload, parent=None):
         super().__init__(parent)
-        self._app_service = app_service
         self._toast = toast
         self._on_reload = on_reload  # 增删/改配置后触发门面级重载
         self._games: list = []
@@ -213,22 +204,6 @@ class GameListController(QObject):
         return self._game_model
 
     # ── 加载 / 增删改 ───────────────────────────────────────────────────
-    def reload_games(self):
-        """从 config.yml 重建脚本列表。"""
-        games = []
-        for script in self._app_service.load_config()["script_list"]:
-            display_name = script["display_name"]
-            games.append(
-                {
-                    "display_name": display_name,
-                    "script_name": get_script_name(script),
-                    "script_data": script,
-                    "char": display_name[0],
-                    "color": C_GAME_DIM,
-                }
-            )
-        self._set_games(games)
-
     def _set_games(self, games):
         """发布已读取的列表；异步读取也复用图标、模型和内存勾选更新。"""
         enabled = {
@@ -301,59 +276,6 @@ class GameListController(QObject):
         self._set_enabled([False] * len(self._games))
         self._toast("手动运行已清空")
 
-    @Slot(int, int)
-    def reorderGames(self, src_index: int, dst_index: int):
-        """拖拽重排：把 src 移到 dst 位置，同步 UI 与 config.yml。"""
-        assert 0 <= src_index < len(self._games), (
-            f"[bridge] src out of range: {src_index}"
-        )
-        assert 0 <= dst_index < len(self._games), (
-            f"[bridge] dst out of range: {dst_index}"
-        )
-        if src_index == dst_index:
-            return
-        names = [game["script_name"] for game in self._games]
-        names.insert(dst_index, names.pop(src_index))
-        try:
-            self._app_service.reorder_scripts(names)
-        except InvalidScript as exc:
-            logger.warning("调整脚本顺序未完成", exc_info=True)
-            self._on_reload()
-            self._toast(f"调整脚本顺序未完成：{exc}")
-            return
-        cur_name = self._games[self.current_index][
-            "script_name"
-        ]  # 重排后按名字恢复选中
-        game = self._games.pop(src_index)
-        self._games.insert(dst_index, game)
-        # QML ListView：用 rowsMoved 精确重排（modelReset 桥接不可靠）
-        self._game_model.move(src_index, dst_index)
-        enabled = self._enabled.pop(src_index)
-        self._enabled.insert(dst_index, enabled)
-
-        # 恢复选中（新 index 可能已变）
-        new_index = next(
-            (i for i, g in enumerate(self._games) if g["script_name"] == cur_name),
-            len(self._games) - 1,
-        )
-        self.gamesChanged.emit()
-        self.enabledChanged.emit()
-        if new_index != self.current_index:
-            self.current_index = new_index
-            self.currentIndexChanged.emit()
-        self._toast("已调整脚本顺序")
-
-    @Slot()
-    def addScript(self):
-        """弹出文件选择框，选完追加脚本到 config.yml 并重建列表。"""
-        from gui.dialogs import SCRIPT_FILE_FILTER, pick_file
-
-        file_path = pick_file(None, "选择脚本文件", SCRIPT_FILE_FILTER)
-        if not file_path:
-            return
-        _, message = self._add_script(file_path)
-        self._toast(message)
-
     def _script_drop_paths(self, urls: list) -> list[str]:
         """筛选本地脚本文件；快捷方式的启动信息由 service 解析。"""
         paths = []
@@ -370,55 +292,6 @@ class GameListController(QObject):
     @Slot("QVariantList", result=bool)
     def canDropScripts(self, urls: list) -> bool:
         return bool(self._script_drop_paths(urls))
-
-    @Slot("QVariantList", result=bool)
-    def dropScripts(self, urls: list) -> bool:
-        """外部文件拖到窗口：复用添加流程，仅记录路径，不移动或运行文件。"""
-        paths = self._script_drop_paths(urls)
-        if not paths:
-            logger.warning("[file_drop] 拖入文件无有效脚本路径：%s", urls)
-            self._toast("请拖入 .exe、.bat、.py 文件或指向这些文件的有效快捷方式")
-            return False
-        logger.info("[file_drop] 添加脚本：%s", paths)
-        results = [self._add_script(path) for path in paths]
-        added = sum(status == "added" for status, _ in results)
-        logger.info("[file_drop] 已添加 %d / %d 个脚本", added, len(paths))
-        if len(results) == 1:
-            self._toast(results[0][1])
-        else:
-            duplicate = sum(status == "duplicate" for status, _ in results)
-            failed = sum(status == "failed" for status, _ in results)
-            summary = f"已添加 {added} 个脚本"
-            if duplicate:
-                summary += f"，重复 {duplicate} 个"
-            if failed:
-                summary += f"，失败 {failed} 个"
-            details = [
-                f"{os.path.basename(path)}：{message}"
-                for path, (status, message) in zip(paths, results, strict=True)
-                if status != "added"
-            ]
-            self._toast("\n".join([summary, *details]))
-        return added > 0
-
-    def _add_script(self, file_path: str) -> tuple[str, str]:
-        """添加单个脚本并返回状态与提示，调用方统一展示结果。"""
-        try:
-            result = self._app_service.add_script(file_path)
-        except DuplicateScript as exc:
-            return "duplicate", str(exc)
-        except InvalidScript as exc:
-            logger.warning("读取脚本未完成：%s", file_path, exc_info=True)
-            return "failed", f"无法添加 {os.path.basename(file_path)}：{exc}"
-        except OSError as exc:
-            logger.warning("添加脚本未完成：%s", file_path, exc_info=True)
-            # config.yml 可能已保存，后续子配置初始化才失败，须重读实际状态。
-            self._on_reload()
-            return "failed", f"添加脚本未完成：{exc}"
-        self._on_reload()
-        assert "display_name" in result
-        self.gameAdded.emit()
-        return "added", f"已添加 {result['display_name']}"
 
     @Slot(int)
     def deleteScript(self, index: int):
@@ -443,50 +316,3 @@ class GameListController(QObject):
         if box.exec() != QMessageBox.Ok:
             return
         self._on_delete_script(script_name)
-
-    @Slot()
-    def configCurrent(self):
-        """打开当前脚本配置弹窗（SingleScriptConfigDialog）。
-
-        Accepted → 保存条目、按需初始化、保存任务开关并重载；否则不落盘。
-        """
-        if not self._games:
-            return
-        game = self.current_game
-        assert "script_data" in game
-        from PySide6.QtWidgets import QDialog
-
-        from gui.dialogs import SingleScriptConfigDialog
-
-        dialog = SingleScriptConfigDialog(
-            game["script_name"],
-            game["display_name"],
-            game["script_data"].get("script_path", ""),
-            None,
-            app_service=self._app_service,
-        )
-        if dialog.exec() == QDialog.Accepted:
-            assert dialog.pending_changes is not None, (
-                "[bridge] 配置弹窗 accept 但 pending_changes 为空"
-            )
-            changes = dialog.pending_changes
-            try:
-                self._app_service.update_script(changes)
-            except InvalidScript as exc:
-                logger.warning("保存脚本配置未完成", exc_info=True)
-                self._on_reload()
-                self._toast(f"保存脚本配置未完成：{exc}")
-                return
-            self._on_reload()
-            self._toast(f"已保存 {changes.display_name} 配置")
-
-    def _on_delete_script(self, script_name: str):
-        """配置弹窗确认删除：落盘后重载脚本列表。"""
-        try:
-            self._app_service.remove_script(script_name)
-        except InvalidScript as exc:
-            logger.warning("删除脚本未完成", exc_info=True)
-            self._on_reload()
-            self._toast(f"删除脚本未完成：{exc}")
-            return
-        self._on_reload()

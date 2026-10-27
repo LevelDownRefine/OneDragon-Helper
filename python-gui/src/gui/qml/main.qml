@@ -605,14 +605,16 @@ Window {
                     id: linkButton
                     objectName: "linkButton_" + modelData.icon
                     property string gameIconSource: ""
-                    function refreshGameIcon() {
+                    function refreshGameIcon(refresh) {
+                        if (refresh && modelData.icon === "game" && iconMouse.containsMouse)
+                            Bridge.refreshGameIcon()
                         gameIconSource = modelData.icon === "game" && iconMouse.containsMouse
                             ? Bridge.gameIconSource() : ""
                     }
                     Connections {
                         target: Bridge
                         function onCurrentIndexChanged() { linkButton.refreshGameIcon() }
-                        function onGamesChanged() { linkButton.refreshGameIcon() }
+                        function onGamesChanged() { linkButton.refreshGameIcon(true) }
                         function onGameIconChanged() { linkButton.refreshGameIcon() }
                     }
                     x: 8
@@ -677,7 +679,7 @@ Window {
                         anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
-                        onEntered: linkButton.refreshGameIcon()
+                        onEntered: linkButton.refreshGameIcon(true)
                         onClicked: modelData.act()
                     }
                 }

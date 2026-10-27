@@ -1,173 +1,180 @@
-"""真实 Qt 事件循环验证手动更新的线程与交互边界。"""
+"""真实更新窗口经 CLI 后台任务检查、下载、取消和交接安装。"""
 
-import threading
-import time
 import unittest
-from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication
-from updater import UpdateCancelled, UpdateError
+from PySide6.QtWidgets import QApplication, QDialog
 
-from gui.controllers.update import UpdateController
-from src.update import (
-    GitHubRelease,
-    PreparedUpdate,
-    UpdateInfo,
-)
+from gui.controllers.cli_update import CliUpdateController
 from tests.gui.helpers import get_app
+from tests.gui.rpc_test_support import RpcHarness
 
 
 class TestUpdateDialog(unittest.TestCase):
     def setUp(self):
         self.app = get_app()
-        self.service = Mock()
-        self.service.get_update_info.return_value = UpdateInfo("1.0.0")
-        self.release = GitHubRelease(
-            "v1.1.0", "1.1.0", "修复与改进\n<不作为 HTML 渲染>", 1, "zip", 2048
-        )
-        self.service.check_update.return_value = self.release
-        self.service.prepare_update.return_value = PreparedUpdate(
-            Path("unused"), "1.1.0"
-        )
-        self.service.start_update.return_value = Path("result.json")
-        self.ctrl = UpdateController(self.service)
+        self.rpc = RpcHarness()
+        self.release = {
+            "version": "1.1.0",
+            "notes": "修复与改进\n<不作为 HTML 渲染>",
+            "size": 2048,
+        }
+        self.view = {
+            "version": "1.0.0",
+            "unavailable_reason": "",
+            "previous_result": None,
+            "releases_url": "https://github.com/LevelDownRefine/OneDragon-Helper/releases/latest",
+            "release": None,
+            "prepared_version": None,
+            "handoff_ready": False,
+        }
+        self.ctrl = CliUpdateController(self.rpc.session)
 
     def tearDown(self):
-        self.ctrl.shutdown()
-        self.app.processEvents()
+        self.ctrl._job._timer.stop()
+        if self.ctrl._job.active:
+            self.ctrl._job._finish()
         if self.ctrl._dialog is not None:
-            self.ctrl._close()
+            self.ctrl._dialog.done(QDialog.Rejected)
+        self.rpc.session.detach()
         self.ctrl.deleteLater()
         self.app.processEvents()
 
-    def wait_for(self, condition):
-        deadline = time.monotonic() + 5
-        while not condition() and time.monotonic() < deadline:
-            QTest.qWait(10)
-        self.assertTrue(condition(), "更新 UI 未在规定时间内完成")
+    def started(self):
+        self.rpc.reply({"id": f"job-{len(self.rpc.requests)}"})
+        self.ctrl._job._timer.stop()
 
-    def open_available(self):
+    def poll(self, *, state="succeeded", result=None, error="", progress=None):
+        job = self.ctrl._job
+        job._timer.stop()
+        job._poll()
+        value = {"id": job.job_id, "kind": job.kind, "state": state}
+        if state == "succeeded":
+            value["result"] = result
+        elif state == "failed":
+            value["error"] = error
+        if progress is not None:
+            value["progress"] = progress
+        self.rpc.reply(value)
+        job._timer.stop()
+
+    def begin_check(self):
         self.ctrl.open()
-        self.wait_for(lambda: self.ctrl._worker is None)
+        self.assertEqual(self.rpc.requests[-1], ("update.view", {}))
+        self.rpc.reply(self.view)
+        self.assertEqual(self.rpc.requests[-1], ("update.check", {}))
+        self.started()
         return self.ctrl._dialog
 
-    def click_and_wait(self, dialog):
+    def open_available(self):
+        dialog = self.begin_check()
+        self.poll(result={"release": self.release})
+        return dialog
+
+    def begin_download(self, dialog):
         QTest.mouseClick(dialog.action_button, Qt.LeftButton)
-        self.wait_for(lambda: self.ctrl._worker is None)
+        self.assertEqual(self.rpc.requests[-1], ("update.download", {}))
+        self.started()
+
+    def download_ready(self, dialog):
+        self.begin_download(dialog)
+        self.poll(result={"version": "1.1.0"})
 
     def test_explicit_check_shows_release_and_previous_result(self):
-        self.service.get_update_info.assert_not_called()
-        self.service.check_update.assert_not_called()
-        self.service.get_update_info.return_value = UpdateInfo(
-            "1.0.0",
-            previous_result={"status": "failed", "error": "文件被占用，已恢复旧版"},
-        )
-        main_thread = threading.get_ident()
-        threads = []
-
-        def check():
-            threads.append(threading.get_ident())
-            return self.release
-
-        self.service.check_update.side_effect = check
+        self.assertEqual(self.rpc.requests, [])
+        self.view["previous_result"] = {
+            "status": "failed",
+            "error": "文件被占用，已恢复旧版",
+        }
         dialog = self.open_available()
-        self.assertEqual(len(threads), 1)
-        self.assertNotEqual(threads[0], main_thread)
         self.assertIn("1.0.0", dialog.version_label.text())
         self.assertIn("1.1.0", dialog.status_label.text())
-        self.assertEqual(dialog.notes.toPlainText(), self.release.notes)
+        self.assertEqual(dialog.notes.toPlainText(), self.release["notes"])
         self.assertEqual(dialog.action_button.text(), "下载更新")
         self.assertIn("文件被占用", dialog.previous_label.text())
         self.assertTrue(dialog.previous_label.isVisible())
-        self.service.prepare_update.assert_not_called()
-        self.service.start_update.assert_not_called()
+        self.assertFalse(
+            any(
+                method in {"update.download", "update.install"}
+                for method, _ in self.rpc.requests
+            )
+        )
 
     def test_latest_version_can_be_checked_again(self):
-        self.service.check_update.return_value = None
-        dialog = self.open_available()
+        dialog = self.begin_check()
+        self.poll(result={"release": None})
         self.assertIn("最新版本", dialog.status_label.text())
-        self.click_and_wait(dialog)
-        self.assertEqual(self.service.check_update.call_count, 2)
-        self.service.prepare_update.assert_not_called()
-
-    def test_unsupported_build_has_release_link_and_never_checks_network(self):
-        self.service.get_update_info.return_value = UpdateInfo(
-            "源码运行", "请下载正式版"
+        QTest.mouseClick(dialog.action_button, Qt.LeftButton)
+        self.rpc.reply(self.view)
+        self.started()
+        self.poll(result={"release": None})
+        self.assertEqual(
+            [method for method, _ in self.rpc.requests].count("update.check"), 2
         )
+
+    def test_unsupported_build_has_release_link_and_never_starts_check(self):
+        self.view["unavailable_reason"] = "请下载正式版"
         self.ctrl.open()
+        self.rpc.reply(self.view)
         dialog = self.ctrl._dialog
         self.assertFalse(dialog.action_button.isVisible())
         self.assertIn("正式版", dialog.status_label.text())
         with patch(
-            "gui.controllers.update.QDesktopServices.openUrl", return_value=True
+            "gui.controllers.cli_update.QDesktopServices.openUrl", return_value=True
         ) as browse:
             QTest.mouseClick(dialog.releases_button, Qt.LeftButton)
         self.assertEqual(browse.call_args.args[0].host(), "github.com")
-        self.service.check_update.assert_not_called()
+        self.assertEqual(self.rpc.requests, [("update.view", {})])
 
     def test_check_error_can_retry(self):
-        self.service.check_update.side_effect = [OSError("网络不可用"), self.release]
-        with self.assertLogs("gui.controllers.update", level="ERROR"):
-            dialog = self.open_available()
+        dialog = self.begin_check()
+        self.poll(state="failed", error="网络不可用")
         self.assertIn("网络不可用", dialog.status_label.text())
-        self.click_and_wait(dialog)
+        QTest.mouseClick(dialog.action_button, Qt.LeftButton)
+        self.rpc.reply(self.view)
+        self.started()
+        self.poll(result={"release": self.release})
         self.assertEqual(dialog.action_button.text(), "下载更新")
 
-    def test_download_stays_responsive_and_cancels_on_close_or_shutdown(self):
-        entered = threading.Event()
-        cancelled_seen = threading.Event()
+    def test_download_stays_responsive_and_close_waits_for_cancelled_job(self):
+        for close_action in ("button", "escape"):
+            with self.subTest(close_action=close_action):
+                dialog = self.open_available()
+                self.begin_download(dialog)
+                self.poll(state="running", progress={"received": 1024, "total": 2048})
+                self.assertEqual(dialog.progress.value(), 50)
+                responsive = []
+                QTimer.singleShot(0, lambda result=responsive: result.append(True))
+                QTest.qWait(10)
+                self.assertEqual(responsive, [True])
+                if close_action == "button":
+                    QTest.mouseClick(dialog.close_button, Qt.LeftButton)
+                else:
+                    QTest.keyClick(dialog, Qt.Key_Escape)
+                self.assertEqual(
+                    self.rpc.requests[-1],
+                    ("job.cancel", {"job_id": self.ctrl._job.job_id}),
+                )
+                self.assertIs(self.ctrl._dialog, dialog)
+                self.assertIn("取消", dialog.status_label.text())
+                self.rpc.reply(True)
+                self.assertIs(self.ctrl._dialog, dialog)
+                self.poll(state="cancelled")
+                self.assertIsNone(self.ctrl._dialog)
+        self.assertFalse(
+            any(method == "update.install" for method, _ in self.rpc.requests)
+        )
 
-        def download(_release, *, progress, cancelled):
-            progress(1024, 2048)
-            entered.set()
-            if cancelled.wait(3):
-                cancelled_seen.set()
-            raise UpdateCancelled("cancelled")
-
-        for action in ("close", "shutdown"):
-            with self.subTest(action=action):
-                entered.clear()
-                cancelled_seen.clear()
-                with patch.object(
-                    self.service, "prepare_update", side_effect=download
-                ) as prepare:
-                    dialog = self.open_available()
-                    QTest.mouseClick(dialog.action_button, Qt.LeftButton)
-                    self.wait_for(entered.is_set)
-                    self.wait_for(lambda current=dialog: current.progress.value() == 50)
-                    QTest.mouseClick(dialog.action_button, Qt.LeftButton)
-                    responsive = threading.Event()
-                    QTimer.singleShot(0, responsive.set)
-                    self.wait_for(responsive.is_set)
-                    if action == "close":
-                        QTest.mouseClick(dialog.close_button, Qt.LeftButton)
-                    else:
-                        self.ctrl.shutdown()
-                        self.assertFalse(self.ctrl._worker.isRunning())
-                    self.wait_for(lambda: self.ctrl._dialog is None)
-                    self.assertTrue(cancelled_seen.is_set(), "取消没有到达工作线程")
-                    prepare.assert_called_once()
-                    self.service.start_update.assert_not_called()
-
-    def test_escape_during_check_waits_for_worker_before_closing(self):
-        release = threading.Event()
-
-        def check():
-            release.wait(3)
-            return self.release
-
-        self.service.check_update.side_effect = check
-        self.ctrl.open()
-        dialog = self.ctrl._dialog
+    def test_escape_during_check_waits_for_terminal_cancelled_state(self):
+        dialog = self.begin_check()
         QTest.keyClick(dialog, Qt.Key_Escape)
+        self.assertTrue(self.ctrl._job.active)
         self.assertIn("取消", dialog.status_label.text())
-        self.assertIsNotNone(self.ctrl._worker)
-        release.set()
-        self.wait_for(lambda: self.ctrl._dialog is None)
-        self.service.prepare_update.assert_not_called()
+        self.rpc.reply(True)
+        self.poll(state="cancelled")
+        self.assertIsNone(self.ctrl._dialog)
 
     def test_close_before_or_after_download_neither_installs_nor_quits(self):
         for phase in ("available", "downloaded"):
@@ -175,39 +182,46 @@ class TestUpdateDialog(unittest.TestCase):
                 self.subTest(phase=phase),
                 patch.object(QApplication, "quit") as quit_app,
             ):
-                self.service.prepare_update.reset_mock()
                 dialog = self.open_available()
                 if phase == "downloaded":
-                    self.click_and_wait(dialog)
+                    self.download_ready(dialog)
                     self.assertEqual(dialog.action_button.text(), "安装并重启")
                     self.assertIn("校验完成", dialog.status_label.text())
                     QTest.keyClick(dialog, Qt.Key_Escape)
                 else:
-                    self.service.prepare_update.assert_not_called()
                     dialog.close()
                 self.assertIsNone(self.ctrl._dialog)
-                self.service.start_update.assert_not_called()
                 quit_app.assert_not_called()
+        self.assertFalse(
+            any(method == "update.install" for method, _ in self.rpc.requests)
+        )
 
-    def test_install_error_keeps_window_and_retry_exits_only_after_ready(self):
-        ready = threading.Event()
-        self.service.start_update.side_effect = UpdateError("仍有任务运行")
+    def test_install_error_keeps_window_and_quits_only_after_ready(self):
         dialog = self.open_available()
-        self.click_and_wait(dialog)
+        self.download_ready(dialog)
         with patch.object(QApplication, "quit") as quit_app:
-            with self.assertLogs("gui.controllers.update", level="ERROR"):
-                self.click_and_wait(dialog)
+            QTest.mouseClick(dialog.action_button, Qt.LeftButton)
+            self.assertEqual(self.rpc.requests[-1], ("update.install", {}))
+            self.started()
+            self.poll(state="failed", error="仍有任务运行")
             quit_app.assert_not_called()
             self.assertTrue(dialog.isVisible())
             self.assertIn("任务运行", dialog.status_label.text())
-            self.service.start_update.side_effect = lambda _prepared: ready.wait(3)
+            # 安装失败后重新检查会话，再显式下载/安装，不自动重放写操作。
             QTest.mouseClick(dialog.action_button, Qt.LeftButton)
+            self.rpc.reply(self.view)
+            self.started()
+            self.poll(result={"release": self.release})
+            self.download_ready(dialog)
+            QTest.mouseClick(dialog.action_button, Qt.LeftButton)
+            self.started()
             QTest.keyClick(dialog, Qt.Key_Escape)
             self.assertIs(self.ctrl._dialog, dialog)
             self.assertFalse(dialog.close_button.isEnabled())
             quit_app.assert_not_called()
-            ready.set()
-            self.wait_for(lambda: self.ctrl._worker is None)
+            self.poll(result={"ready": True, "version": "1.1.0"})
             quit_app.assert_called_once_with()
         self.assertIsNone(self.ctrl._dialog)
-        self.assertEqual(self.service.start_update.call_count, 2)
+        self.assertEqual(
+            [method for method, _ in self.rpc.requests].count("update.install"), 2
+        )

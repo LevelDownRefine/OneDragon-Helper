@@ -325,6 +325,15 @@ class TestBackupService(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "重复目标"):
             backup.restore_backup(path)
 
+    def test_non_zip_input_does_not_touch_targets(self):
+        target = Path(self.roots["first"], "config/a.json")
+        original = target.read_bytes()
+        path = self.root / "broken.zip"
+        path.write_bytes(b"not a zip")
+        with self.assertRaisesRegex(ValueError, "备份无法读取.*BadZipFile"):
+            backup.restore_backup(str(path))
+        self.assertEqual(target.read_bytes(), original)
+
     def test_corrupt_zip_does_not_touch_targets(self):
         target = Path(self.roots["first"], "config/a.json")
         original = target.read_bytes()

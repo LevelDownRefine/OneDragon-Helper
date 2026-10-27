@@ -7,6 +7,7 @@ import sys
 import tempfile
 import textwrap
 import unittest
+from copy import deepcopy
 from ctypes import wintypes
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -17,55 +18,67 @@ from PySide6.QtCore import QUrl
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
-from gui.controllers.game_list import GameListController
+from gui.cli_client import CliSession
+from gui.controllers.cli_game_list import CliGameListController
 from gui.file_drop import WindowsFileDrop
-from gui.main_window import QmlBridge
 from src.service import script_service
 from src.service.app_service import AppService
 from src.utils import utils_config, utils_weekly
 from src.utils.utils_io import load_data
-from src.utils.utils_sub_config import get_script_name
+from tests.gui.helpers import FakeCliClient, drain_events, make_bridge
 
 _app = QApplication.instance() or QApplication([])
 
 
 class TestDroppedScripts(unittest.TestCase):
     def setUp(self):
-        self.temp = tempfile.TemporaryDirectory()
-        self.addCleanup(self.temp.cleanup)
-        self.service = MagicMock()
-        self.service.add_script.side_effect = script_service.add
-        self.reload = MagicMock()
+        self.temp = self.enterContext(tempfile.TemporaryDirectory())
+        self.state = {"script_list": []}
+        self.service = AppService()
         self.toast = MagicMock()
-        self.ctrl = GameListController(self.service, self.toast, self.reload)
-        self.added = MagicMock()
-        self.ctrl.gameAdded.connect(self.added)
-        self.persist_script = self.enterContext(
-            patch.object(utils_config, "save_config")
-        )
-        self.enterContext(patch.object(utils_weekly, "ensure_weekly_entry"))
-        self.enterContext(patch.object(script_service, "invalidate_config"))
+        self.persist_script = MagicMock()
 
         def save(config):
-            entry = config["script_list"][-1]
-            self.ctrl._games.append(
-                {"script_name": get_script_name(entry), "script_data": entry}
-            )
-
-        self.persist_script.side_effect = save
+            self.persist_script(config)
+            self.state = deepcopy(config)
 
         self.enterContext(
             patch.object(
-                utils_config,
-                "load_config",
-                side_effect=lambda: {
-                    "script_list": [game["script_data"] for game in self.ctrl.games]
-                },
+                utils_config, "load_config", side_effect=lambda: deepcopy(self.state)
             )
         )
+        self.enterContext(
+            patch(
+                "src.service.task_service.load_config",
+                side_effect=lambda: deepcopy(self.state),
+            )
+        )
+        self.enterContext(patch.object(utils_config, "save_config", side_effect=save))
+        self.enterContext(patch.object(utils_weekly, "ensure_weekly_entry"))
+        self.enterContext(patch.object(script_service, "invalidate_config"))
+        self.client = FakeCliClient(
+            responses={
+                "app.snapshot": lambda params: self.service.app_snapshot(),
+                "script.add": lambda params: self.service.add_script(**params),
+            },
+            scripts=[],
+        )
+        self.reload = MagicMock(side_effect=lambda: self.ctrl.reload_games())
+        self.ctrl = CliGameListController(
+            CliSession(self.client, None), self.toast, self.reload
+        )
+        self.added = MagicMock()
+        self.ctrl.gameAdded.connect(self.added)
+        self.ctrl.reload_games()
+        drain_events()
+
+    def drop(self, urls):
+        accepted = self.ctrl.dropScripts(urls)
+        drain_events()
+        return accepted
 
     def file_url(self, name):
-        path = Path(self.temp.name) / name
+        path = Path(self.temp) / name
         path.write_text("", encoding="utf-8")
         return QUrl.fromLocalFile(str(path))
 
@@ -76,7 +89,7 @@ class TestDroppedScripts(unittest.TestCase):
         self.assertTrue(self.ctrl.canDropScripts(urls))
         self.persist_script.assert_not_called()
         with patch("gui.dialogs.pick_file") as picker:
-            self.assertTrue(self.ctrl.dropScripts(urls))
+            self.assertTrue(self.drop(urls))
         picker.assert_not_called()
         entries = [
             call.args[0]["script_list"][-1]
@@ -99,15 +112,15 @@ class TestDroppedScripts(unittest.TestCase):
         invalid_batches = [
             [],
             [QUrl("https://example.com/run.exe")],
-            [QUrl.fromLocalFile(str(Path(self.temp.name) / "missing.py"))],
-            [QUrl.fromLocalFile(self.temp.name)],
+            [QUrl.fromLocalFile(str(Path(self.temp) / "missing.py"))],
+            [QUrl.fromLocalFile(self.temp)],
             [self.file_url("notes.txt")],
             [self.file_url("good.py"), self.file_url("image.png")],
         ]
         for urls in invalid_batches:
             with self.subTest(urls=urls):
                 self.assertFalse(self.ctrl.canDropScripts(urls))
-                self.assertFalse(self.ctrl.dropScripts(urls))
+                self.assertFalse(self.drop(urls))
         self.persist_script.assert_not_called()
         self.reload.assert_not_called()
 
@@ -115,19 +128,19 @@ class TestDroppedScripts(unittest.TestCase):
         url = self.file_url("gone.py")
         self.assertTrue(self.ctrl.canDropScripts([url]))
         Path(url.toLocalFile()).unlink()
-        self.assertFalse(self.ctrl.dropScripts([url]))
+        self.assertFalse(self.drop([url]))
         self.persist_script.assert_not_called()
 
     def test_duplicate_exe_is_not_added_or_renamed(self):
         url = self.file_url("same.exe")
-        self.assertTrue(self.ctrl.dropScripts([url]))
-        self.assertFalse(self.ctrl.dropScripts([url]))
+        self.assertTrue(self.drop([url]))
+        self.assertTrue(self.drop([url]))
         self.persist_script.assert_called_once()
         self.toast.assert_called_with("脚本已存在：same")
 
     def test_same_named_python_scripts_keep_existing_suffix_behavior(self):
         url = self.file_url("same.py")
-        self.assertTrue(self.ctrl.dropScripts([url, url]))
+        self.assertTrue(self.drop([url, url]))
         self.assertEqual(
             [g["script_name"] for g in self.ctrl.games], ["same", "same_1"]
         )
@@ -135,10 +148,10 @@ class TestDroppedScripts(unittest.TestCase):
     def test_save_failure_refreshes_and_reports_without_success(self):
         self.persist_script.side_effect = OSError("disk unavailable")
         with self.assertLogs("gui.controllers.game_list", level="WARNING"):
-            self.assertFalse(self.ctrl.dropScripts([self.file_url("task.py")]))
+            self.assertTrue(self.drop([self.file_url("task.py")]))
         self.reload.assert_called_once()
         self.added.assert_not_called()
-        self.toast.assert_called_with("添加脚本未完成：disk unavailable")
+        self.toast.assert_called_with("task.py：disk unavailable")
 
     def test_shortcuts_add_the_target_script(self):
         for suffix in ("exe", "bat", "py"):
@@ -151,7 +164,7 @@ class TestDroppedScripts(unittest.TestCase):
                     return_value=(target, arguments, str(Path(target).parent)),
                 ):
                     self.assertTrue(self.ctrl.canDropScripts([shortcut]))
-                    self.assertTrue(self.ctrl.dropScripts([shortcut]))
+                    self.assertTrue(self.drop([shortcut]))
                 entry = self.persist_script.call_args.args[0]["script_list"][-1]
                 self.assertEqual(entry["script_path"], os.path.normpath(target))
                 self.assertEqual(
@@ -163,8 +176,8 @@ class TestDroppedScripts(unittest.TestCase):
         shortcut = self.file_url("bad.lnk")
         for target in (
             "",
-            str(Path(self.temp.name) / "gone.exe"),
-            self.temp.name,
+            str(Path(self.temp) / "gone.exe"),
+            self.temp,
             self.file_url("notes.txt").toLocalFile(),
         ):
             with (
@@ -175,7 +188,7 @@ class TestDroppedScripts(unittest.TestCase):
                 ),
                 self.assertLogs("gui.controllers.game_list", level="WARNING"),
             ):
-                self.assertFalse(self.ctrl.dropScripts([shortcut]))
+                self.assertTrue(self.drop([shortcut]))
                 self.assertIn("bad.lnk", self.toast.call_args.args[0])
         self.persist_script.assert_not_called()
 
@@ -185,7 +198,9 @@ class TestDroppedScripts(unittest.TestCase):
         ]
         for failed_index in range(3):
             with self.subTest(failed_index=failed_index):
-                self.ctrl._games.clear()
+                self.state["script_list"].clear()
+                self.ctrl.reload_games()
+                drain_events()
                 self.toast.reset_mock()
                 self.added.reset_mock()
                 self.persist_script.side_effect = [
@@ -193,7 +208,7 @@ class TestDroppedScripts(unittest.TestCase):
                     for i in range(3)
                 ]
                 with self.assertLogs("gui.controllers.game_list", level="WARNING"):
-                    self.assertTrue(self.ctrl.dropScripts(urls))
+                    self.assertTrue(self.drop(urls))
                 self.toast.assert_called_once()
                 message = self.toast.call_args.args[0]
                 self.assertIn("已添加 2 个脚本，失败 1 个", message)
@@ -203,9 +218,9 @@ class TestDroppedScripts(unittest.TestCase):
 
     def test_batch_reports_duplicates_and_successes_together(self):
         duplicate = self.file_url("existing.exe")
-        self.assertTrue(self.ctrl.dropScripts([duplicate]))
+        self.assertTrue(self.drop([duplicate]))
         self.toast.reset_mock()
-        self.assertTrue(self.ctrl.dropScripts([duplicate, self.file_url("new.exe")]))
+        self.assertTrue(self.drop([duplicate, self.file_url("new.exe")]))
         self.toast.assert_called_once()
         message = self.toast.call_args.args[0]
         self.assertIn("已添加 1 个脚本，重复 1 个", message)
@@ -220,9 +235,7 @@ class TestDroppedScripts(unittest.TestCase):
             self.assertLogs("gui.controllers.game_list", level="WARNING"),
         ):
             self.assertTrue(
-                self.ctrl.dropScripts(
-                    [self.file_url("bad.lnk"), self.file_url("ok.exe")]
-                )
+                self.drop([self.file_url("bad.lnk"), self.file_url("ok.exe")])
             )
         self.persist_script.assert_called_once()
         self.toast.assert_called_once()
@@ -233,10 +246,8 @@ class TestDroppedScripts(unittest.TestCase):
     def test_batch_all_failures_keep_each_filename_and_reason(self):
         self.persist_script.side_effect = OSError("disk unavailable")
         with self.assertLogs("gui.controllers.game_list", level="WARNING"):
-            self.assertFalse(
-                self.ctrl.dropScripts(
-                    [self.file_url("one.exe"), self.file_url("two.exe")]
-                )
+            self.assertTrue(
+                self.drop([self.file_url("one.exe"), self.file_url("two.exe")])
             )
         self.toast.assert_called_once()
         message = self.toast.call_args.args[0]
@@ -283,13 +294,16 @@ class TestNativeDropPersistence(unittest.TestCase):
                     return_value=str(weekly),
                 ),
                 patch("src.service.daily_plan.load_schedule", return_value={}),
-                patch.object(AppService, "get_daily_map", return_value={}),
-                patch.object(AppService, "get_weekly_map", return_value=[]),
                 patch(
-                    "gui.controllers.background.BackgroundController.resolve_bg",
-                    return_value=None,
+                    "src.service.app_service.wallpaper_view",
+                    return_value={
+                        "script_name": "",
+                        "mode": "gradient",
+                        "source": "",
+                        "token": None,
+                        "cache": None,
+                    },
                 ),
-                patch("gui.controllers.task_card.get_daily_readback", return_value=[]),
                 patch(
                     "gui.file_drop.ctypes.WinDLL",
                     side_effect=[shell, MagicMock(), MagicMock()],
@@ -297,7 +311,15 @@ class TestNativeDropPersistence(unittest.TestCase):
                 ),
                 patch("gui.file_drop.QGuiApplication.modalWindow", return_value=None),
             ):
-                bridge = QmlBridge()
+                service = AppService()
+                client = FakeCliClient(
+                    scripts=[],
+                    responses={
+                        "app.snapshot": lambda params: service.app_snapshot(),
+                        "script.add": lambda params: service.add_script(**params),
+                    },
+                )
+                bridge = make_bridge(client=client)
                 toasts = []
                 bridge.toastRequested.connect(toasts.append)
                 handler = WindowsFileDrop(window, bridge.dropScripts)
@@ -308,6 +330,7 @@ class TestNativeDropPersistence(unittest.TestCase):
                 shell.DragFinish.assert_called_once_with(5678)
                 # 此处不 mock 定时器、添加接口或写盘，验证异步回调真正走完全链路。
                 QTest.qWait(150)
+                drain_events()
                 entry = load_data(str(config), file_format="yaml", cached=True)[
                     "script_list"
                 ][0]
@@ -338,19 +361,11 @@ class TestQmlScriptDrop(unittest.TestCase):
             from PySide6.QtQml import QQmlApplicationEngine, qmlRegisterSingletonInstance
             from PySide6.QtQuick import QQuickItem
             from PySide6.QtTest import QTest
-            from gui.controllers.background import BackgroundController
             from gui.main_window import QmlBridge
-            from src.service.app_service import AppService
             from tests.gui.helpers import get_app, make_bridge
 
             app = get_app()
-            with (
-                tempfile.TemporaryDirectory() as directory,
-                patch.object(AppService, "get_daily_map", return_value={}),
-                patch.object(AppService, "get_weekly_map", return_value=[]),
-                patch.object(BackgroundController, "resolve_bg", return_value=None),
-                patch("gui.controllers.task_card.get_daily_readback", return_value=[]),
-            ):
+            with tempfile.TemporaryDirectory() as directory:
                 bridge = make_bridge()
                 qmlRegisterSingletonInstance(QmlBridge, "OneDragonHelper", 1, 0, "Bridge", bridge)
                 engine = QQmlApplicationEngine()
@@ -417,6 +432,7 @@ class TestQmlScriptDrop(unittest.TestCase):
                 ),
             },
             capture_output=True,
+            errors="replace",
             text=True,
             timeout=30,
         )

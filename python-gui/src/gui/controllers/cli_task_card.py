@@ -1,4 +1,8 @@
-"""任务卡的异步协议适配；标签由 GUI 生成，业务读写只经 CLI。"""
+"""任务卡的异步协议适配；标签由 GUI 生成，业务读写只经 CLI。
+
+复用 :class:`TaskCardController` 的视图→行展示逻辑（两前端同吃 ``script.view``
+聚合视图），仅覆写取数方式：视图经 CLI 异步请求取得，响应校验后回填缓存。
+"""
 
 from PySide6.QtCore import Slot
 
@@ -7,10 +11,9 @@ from gui.controllers.task_card import TaskCardController
 
 class CliTaskCardController(TaskCardController):
     def __init__(self, game_list, client, toast, parent=None, client_factory=None):
-        super().__init__(game_list, None, toast, parent)
+        super().__init__(game_list, toast, parent)
         self._client = client
         self._client_factory = client_factory
-        self._view = None
         self._generation = 0
         self._requests = {}
         client.succeeded.connect(self._succeeded)
@@ -28,78 +31,37 @@ class CliTaskCardController(TaskCardController):
             self._generation,
         )
 
+    def _fetch_view(self, script_name: str) -> dict | None:
+        """异步模式：发出 script.view 请求后返回 None（空视图先缓存，防重复请求）。
+
+        供 QML 求值触发的惰性取数：当前代已有待响应的读请求时不重复发送。
+        响应在 ``_succeeded`` 校验后回填 ``_view`` 并发信号，QML 重读拿到真数据。
+        """
+        if any(
+            kind == "read" and generation == self._generation
+            for kind, _n, generation in self._requests.values()
+        ):
+            return None
+        self._request("script.view", {"script_name": script_name}, "read")
+        return None
+
     def refresh(self):
-        """刷新失败会话时新建客户端，只重新查询当前脚本。"""
+        """刷新失败会话时新建客户端，只重新查询当前脚本（每代恒发一次读请求）。"""
         self._generation += 1
-        self._view = None
+        if not self._client.usable and self._client_factory is not None:
+            previous = self._client
+            previous.succeeded.disconnect(self._succeeded)
+            previous.failed.disconnect(self._failed)
+            self._requests.clear()
+            previous.close()
+            self._client = self._client_factory()
+            self._client.succeeded.connect(self._succeeded)
+            self._client.failed.connect(self._failed)
+        self._invalidate_view()
         self.taskStateChanged.emit()
         script_name = self._current["script_name"]
         if script_name:
-            if not self._client.usable and self._client_factory is not None:
-                previous = self._client
-                previous.succeeded.disconnect(self._succeeded)
-                previous.failed.disconnect(self._failed)
-                self._requests.clear()
-                previous.close()
-                self._client = self._client_factory()
-                self._client.succeeded.connect(self._succeeded)
-                self._client.failed.connect(self._failed)
             self._request("script.view", {"script_name": script_name}, "read")
-
-    def build_daily_cache(self):
-        self._view = None
-
-    @property
-    def task_adapted(self):
-        return bool(self._view and self._view["script"]["adapted"])
-
-    def _dailies_of(self, script_name):
-        if self._view is None:
-            return []
-        return [
-            {"display_name": row["name"], "options": row["options"]}
-            for row in self._view["dailies"]
-        ]
-
-    @property
-    def daily_items(self):
-        if self._view is None:
-            return []
-        return [
-            {
-                "name": row["name"],
-                "task_label": self._daily_label(row, row["options"]["values"]),
-                "can_disable": row["enabled"] is not None,
-                "disabled": row["enabled"] is False,
-            }
-            for row in self._view["dailies"]
-        ]
-
-    @property
-    def weekly_supported(self):
-        return bool(self._view and self._view["weeklies"])
-
-    @property
-    def weekly_items(self):
-        if self._view is None:
-            return []
-        return [
-            {
-                "name": row["name"],
-                "has_task": bool(row["options"] and row["options"]["values"]),
-                "task_label": (row["task"] or "选择副本") if row["options"] else "",
-                "start_set": row["start_day"] is not None,
-                "start_label": self._start_day_label(row["start_day"]),
-            }
-            for row in self._view["weeklies"]
-        ]
-
-    def weekly_task_options(self, weekly_name):
-        if self._view is not None:
-            for row in self._view["weeklies"]:
-                if row["name"] == weekly_name:
-                    return row["options"]["values"] if row["options"] else []
-        return []
 
     def _write(self, method, **params):
         script_name = self._current["script_name"]
@@ -107,7 +69,7 @@ class CliTaskCardController(TaskCardController):
             self._request(method, {"script_name": script_name, **params}, "write")
 
     @Slot(str, str, "QVariant")
-    def selectDaily(self, daily_name, task_name, sequence):
+    def selectDaily(self, daily_name: str, task_name: str, sequence):
         if task_name:
             self._write(
                 "daily.select",
@@ -117,15 +79,15 @@ class CliTaskCardController(TaskCardController):
             )
 
     @Slot(str, bool)
-    def setDailyEnabled(self, daily_name, enabled):
+    def setDailyEnabled(self, daily_name: str, enabled: bool):
         self._write("daily.enable", daily_name=daily_name, enabled=enabled)
 
     @Slot(str, str)
-    def selectWeekly(self, weekly_name, task_name):
+    def selectWeekly(self, weekly_name: str, task_name: str):
         self._write("weekly.select", weekly_name=weekly_name, task_name=task_name)
 
     @Slot(str, int)
-    def selectWeeklyStart(self, weekly_name, start_day):
+    def selectWeeklyStart(self, weekly_name: str, start_day: int):
         self._write("weekly.start", weekly_name=weekly_name, start_day=start_day)
 
     def _take(self, request_id):
@@ -149,12 +111,14 @@ class CliTaskCardController(TaskCardController):
             # null 也是成功；确认后仅反读，不重放写入。
             self.refresh()
         elif kind == "read":
-            if not valid_script_view(result, self._current["script_name"]):
-                self._view = None
+            script_name = self._current["script_name"]
+            if not valid_script_view(result, script_name):
+                self._invalidate_view()
                 self._toast("CLI 任务卡响应无效，请刷新")
                 self.taskStateChanged.emit()
                 return
             self._view = result
+            self._view_script = script_name
             self.taskStateChanged.emit()
 
     def _failed(self, request_id, failure):
@@ -166,7 +130,7 @@ class CliTaskCardController(TaskCardController):
             if failure.code != "transport_failed":
                 self.refresh()
             else:
-                self._view = None
+                self._invalidate_view()
                 self.taskStateChanged.emit()
 
 
