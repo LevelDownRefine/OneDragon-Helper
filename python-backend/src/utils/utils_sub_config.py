@@ -79,12 +79,20 @@ def is_exe_script(script_path: str) -> bool:
 def get_script_name(script: dict) -> str:
     """脚本唯一标识 script_name（全链路内部标识）。
 
-    - exe 脚本 → 进程名（script_path basename 去后缀，如 ok-ww / BetterGI）
-    - python/bat 等脚本文件 → display_name（无独立进程名，靠展示名标识）
+    - 有 script_id 的重复条目 → 持久化标识，编辑与排序不改变身份。
+    - 其他 exe 脚本 → 进程名（script_path basename 去后缀）。
+    - 其他 python/bat 脚本 → display_name。
 
     Args:
         script: config.yml 的 script_list 条目（含 display_name / script_path）。
     """
+    if "script_id" in script:
+        script_id = script["script_id"]
+        assert isinstance(script_id, str) and script_id.strip(), (
+            "[sub_config] script_id 必须为非空字符串"
+        )
+        assert script_id == script_id.strip(), "[sub_config] script_id 首尾不能有空格"
+        return script_id
     script_path = script.get("script_path", "")
     if is_exe_script(script_path):
         return get_process_name(script_path)
@@ -92,7 +100,7 @@ def get_script_name(script: dict) -> str:
 
 
 def check_script_name_uniqueness(config_data: dict) -> None:
-    """断言 config.yml 中所有脚本唯一标识唯一（进程名或 display_name 冲突属配置错误）。"""
+    """断言 config.yml 中所有脚本条目的内部标识唯一。"""
     seen: dict[str, str] = {}
     for script in config_data.get("script_list", []):
         script_name = get_script_name(script)

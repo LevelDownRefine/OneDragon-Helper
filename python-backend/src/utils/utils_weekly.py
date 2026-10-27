@@ -12,7 +12,7 @@ weekly_task_list.yml 提供；本模块只管「周几起 / 每天超时多久�
 
 ``weekly.yml`` 是单一文件、内含两大段；写回任一段时均保留另一段（读全量→改一段→写全量）。
 
-脚本标识统一用脚本唯一标识 script_name（exe 为进程名、脚本文件为 display_name）。
+脚本标识统一用 get_script_name 解析的 script_name，重复条目使用持久化 script_id。
 """
 
 import logging

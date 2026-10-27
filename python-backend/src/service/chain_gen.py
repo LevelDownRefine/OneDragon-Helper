@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 def _resolve_daily_run(script: dict, weekly_timeouts: dict) -> bool:
     """按 weekly.yml 的 weekly_timeouts 段 解析脚本当天是否运行，运行时就地设置超时。
 
-    weekly_timeouts 的 key 为脚本唯一标识（exe 用进程名，脚本文件用 display_name）。
+    weekly_timeouts 的 key 为 get_script_name 解析的脚本唯一标识。
 
     - 有完整 7 格且当天值 >= 10 → 取当天值作为 run_timeout_seconds，返回 True。
     - 当天值 < 10 → 视为「当天不运行」，不设置超时字段，返回 False。
@@ -74,7 +74,7 @@ def resolve_weekly_starts(weekly_start_map: dict, script_name: str) -> dict[str,
     Args:
         weekly_start_map: weekly.yml 的 weekly_start 段全量映射
             （{脚本标识: {周常展示名: 1~7}}）。
-        script_name: 脚本唯一标识（exe 为进程名、python/bat 为 display_name）。
+        script_name: 脚本唯一标识（由 get_script_name 解析）。
 
     Returns:
         {周常展示名: 起始日（0 = 不启用，1~7 = 周一~周日）}；该脚本未设置返回空 dict。

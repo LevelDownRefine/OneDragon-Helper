@@ -292,7 +292,7 @@ class CliClient(QObject):
             ):
                 raise ValueError("错误信封无效")
             refresh = error["code"] not in {-32700, -32600, -32601, -32602}
-            if -32004 <= error["code"] <= -32001:
+            if -32004 <= error["code"] <= -32002:
                 if (
                     "data" not in error
                     or not isinstance(error["data"], dict)

@@ -287,7 +287,7 @@ def _run_check_config(out_path: str | None) -> int:
 
 
 def _run_list_scripts(out_path: str | None) -> int:
-    """CLI: 列出所有脚本唯一标识（exe 用进程名，脚本文件用 display_name）。"""
+    """CLI: 列出所有脚本唯一标识（由 get_script_name 解析）。"""
     app_service = AppService()
     all_config_data = app_service.load_config()
     names = [get_script_name(s) for s in all_config_data["script_list"]]

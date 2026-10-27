@@ -70,6 +70,27 @@ class TestGetScriptKey(unittest.TestCase):
         script = {"display_name": "MAA", "script_path": "C:/game_helper/MAA.EXE"}
         self.assertEqual(get_script_name(script), "MAA")
 
+    def test_persisted_id_survives_name_and_path_changes(self):
+        for path in ("C:/ok-ww.exe", "scripts/new.py", "scripts/new.bat"):
+            with self.subTest(path=path):
+                script = {
+                    "script_id": "ok-ww_2",
+                    "display_name": "新名称",
+                    "script_path": path,
+                }
+                self.assertEqual(get_script_name(script), "ok-ww_2")
+
+    def test_invalid_explicit_id_is_not_silently_derived(self):
+        for script_id in (None, "", " ", 2, True):
+            with self.subTest(script_id=script_id), self.assertRaises(AssertionError):
+                get_script_name(
+                    {
+                        "script_id": script_id,
+                        "display_name": "鸣潮",
+                        "script_path": "C:/ok-ww.exe",
+                    }
+                )
+
 
 class TestCheckScriptKeyUniqueness(unittest.TestCase):
     """测试 check_script_name_uniqueness：脚本唯一标识唯一性校验。"""
@@ -103,6 +124,13 @@ class TestCheckScriptKeyUniqueness(unittest.TestCase):
         }
         with self.assertRaises(AssertionError):
             check_script_name_uniqueness(data)
+
+    def test_same_path_is_allowed_only_with_distinct_ids(self):
+        original = {"display_name": "鸣潮", "script_path": "C:/ok-ww.exe"}
+        duplicate = {**original, "script_id": "ok-ww_2"}
+        check_script_name_uniqueness({"script_list": [original, duplicate]})
+        with self.assertRaises(AssertionError):
+            check_script_name_uniqueness({"script_list": [duplicate, dict(duplicate)]})
 
 
 class TestResolveScriptPath(unittest.TestCase):

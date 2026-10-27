@@ -564,7 +564,7 @@ def parse_logs(
 ) -> dict[str, list[str] | str]:
     """汇总各脚本当日运行情况：收集解析结果，得到汇总表格并准备需处理脚本列表。
 
-    按脚本唯一标识 script_name（exe=进程名 / python=display_name）匹配各 Parser；
+    按 get_script_name 解析的脚本唯一标识精确匹配各 Parser；
     返回 dict：
       - "rerun":  日常没做完的脚本标识（含无日志），供 rerun.py 重跑；
       - "notify": 存在报错日志的脚本标识，供 notify_mail.py 发邮件；

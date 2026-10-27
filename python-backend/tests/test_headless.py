@@ -579,7 +579,8 @@ with patch('src.utils.get_root_dir', return_value=root), patch('src.service.chai
                 request("script.remove", {"script_name": "ok-ww"}, 6),
                 request("script.remove", {"script_name": "自定义脚本"}, 7),
                 request("script.remove", {"script_name": "new"}, 8),
-                request("app.snapshot", request_id=9),
+                request("script.remove", {"script_name": "ok-ww_2"}, 9),
+                request("app.snapshot", request_id=10),
             ]
         )
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -591,17 +592,23 @@ with patch('src.utils.get_root_dir', return_value=root), patch('src.service.chai
             [script["script_name"] for script in responses[2]["result"]["scripts"]],
             ["new", "ok-ww", "自定义脚本"],
         )
-        for index in (3, 7):
+        for index in (3, 8):
             self.assertEqual(responses[index]["error"]["code"], -32602)
             self.assertNotIn("data", responses[index]["error"])
-        self.assertEqual(responses[4]["error"]["code"], -32001)
-        self.assertFalse(responses[4]["error"]["data"]["refresh_required"])
+        self.assertEqual(
+            responses[4]["result"],
+            {"script_name": "ok-ww_2", "display_name": "ok-ww_2"},
+        )
         self.assertIsNone(responses[5]["result"])
         self.assertIsNone(responses[6]["result"])
+        self.assertIsNone(responses[7]["result"])
         self.assertEqual(
-            [script["script_name"] for script in responses[8]["result"]["scripts"]],
-            ["new"],
+            [script["script_name"] for script in responses[9]["result"]["scripts"]],
+            ["ok-ww_2"],
         )
+        duplicate = responses[9]["result"]["scripts"][0]
+        self.assertFalse(duplicate["adapted"])
+        self.assertEqual(duplicate["script_data"]["script_id"], "ok-ww_2")
         self.assertFalse(added.with_suffix(".started").exists())
         self.assertTrue((self.root / "scripts/custom.py").exists())
         weekly = load_data(
@@ -609,7 +616,8 @@ with patch('src.utils.get_root_dir', return_value=root), patch('src.service.chai
         )
         self.assertNotIn("ok-ww", weekly["weekly_timeouts"])
         self.assertNotIn("自定义脚本", weekly["weekly_timeouts"])
-        self.assertIn("new", weekly["weekly_timeouts"])
+        self.assertNotIn("new", weekly["weekly_timeouts"])
+        self.assertIn("ok-ww_2", weekly["weekly_timeouts"])
 
     def test_icon_paths_are_read_only_without_gui_imports(self):
         from src.utils.utils_io import save_data
