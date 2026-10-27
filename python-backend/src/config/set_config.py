@@ -5,6 +5,7 @@ import os
 from collections.abc import Callable
 from copy import deepcopy
 from functools import cache
+from typing import NamedTuple
 
 from src.config.script_resources import ScriptResources, get_script_resources
 from src.config.task.daily import Daily, MaaDaily, build_dailies
@@ -26,6 +27,35 @@ from src.utils.utils_sub_config import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+class DailyTaskResult(NamedTuple):
+    """一次副本写入的结果；名字对不上是可预期结果，不是异常。
+
+    外部输入（模型、命令行）写错名字属可恢复情况，按项目约定用返回值表达。
+
+    Attributes:
+        applied: 是否真的写入了。
+        reason: 未写入的原因；成功时为空串。
+        daily_names: 该脚本声明的日常展示名，供调用方给出候选。
+        task_names: 该日常声明的一级项展示名。
+    """
+
+    applied: bool
+    reason: str
+    daily_names: list[str]
+    task_names: list[str]
+
+    def describe(self, script_name: str) -> str:
+        """人可读的一行结论。"""
+        if self.applied:
+            return f"{script_name}：已更新副本选择"
+        parts = [f"{script_name}：未写入（{self.reason}）"]
+        if self.daily_names:
+            parts.append(f"当前日常：{'、'.join(self.daily_names)}")
+        if self.task_names:
+            parts.append(f"当前可选副本：{'、'.join(self.task_names)}")
+        return "；".join(parts)
 
 
 # ============================================================
@@ -131,6 +161,31 @@ class ScriptConfig:
         assert daily_display_name, f"[set_config][{self.display_name}] 必须指定日常"
         self._dispatch_daily(daily_display_name).update(task_name, sequence)
         self.set_daily_enabled(daily_display_name, True)
+
+    def _resolve_daily(self, daily_display_name: str) -> Daily | DailyTaskResult:
+        """按展示名取日常；对不上时返回已填好候选的结果。
+
+        与 :meth:`_dispatch_daily` 的区别只在出口：那个断言（编程错误），这个返回
+        结果（外部输入写错名字）。两者共用同一份匹配规则。
+        """
+        if not daily_display_name:
+            return DailyTaskResult(
+                False,
+                "必须指定日常（同一脚本可能有多个日常段）",
+                self.daily_names(),
+                [],
+            )
+        matches = [
+            daily for daily in self._dailies if daily.display_name == daily_display_name
+        ]
+        if len(matches) == 1:
+            return matches[0]
+        reason = "日常名不唯一" if matches else "未找到该日常"
+        return DailyTaskResult(False, reason, self.daily_names(), [])
+
+    def daily_names(self) -> list[str]:
+        """本脚本声明的日常展示名（同一脚本可能有多个日常段）。"""
+        return [daily.display_name for daily in self._dailies]
 
     def set_daily_enabled(self, daily_display_name: str, enabled: bool) -> None:
         """启用/停用某日常：读开关文件 → 交给该日常改内存 → 有改动才落盘。
@@ -473,6 +528,46 @@ def set_config(
         return
 
     _CONFIGS[script_name]().set_daily_task(daily_display_name, task_name, sequence)
+
+
+def set_daily_task_checked(
+    script_name: str,
+    daily_display_name: str,
+    task_name: str,
+    sequence: str | int | None = None,
+) -> DailyTaskResult:
+    """预检后设置副本：任一项对不上就不写盘，并把原因与候选返回。
+
+    Args:
+        script_name: 脚本标识名。
+        daily_display_name: 日常展示名。
+        task_name: 一级项展示名。
+        sequence: 二级项值。
+
+    Returns:
+        写入结果；``applied=False`` 时未写盘。
+    """
+    if script_name not in _CONFIGS:
+        return DailyTaskResult(
+            False, f"脚本 {script_name} 未适配副本选择（自定义脚本）", [], []
+        )
+    assert script_name in _CONFIGS
+    config = _CONFIGS[script_name]()
+    resolved = config._resolve_daily(daily_display_name)
+    if isinstance(resolved, DailyTaskResult):
+        return resolved
+    daily = resolved
+    try:
+        daily.update(task_name, sequence)
+    except AssertionError as exc:
+        return DailyTaskResult(
+            False,
+            str(exc).split("] ", 1)[-1],
+            config.daily_names(),
+            daily.task_names(),
+        )
+    config.set_daily_enabled(daily_display_name, True)
+    return DailyTaskResult(True, "", config.daily_names(), daily.task_names())
 
 
 def get_daily_map(script_name: str | None = None) -> dict:

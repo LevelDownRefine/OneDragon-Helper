@@ -27,12 +27,17 @@ import src.service.chain_service as chain_service
 import src.service.daily_plan as daily_plan
 import src.service.script_service as script_service
 import src.service.task_service as task_service
-from src.config.native_task_switch import native_task_switch_of
+from src.config.native_task_switch import (
+    SwitchWriteResult,
+    native_task_switch_of,
+)
 from src.config.set_config import (
+    DailyTaskResult,
     get_daily_map,
     get_weekly_map,
     set_config,
     set_daily_enabled,
+    set_daily_task_checked,
     set_weekly_start_day,
     set_weekly_task,
     weekly_names,
@@ -437,12 +442,41 @@ class AppService:
         task_name: str | None = None,
         sequence: str | int | None = None,
     ) -> None:
-        """写日常副本/二级序列到脚本自身 config（编辑期实时落盘）。"""
+        """写日常副本/二级序列到脚本自身 config（编辑期实时落盘）。
+
+        交互前端（Qt 任务卡）与既有 RPC 的契约：没有要写的就什么都不做、返回 null。
+        需要知道「为什么没写成」的调用方用 :meth:`check_daily_task`。
+        """
         return set_config(
             script_name,
             daily_display_name=daily_display_name,
             task_name=task_name,
             sequence=sequence,
+        )
+
+    def check_daily_task(
+        self,
+        script_name: str,
+        daily_display_name: str,
+        task_name: str,
+        sequence: str | int | None = None,
+    ) -> DailyTaskResult:
+        """设置副本，并把「名字对不上」作为返回值而不是异常或静默 no-op。
+
+        与 :meth:`set_script_daily_task` 写的是同一件事，区别只在出口：这个会告诉
+        调用方没写成的理由与候选副本，供没有下拉框的调用方（CLI/助手）使用。
+
+        Args:
+            script_name: 脚本标识名。
+            daily_display_name: 日常展示名（多日常脚本必须给）。
+            task_name: 一级项展示名。
+            sequence: 二级项值。
+
+        Returns:
+            写入结果；``applied=False`` 时未写盘。
+        """
+        return set_daily_task_checked(
+            script_name, daily_display_name, task_name, sequence
         )
 
     def set_script_daily_enabled(
@@ -454,7 +488,11 @@ class AppService:
     def set_script_weekly_task(
         self, script_name: str, weekly_name: str, task_name: str
     ) -> None:
-        """写某周常当前选中的副本名到脚本自身 config。"""
+        """写某周常当前选中的副本名到脚本自身 config。
+
+        周常副本选型（``Weekly.set_task``）目前无任何子类实现、声明里也没有
+        ``options``，故本方法对现有脚本都是 no-op，机制保留待用。
+        """
         return set_weekly_task(script_name, weekly_name, task_name)
 
     def get_script_options(self, script_name: str) -> list:
@@ -470,10 +508,16 @@ class AppService:
         switch = native_task_switch_of(script_name)
         return [] if switch is None else switch.read()
 
-    def set_script_switches(self, script_name: str, states: dict) -> int:
-        """按任务名写该脚本原生任务的开关，返回实际变更项数。"""
+    def set_script_switches(self, script_name: str, states: dict) -> SwitchWriteResult:
+        """按任务名写该脚本原生任务的开关，返回结果而不是只给变更数。
+
+        任务名对不上时不写盘、不抛错，而是把原因与候选放进返回值：调用方要靠它
+        告诉用户「没改成，可选的是这些」。只拿到一个偏小的变更数会误判为已改成功。
+        """
         switch = native_task_switch_of(script_name)
-        return 0 if switch is None else switch.write(states)
+        if switch is None:
+            return SwitchWriteResult(0, dict.fromkeys(states, "脚本无任务开关"), [])
+        return switch.apply(states)
 
     # ── 自定义壁纸表（config/wallpaper.json，src.utils.utils_wallpaper）──
     def load_wallpapers(self) -> dict:

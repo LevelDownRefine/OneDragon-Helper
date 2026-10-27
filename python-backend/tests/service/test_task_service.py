@@ -4,9 +4,11 @@ import subprocess
 import sys
 import unittest
 from pathlib import Path
+from unittest import mock
 from unittest.mock import patch
 
-from src.service import task_service
+from src.config.native_task_switch import SwitchWriteResult
+from src.service import app_service, task_service
 from src.service.app_service import AppService
 
 
@@ -154,3 +156,48 @@ AppService()
             timeout=20,
         )
         self.assertEqual(result.returncode, 0, result.stderr)
+
+
+class SetScriptSwitchesTests(unittest.TestCase):
+    """set_script_switches：名字对不上时返回原因与候选，不写盘、不抛错。"""
+
+    def test_returns_result_for_resolved_names(self):
+        switch = mock.Mock()
+        switch.apply.return_value = SwitchWriteResult(2, {}, ["甲", "乙"])
+        with patch.object(app_service, "native_task_switch_of", return_value=switch):
+            result = AppService().set_script_switches(
+                "BetterGI", {"甲": True, "乙": False}
+            )
+        self.assertTrue(result.ok)
+        self.assertEqual(result.changed, 2)
+        switch.apply.assert_called_once_with({"甲": True, "乙": False})
+        switch.write.assert_not_called()
+
+    def test_unknown_name_returns_reason_and_candidates(self):
+        switch = mock.Mock()
+        switch.apply.return_value = SwitchWriteResult(
+            0, {"模拟宇宙_差分": "未找到该任务"}, ["模拟宇宙", "历战余响"]
+        )
+        with patch.object(app_service, "native_task_switch_of", return_value=switch):
+            result = AppService().set_script_switches(
+                "March7th-Launcher", {"模拟宇宙_差分": False}
+            )
+        self.assertFalse(result.ok)
+        self.assertEqual(result.changed, 0)
+        self.assertEqual(result.candidates, ["模拟宇宙", "历战余响"])
+        self.assertIn("未找到该任务", result.describe("March7th-Launcher"))
+
+    def test_script_without_switches_reports_reason(self):
+        with patch.object(app_service, "native_task_switch_of", return_value=None):
+            result = AppService().set_script_switches("自定义脚本", {"任意": True})
+        self.assertFalse(result.ok)
+        self.assertEqual(result.reasons, {"任意": "脚本无任务开关"})
+        self.assertEqual(result.candidates, [])
+
+    def test_empty_states_reports_success(self):
+        switch = mock.Mock()
+        switch.apply.return_value = SwitchWriteResult(0, {}, [])
+        with patch.object(app_service, "native_task_switch_of", return_value=switch):
+            result = AppService().set_script_switches("BetterGI", {})
+        self.assertTrue(result.ok)
+        switch.apply.assert_called_once_with({})

@@ -650,3 +650,134 @@ class TestDeclaration(unittest.TestCase):
         )
         self.assertEqual(multi["list_key"], _OKWW_LIST_KEY)
         self.assertEqual(multi["names"]["Check Weekly Garden"], "检查每周乐园")
+
+
+class TestPrecheck(unittest.TestCase):
+    """check / apply：任务名定位失败作为返回值，而不是静默跳过或抛错。"""
+
+    def _switch(self) -> NativeTaskSwitch:
+        return NativeTaskSwitch("BetterGI", [_DECLARATION])
+
+    def test_check_passes_for_writable_names(self):
+        config = _config({"a": "领取邮件", "b": "周常"}, {"a": True, "b": False})
+        with patch.object(mod, "load_script_config", return_value=config):
+            self.assertEqual(self._switch().check({"领取邮件": True, "周常": True}), {})
+
+    def test_check_distinguishes_unknown_ambiguous_and_missing_slot(self):
+        """三种失败原因分开报：找不到 / 同名撞车 / 该行没有开关记录。"""
+        config = _config(
+            {"a": "同名", "b": "同名", "c": "无开关"},
+            {"a": True, "b": False},
+        )
+        with patch.object(mod, "load_script_config", return_value=config):
+            self.assertEqual(
+                self._switch().check({"不存在": True, "同名": True, "无开关": True}),
+                {
+                    "不存在": mod._REASON_UNKNOWN,
+                    "同名": mod._REASON_AMBIGUOUS,
+                    "无开关": mod._REASON_NO_SLOT,
+                },
+            )
+
+    def test_check_reports_missing_config_for_every_name(self):
+        with patch.object(mod, "load_script_config", return_value=None):
+            self.assertEqual(
+                self._switch().check({"领取邮件": True, "周常": False}),
+                {
+                    "领取邮件": mod._REASON_NO_CONFIG,
+                    "周常": mod._REASON_NO_CONFIG,
+                },
+            )
+
+    def test_check_empty_states_reads_nothing(self):
+        with patch.object(mod, "load_script_config") as mock_load:
+            self.assertEqual(self._switch().check({}), {})
+        mock_load.assert_not_called()
+
+    def test_apply_writes_when_all_names_resolve(self):
+        config = _config({"a": "领取邮件", "b": "周常"}, {"a": True, "b": False})
+        saved = []
+        with (
+            patch.object(mod, "load_script_config", return_value=config),
+            patch.object(
+                mod, "save_script_config", side_effect=lambda *args: saved.append(args)
+            ),
+        ):
+            result = self._switch().apply({"周常": True})
+        self.assertEqual(result.changed, 1)
+        self.assertTrue(result.ok)
+        self.assertTrue(config["TaskEnabledList"]["b"])
+        self.assertEqual(len(saved), 1)
+
+    def test_apply_refuses_whole_batch_when_one_name_fails(self):
+        """一行名写错则整批不落盘：不能留下「改了一半」的状态。"""
+        config = _config({"a": "领取邮件", "b": "周常"}, {"a": True, "b": False})
+        with (
+            patch.object(mod, "load_script_config", return_value=config),
+            patch.object(mod, "save_script_config") as mock_save,
+        ):
+            result = self._switch().apply({"周常": True, "不存在": False})
+        mock_save.assert_not_called()
+        self.assertEqual(result.changed, 0)
+        self.assertEqual(result.reasons, {"不存在": mod._REASON_UNKNOWN})
+        self.assertEqual(config["TaskEnabledList"], {"a": True, "b": False})
+
+    def test_failure_describe_carries_candidates_and_nearest_hint(self):
+        """结果里带当前可用任务与最接近的候选，直接可以回给用户/模型。"""
+        config = _config({"a": "模拟宇宙", "b": "历战余响"}, {"a": True, "b": True})
+        with (
+            patch.object(mod, "load_script_config", return_value=config),
+            patch.object(mod, "save_script_config") as mock_save,
+        ):
+            result = self._switch().apply({"模拟宇宙_差分": False})
+        mock_save.assert_not_called()
+        self.assertEqual(result.candidates, ["模拟宇宙", "历战余响"])
+        text = result.describe("March7th-Launcher")
+        self.assertIn("模拟宇宙", text)
+        self.assertIn("当前可用任务", text)
+
+    def test_success_describe_reports_changed_count(self):
+        config = _config({"a": "领取邮件"}, {"a": False})
+        with (
+            patch.object(mod, "load_script_config", return_value=config),
+            patch.object(mod, "save_script_config"),
+        ):
+            result = self._switch().apply({"领取邮件": True})
+        self.assertEqual(result.describe("BetterGI"), "BetterGI：已更新 1 项任务开关")
+
+    def test_names_lists_rows_in_declaration_order(self):
+        config = _config({"a": "领取邮件", "b": "周常"}, {"a": True, "b": False})
+        with patch.object(mod, "load_script_config", return_value=config):
+            self.assertEqual(self._switch().names(), ["领取邮件", "周常"])
+
+
+class TestSegmentDispatch(unittest.TestCase):
+    """多段脚本的预检：行名归属先按整表解析，再交给所在段定位。"""
+
+    def _switch(self) -> NativeTaskSwitch:
+        return NativeTaskSwitch(
+            "ok-ww", [_OKWW_BOOL_DECLARATION, _OKWW_MULTI_DECLARATION]
+        )
+
+    def test_check_dispatches_to_owning_segment(self):
+        config = {
+            "Farm Nightmare Nest for Daily Echo": True,
+            _OKWW_LIST_KEY: [],
+        }
+        with patch.object(mod, "load_script_config", return_value=config):
+            self.assertEqual(
+                self._switch().check(
+                    {"使用梦魇巢穴获取日常声骸": False, "检查每周乐园": True}
+                ),
+                {},
+            )
+
+    def test_apply_rejects_name_from_other_segment(self):
+        config = {"Farm Nightmare Nest for Daily Echo": True, _OKWW_LIST_KEY: []}
+        with (
+            patch.object(mod, "load_script_config", return_value=config),
+            patch.object(mod, "save_script_config") as mock_save,
+        ):
+            result = self._switch().apply({"不存在的任务": True})
+        mock_save.assert_not_called()
+        self.assertEqual(result.reasons, {"不存在的任务": mod._REASON_UNKNOWN})

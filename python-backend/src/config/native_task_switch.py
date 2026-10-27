@@ -19,6 +19,7 @@
 各段默认。声明格式与校验只在本模块。
 """
 
+import difflib
 import logging
 import re
 from functools import cache
@@ -30,6 +31,69 @@ from src.utils.utils_io import load_data
 from src.utils.utils_sub_config import load_script_config, save_script_config
 
 logger = logging.getLogger(__name__)
+
+#: 任务名定位失败的原因；直接进日志与调用方诊断，不二次翻译。
+_REASON_UNKNOWN = "未找到该任务"
+_REASON_AMBIGUOUS = "同名任务不唯一"
+_REASON_NO_SLOT = "任务无开关记录"
+_REASON_NO_CONFIG = "原生配置缺失或脚本未安装"
+
+
+class SwitchWriteResult(NamedTuple):
+    """一次开关写入的结果；失败是可预期结果，不是异常。
+
+    任务名对不上属外部输入问题（模型、命令行写错名字），按项目约定用返回值表达。
+    调用方据此告诉用户「没改成，因为…，可选的是…」。
+
+    Attributes:
+        changed: 实际变更并落盘的项数。
+        reasons: ``{任务名: 原因}``；空表示全部写入成功。
+        candidates: 当前可写的全部行名，供调用方给出候选。
+    """
+
+    changed: int
+    reasons: dict[str, str]
+    candidates: list[str]
+
+    @property
+    def ok(self) -> bool:
+        """是否全部写入成功。"""
+        return not self.reasons
+
+    def describe(self, script_name: str) -> str:
+        """人可读的一行结论，含「是否想写其中某个」提示。失败时为空串之外的说明。"""
+        if self.ok:
+            return f"{script_name}：已更新 {self.changed} 项任务开关"
+        detail = "；".join(
+            f"{name}（{reason}）" for name, reason in self.reasons.items()
+        )
+        near = _nearest(self.reasons, self.candidates)
+        hint = f"；是否为：{'、'.join(near)}" if near else ""
+        return (
+            f"{script_name}：{detail}{hint}"
+            f"；当前可用任务：{'、'.join(self.candidates) or '（无）'}"
+        )
+
+
+def _nearest(reasons: dict[str, str], candidates: list[str]) -> list[str]:
+    """为每个写错的任务名挑一个最接近的候选，按相似度取前三个。
+
+    相似度低于 0.5 视作无关，不提示（避免把「完全不同的名字」也硬凑成建议）。
+    仅用于异常文案，不参与任何写入决策。
+    """
+    if not candidates:
+        return []
+    scored: list[tuple[float, str]] = []
+    for name in reasons:
+        best = max(
+            candidates,
+            key=lambda item: difflib.SequenceMatcher(None, name, item).ratio(),
+        )
+        ratio = difflib.SequenceMatcher(None, name, best).ratio()
+        if ratio >= 0.5:
+            scored.append((ratio, best))
+    scored.sort(reverse=True)
+    return [name for _, name in scored[:3]]
 
 
 class _DictSlot(NamedTuple):
@@ -133,12 +197,14 @@ class _Segment:
             return 0
         changed = 0
         for name, value in states.items():
-            task = self._task_of(rows, name)
-            if task is None:
+            task, reason = self._lookup(rows, name)
+            if reason:
                 logger.warning(
-                    f"[native_task_switch][{self.script_name}] 未找到唯一的任务 {name!r}，跳过"
+                    f"[native_task_switch][{self.script_name}] 任务 {name!r} 无法定位"
+                    f"（{reason}），跳过"
                 )
                 continue
+            assert task is not None
             current = task.slot.get()
             if current is None:
                 logger.warning(
@@ -154,6 +220,34 @@ class _Segment:
                 self.script_name, self.script_name, self._config_rel_path, config
             )
         return changed
+
+    def unresolved(self, states: dict[str, bool]) -> dict[str, str]:
+        """预检任务名能否写入：``{任务名: 原因}``，空表示全部可写。
+
+        只读不写。非交互调用方（CLI/助手）据此把「名字对不上」当作错误，而不是像
+        :meth:`write` 那样跳过并返回偏小的变更数——那会让调用方误以为已经改成功。
+
+        Args:
+            states: ``{任务名: 目标开关态}``。
+
+        Returns:
+            定位失败的任务名及其原因。
+        """
+        if not states:
+            return {}
+        config, rows = self._resolve()
+        if config is None:
+            return dict.fromkeys(states, _REASON_NO_CONFIG)
+        result: dict[str, str] = {}
+        for name in states:
+            task, reason = self._lookup(rows, name)
+            if reason:
+                result[name] = reason
+                continue
+            assert task is not None
+            if task.slot.get() is None:
+                result[name] = _REASON_NO_SLOT
+        return result
 
     def _tasks(self, config: dict) -> list[_NativeTask] | None:
         """把配置归约成任务行；声明与脚本实际不符（缺表、结构不对）时返回 None。
@@ -198,10 +292,19 @@ class _Segment:
         )
 
     @staticmethod
-    def _task_of(rows: list[tuple[str, _NativeTask]], name: str) -> _NativeTask | None:
-        """按行名反查任务；同名撞车（多个命中）返回 None，不猜目标。"""
+    def _lookup(
+        rows: list[tuple[str, _NativeTask]], name: str
+    ) -> tuple[_NativeTask | None, str]:
+        """按行名反查任务，返回 ``(任务, 失败原因)``；成功时原因为空串。
+
+        找不到与同名撞车是两种不同的错误，调用方要能分别说明，故不合并成 ``None``。
+        """
         matches = [task for row_name, task in rows if row_name == name]
-        return matches[0] if len(matches) == 1 else None
+        if not matches:
+            return None, _REASON_UNKNOWN
+        if len(matches) > 1:
+            return None, _REASON_AMBIGUOUS
+        return matches[0], ""
 
 
 class PatternSegment(_Segment):
@@ -451,8 +554,37 @@ class NativeTaskSwitch:
         """
         return [row for segment in self._segments for row in segment.read()]
 
+    def check(self, states: dict[str, bool]) -> dict[str, str]:
+        """预检任务名：``{任务名: 原因}``，空表示全部能写。
+
+        只读不写。同一行名出现在多段时以先声明的段为准（与 :meth:`write` 一致），
+        故先在整表上解析归属，再交给该段做段内定位。
+
+        「归属」取自归约后的行表而非 :meth:`read`：后者会跳过没有开关记录的行，
+        用它会把这些行误报成「任务不存在」，而不是更准确的「任务无开关记录」。
+        """
+        if not states:
+            return {}
+        owners, configured = self._owners()
+        if not configured:
+            return dict.fromkeys(states, _REASON_NO_CONFIG)
+        result: dict[str, str] = {}
+        batches: dict[_Segment, dict[str, bool]] = {}
+        for name, value in states.items():
+            segment = owners.get(name)
+            if segment is None:
+                result[name] = _REASON_UNKNOWN
+                continue
+            batches.setdefault(segment, {})[name] = value
+        for segment, batch in batches.items():
+            result.update(segment.unresolved(batch))
+        return result
+
     def write(self, states: dict[str, bool]) -> int:
         """按行名（任务名）写开关，分发到行所在的段。
+
+        定位失败的行**跳过并记日志**，不阻断其余行；需要「全成或全不成」的调用方先用
+        :meth:`check` / :meth:`write_checked`。
 
         Args:
             states: ``{任务名: 目标开关态}``。
@@ -462,10 +594,7 @@ class NativeTaskSwitch:
         """
         if not states:
             return 0
-        owners: dict[str, _Segment] = {}
-        for segment in self._segments:
-            for row in segment.read():
-                owners.setdefault(row["name"], segment)
+        owners, _ = self._owners()
         batches: dict[_Segment, dict[str, bool]] = {}
         for name, value in states.items():
             segment = owners.get(name)
@@ -476,6 +605,45 @@ class NativeTaskSwitch:
                 continue
             batches.setdefault(segment, {})[name] = value
         return sum(segment.write(batch) for segment, batch in batches.items())
+
+    def apply(self, states: dict[str, bool]) -> SwitchWriteResult:
+        """先预检再写：任一行名定位失败就整批不写，并说明原因。
+
+        与 :meth:`write` 的区别只在失败语义：这个不静默跳过、也不抛异常，而是
+        把「哪几项对不上、可选的有什么」作为返回值交给调用方。
+
+        Args:
+            states: ``{任务名: 目标开关态}``。
+
+        Returns:
+            ``changed`` 为实际变更项数；``reasons`` 非空表示整批未写。
+        """
+        if not states:
+            return SwitchWriteResult(0, {}, self.names())
+        failed = self.check(states)
+        if failed:
+            return SwitchWriteResult(0, failed, self.names())
+        return SwitchWriteResult(self.write(states), {}, self.names())
+
+    def names(self) -> list[str]:
+        """当前可写的任务行名（按声明段顺序）。"""
+        return [row["name"] for row in self.read()]
+
+    def _owners(self) -> tuple[dict[str, _Segment], bool]:
+        """行名 → 所属段（同名以先声明的段为准），以及该脚本是否读到任何原生配置。
+
+        行名取自段内归约结果而非 :meth:`read`：没有开关记录的行仍要能定位到自己的段，
+        否则「无开关记录」与「任务不存在」两种原因会被混为一谈。
+        """
+        owners: dict[str, _Segment] = {}
+        configured = False
+        for segment in self._segments:
+            config, rows = segment._resolve()
+            if config is not None:
+                configured = True
+            for name, _task in rows:
+                owners.setdefault(name, segment)
+        return owners, configured
 
 
 #: 声明段共有：可选字段 names（白名单 / 展示名 / 多选候选项）
