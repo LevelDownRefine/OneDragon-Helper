@@ -156,7 +156,11 @@ class HeadlessExeTests(unittest.TestCase):
                 )
                 view = json.loads(result.stdout)["result"]
                 self.assertEqual(view["script_name"], script_name)
-                self.assertEqual(Path(view["script"]["script_path"]), target)
+                # ShellLink 会展开 Windows 8.3 短路径，比较规范路径。
+                self.assertEqual(
+                    Path(view["script"]["script_path"]).resolve(strict=True),
+                    target.resolve(strict=True),
+                )
                 self.assertEqual(view["script"]["script_arguments"], arguments)
                 if script_name != target.stem:
                     self.assertEqual(view["script"]["script_id"], script_name)
