@@ -12,7 +12,6 @@ from src.config.native_task_switch import (
     MultiSelectSegment,
     NativeTaskSwitch,
     PatternSegment,
-    UnknownNativeTask,
     load_native_task_switch_map,
     native_task_switch_of,
 )
@@ -236,8 +235,8 @@ class TestWrite(unittest.TestCase):
             self.assertEqual(_switch().write({}), 0)
         mock_load.assert_not_called()
 
-    def test_unknown_and_ambiguous_names_raise_without_writing(self):
-        """行名找不到或同名撞车：抛错并保持文件不变，不猜目标。"""
+    def test_unknown_and_ambiguous_names_are_skipped(self):
+        """行名找不到或同名撞车都不写，并记日志。"""
         config = _config(
             {"a": "领取邮件", "b": "同名", "c": "同名"},
             {"a": True, "b": False, "c": False},
@@ -245,32 +244,24 @@ class TestWrite(unittest.TestCase):
         with (
             patch.object(mod, "load_script_config", return_value=config),
             patch.object(mod, "save_script_config") as mock_save,
-            self.assertRaises(UnknownNativeTask) as raised,
+            self.assertLogs("src.config.native_task_switch", level="WARNING"),
         ):
-            _switch().write({"不存在": True, "同名": True})
+            self.assertEqual(_switch().write({"不存在": True, "同名": True}), 0)
         mock_save.assert_not_called()
-        self.assertEqual(
-            raised.exception.reasons,
-            {"不存在": mod._REASON_UNKNOWN, "同名": mod._REASON_AMBIGUOUS},
-        )
-        self.assertEqual(raised.exception.candidates, ["领取邮件", "同名", "同名"])
 
-    def test_missing_config_write_raises(self):
-        with (
-            patch.object(mod, "load_script_config", return_value=None),
-            self.assertRaises(UnknownNativeTask),
-        ):
-            _switch().write({"领取邮件": True})
+    def test_missing_config_write_is_noop(self):
+        with patch.object(mod, "load_script_config", return_value=None):
+            self.assertEqual(_switch().write({"领取邮件": True}), 0)
 
-    def test_missing_tables_write_raises(self):
+    def test_missing_tables_write_is_noop(self):
         with (
             patch.object(mod, "load_script_config", return_value={"other": 1}),
-            self.assertRaises(UnknownNativeTask),
+            self.assertLogs("src.config.native_task_switch", level="WARNING"),
         ):
-            _switch().write({"领取邮件": True})
+            self.assertEqual(_switch().write({"领取邮件": True}), 0)
 
     def test_pattern_write_only_touches_switch_items(self):
-        """正则白名单形态：按行名回填同一个键；带子选项的项不是开关，写它就报错。"""
+        """正则白名单形态：按行名回填同一个键，带子选项的项既不写也不报错。"""
         config = {"⭐收邮件": False, "⭐帝江号收菜": [], "普通字段": 1}
         saved = []
         with (
@@ -278,12 +269,9 @@ class TestWrite(unittest.TestCase):
             patch.object(
                 mod, "save_script_config", side_effect=lambda *args: saved.append(args)
             ),
+            self.assertLogs("src.config.native_task_switch", level="WARNING"),
         ):
-            # 值不是 bool 的项不算开关，按「任务不存在」拒绝。
-            with self.assertRaises(UnknownNativeTask):
-                _pattern_switch().write({"收邮件": True, "帝江号收菜": True})
-            self.assertEqual(saved, [])
-            changed = _pattern_switch().write({"收邮件": True})
+            changed = _pattern_switch().write({"收邮件": True, "帝江号收菜": True})
         self.assertEqual(changed, 1)
         self.assertEqual(config["⭐收邮件"], True)
         self.assertEqual(config["⭐帝江号收菜"], [])
@@ -304,11 +292,9 @@ class TestWrite(unittest.TestCase):
                 mod, "save_script_config", side_effect=lambda *args: saved.append(args)
             ),
         ):
-            # 白名单外的标识写不动：整批拒绝。
-            with self.assertRaises(UnknownNativeTask):
-                _app_list_switch().write({"兑换码": False, "lost_void": True})
-            self.assertEqual(saved, [])
-            self.assertEqual(_app_list_switch().write({"兑换码": False}), 1)
+            self.assertEqual(
+                _app_list_switch().write({"兑换码": False, "lost_void": True}), 1
+            )
         self.assertEqual(
             config["app_list"],
             [
@@ -342,15 +328,12 @@ class TestWrite(unittest.TestCase):
                     {"name": "每日实训", "enabled": False},
                 ],
             )
-            # 白名单外的键不能写：整批拒绝，一个字节都不动。
-            with self.assertRaises(UnknownNativeTask):
-                switch.write({"清体力": False, "debug_mode_enable": True})
-            mock_save.assert_not_called()
-            self.assertTrue(config["power_enable"])
-            self.assertTrue(config["debug_mode_enable"])
-            self.assertEqual(switch.write({"清体力": False}), 1)
+            self.assertEqual(
+                switch.write({"清体力": False, "debug_mode_enable": True}), 1
+            )
         mock_save.assert_called_once()
         self.assertFalse(config["power_enable"])
+        self.assertTrue(config["debug_mode_enable"])
 
     def test_multi_select_write_adds_and_removes_members(self):
         """多选形态：开即把标识加进列表，关即摘掉；取值未变的成员不动。"""

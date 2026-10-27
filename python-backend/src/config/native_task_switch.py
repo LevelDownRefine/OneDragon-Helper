@@ -31,33 +31,6 @@ from src.utils.utils_sub_config import load_script_config, save_script_config
 
 logger = logging.getLogger(__name__)
 
-#: 任务名定位失败的原因；与「找到但写不了」区分开，调用方要据此提示。
-_REASON_UNKNOWN = "未找到该任务"
-_REASON_AMBIGUOUS = "同名任务不唯一"
-_REASON_NO_SLOT = "任务无开关记录"
-
-
-class UnknownNativeTask(ValueError):
-    """按行名写开关时有任务名无法定位；一个字节都未写入。
-
-    Attributes:
-        script_name: 脚本标识名。
-        reasons: ``{任务名: 原因}``。
-        candidates: 当前脚本声明的全部行名，供调用方给出候选。
-    """
-
-    def __init__(
-        self, script_name: str, reasons: dict[str, str], candidates: list[str]
-    ) -> None:
-        self.script_name = script_name
-        self.reasons = dict(reasons)
-        self.candidates = list(candidates)
-        detail = "；".join(f"{name}（{reason}）" for name, reason in reasons.items())
-        available = "、".join(candidates) or "（无）"
-        super().__init__(
-            f"{script_name} 的任务开关未写入：{detail}；当前可选任务：{available}"
-        )
-
 
 class _DictSlot(NamedTuple):
     """开关落在 ``container[field]`` 上（正则 / 双表 / 应用列表三种形态）。"""
@@ -147,43 +120,31 @@ class _Segment:
     def write(self, states: dict[str, bool]) -> int:
         """按行名（任务名）写开关。
 
-        行名找不到、同名撞车或该行没有开关记录时抛 :class:`UnknownNativeTask`，
-        且**一个字节都不写**：静默跳过会让调用方以为改成功了。
-
         Args:
             states: ``{任务名: 目标开关态}``。
 
         Returns:
             实际变更并落盘的项数；取值与现状一致的不计入，全无变更时不落盘。
-
-        Raises:
-            UnknownNativeTask: 有行名无法定位。
         """
         if not states:
             return 0
         config, rows = self._resolve()
         if config is None:
-            raise UnknownNativeTask(
-                self.script_name,
-                dict.fromkeys(states, "脚本未安装或原生配置缺失"),
-                [],
-            )
-        failed: dict[str, str] = {}
-        for name in states:
-            task, reason = self._lookup(rows, name)
-            if task is not None and task.slot.get() is None:
-                reason = _REASON_NO_SLOT
-            if reason:
-                failed[name] = reason
-        if failed:
-            raise UnknownNativeTask(
-                self.script_name, failed, [row_name for row_name, _ in rows]
-            )
+            return 0
         changed = 0
         for name, value in states.items():
-            task, _ = self._lookup(rows, name)
-            assert task is not None, "已在上方校验过"
+            task = self._task_of(rows, name)
+            if task is None:
+                logger.warning(
+                    f"[native_task_switch][{self.script_name}] 未找到唯一的任务 {name!r}，跳过"
+                )
+                continue
             current = task.slot.get()
+            if current is None:
+                logger.warning(
+                    f"[native_task_switch][{self.script_name}] 任务 {name!r} 无开关记录，跳过"
+                )
+                continue
             if current == value:
                 continue
             task.slot.set(value)
@@ -237,16 +198,10 @@ class _Segment:
         )
 
     @staticmethod
-    def _lookup(
-        rows: list[tuple[str, _NativeTask]], name: str
-    ) -> tuple[_NativeTask | None, str]:
-        """按行名反查任务，返回 ``(任务, 失败原因)``；成功时原因为空串。"""
+    def _task_of(rows: list[tuple[str, _NativeTask]], name: str) -> _NativeTask | None:
+        """按行名反查任务；同名撞车（多个命中）返回 None，不猜目标。"""
         matches = [task for row_name, task in rows if row_name == name]
-        if not matches:
-            return None, _REASON_UNKNOWN
-        if len(matches) > 1:
-            return None, _REASON_AMBIGUOUS
-        return matches[0], ""
+        return matches[0] if len(matches) == 1 else None
 
 
 class PatternSegment(_Segment):

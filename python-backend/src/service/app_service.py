@@ -27,7 +27,7 @@ import src.service.chain_service as chain_service
 import src.service.daily_plan as daily_plan
 import src.service.script_service as script_service
 import src.service.task_service as task_service
-from src.config.native_task_switch import UnknownNativeTask, native_task_switch_of
+from src.config.native_task_switch import native_task_switch_of
 from src.config.set_config import (
     get_daily_map,
     get_weekly_map,
@@ -471,20 +471,9 @@ class AppService:
         return [] if switch is None else switch.read()
 
     def set_script_switches(self, script_name: str, states: dict) -> int:
-        """按任务名写该脚本原生任务的开关，返回实际变更项数。
-
-        任务名对不上时抛错而不是只写能写的那几项：静默跳过会让调用方拿到一个
-        偏小的变更数，误以为已经改成功。
-
-        Raises:
-            UnknownNativeTask: 有任务名无法定位；此时未写入任何一项。
-        """
+        """按任务名写该脚本原生任务的开关，返回实际变更项数。"""
         switch = native_task_switch_of(script_name)
-        if switch is None:
-            raise UnknownNativeTask(
-                script_name, dict.fromkeys(states, "脚本未声明任务开关"), []
-            )
-        return switch.write(states)
+        return 0 if switch is None else switch.write(states)
 
     # ── 自定义壁纸表（config/wallpaper.json，src.utils.utils_wallpaper）──
     def load_wallpapers(self) -> dict:
