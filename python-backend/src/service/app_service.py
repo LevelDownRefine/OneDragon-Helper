@@ -28,6 +28,7 @@ import src.service.daily_plan as daily_plan
 import src.service.script_service as script_service
 import src.service.task_service as task_service
 from src.config.native_task_switch import (
+    REASON_NO_SWITCH,
     SwitchWriteResult,
     native_task_switch_of,
 )
@@ -517,7 +518,7 @@ class AppService:
         """
         switch = native_task_switch_of(script_name)
         if switch is None:
-            return SwitchWriteResult(0, dict.fromkeys(states, "脚本无任务开关"), [])
+            return SwitchWriteResult(0, dict.fromkeys(states, REASON_NO_SWITCH), [])
         return switch.apply(states)
 
     # ── 自定义壁纸表（config/wallpaper.json，src.utils.utils_wallpaper）──

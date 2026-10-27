@@ -694,6 +694,23 @@ class TestPrecheck(unittest.TestCase):
             self.assertEqual(self._switch().check({}), {})
         mock_load.assert_not_called()
 
+    def test_apply_reads_each_segment_once_regardless_of_states(self):
+        """整次调用每段只读一次盘：预检与写入共用同一份快照。"""
+        config = _config({"a": "领取邮件"}, {"a": True})
+        reads = []
+
+        def load(*_args, **_kwargs):
+            reads.append(1)
+            return config
+
+        with (
+            patch.object(mod, "load_script_config", side_effect=load),
+            patch.object(mod, "save_script_config"),
+        ):
+            result = self._switch().apply({"领取邮件": False})
+        self.assertTrue(result.ok)
+        self.assertEqual(len(reads), 1, f"单段脚本应只读 1 次，实际 {len(reads)} 次")
+
     def test_apply_writes_when_all_names_resolve(self):
         config = _config({"a": "领取邮件", "b": "周常"}, {"a": True, "b": False})
         saved = []
@@ -771,6 +788,39 @@ class TestSegmentDispatch(unittest.TestCase):
                 ),
                 {},
             )
+
+    def test_multi_segment_apply_reads_shared_file_once(self):
+        """多段指向同一文件时只读一次盘，且各段改的是同一份 dict。
+
+        各段各读一份副本会让后保存的段覆盖先保存的段——多段脚本会丢改动。
+        """
+        reads = []
+
+        def load(*_args, **_kwargs):
+            reads.append(1)
+            return {
+                "Farm Nightmare Nest for Daily Echo": True,
+                _OKWW_LIST_KEY: [],
+            }
+
+        saves = []
+        with (
+            patch.object(mod, "load_script_config", side_effect=load),
+            patch.object(
+                mod, "save_script_config", side_effect=lambda *a: saves.append(a)
+            ),
+        ):
+            result = self._switch().apply(
+                {"使用梦魇巢穴获取日常声骸": False, "检查每周乐园": True}
+            )
+        self.assertTrue(result.ok)
+        self.assertEqual(result.changed, 2)
+        self.assertEqual(len(reads), 1, f"同一文件应只读 1 次，实际 {len(reads)} 次")
+        self.assertEqual(len(saves), 1, "同一文件应只落盘 1 次")
+        # 两段的改动都落在同一份配置里
+        saved = saves[0][-1]
+        self.assertFalse(saved["Farm Nightmare Nest for Daily Echo"])
+        self.assertEqual(saved[_OKWW_LIST_KEY], ["Check Weekly Garden"])
 
     def test_apply_rejects_name_from_other_segment(self):
         config = {"Farm Nightmare Nest for Daily Echo": True, _OKWW_LIST_KEY: []}

@@ -313,7 +313,7 @@ class Daily(TaskSourceMixin):
     def update(self, task_name: str, sequence: str | int | None = None) -> bool:
         """设置该日常的副本：读 config → 写数据段 → 有改动才落盘。
 
-        一次读盘完成校验与写入，故选择非法时抛错前不会多读一遍文件。
+        校验只在 ``_fields()`` 里做一次；调用方若已单独预检过，这里不会重复校验。
 
         Args:
             task_name: 一级项展示名。
@@ -326,7 +326,6 @@ class Daily(TaskSourceMixin):
             AssertionError: config 未安装、段未落盘、或落点校验失败
                 （``section`` 对缺失段返回游离 dict，直接写会静默丢失，故先断言）。
         """
-        self.check_fields(task_name, sequence)
         data = self._load_daily_config(allow_missing=True)
         assert data is not None, (
             f"[daily][{self.display_name}] config 未安装/未配置，不能写入副本"

@@ -561,8 +561,8 @@ def set_daily_task_checked(
     if isinstance(resolved, DailyTaskResult):
         return resolved
     daily = resolved
-    # 选择本身是否合法先判，与 update 读盘无关：名字类失败可改正后重试，
-    # 与「声明和脚本实际不符」区分开，后者属内部缺陷。
+    # 选择合法性（名字类失败，可改正后重试）与 update 的其余断言（声明与脚本
+    # 实际不符，属内部缺陷）分开报：前者先判，后者在写入路径上才可能出现。
     try:
         daily.check_fields(task_name, sequence)
     except AssertionError as exc:
@@ -572,6 +572,8 @@ def set_daily_task_checked(
             config.daily_names(),
             daily.task_names(),
         )
+    # check_fields 已通过，update 内部的 _fields 会再校验一次；两处共用同一判断，
+    # 不会产生不同结论，也不会多读文件。
     try:
         daily.update(task_name, sequence)
     except AssertionError as exc:
