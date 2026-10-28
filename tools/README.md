@@ -30,9 +30,12 @@ Rust 构建需 Windows、Rust 1.95+、MSVC。Qt 输出 `deploy/dist/OneDragon-He
 ```bash
 python tools/release_package.py check --package deploy/dist/OneDragon-Helper
 python tools/release_package.py archive --package deploy/dist/OneDragon-Helper --output OneDragon-Helper.zip
+python tools/package_skill.py --output onedragon-helper-skill.zip
 ```
 
 测试前后及归档前均校验发布范围，归档同时生成 `.sha256`。CI 上传未压缩的发布目录，正式发布重新写版本戳并归档。更新运行机制见 [服务层](../python-backend/src/service/README.md)。
+
+Release 同时附带 `onedragon-helper-skill.zip` 和 `.sha256`。Skill 源文件位于 `.agents/skills/onedragon-helper/`，须随代码提交；打包工具仅收录声明的文档和脚本。解压后将 `onedragon-helper` 文件夹放入代理的 skills 目录。Skill 随发布 tag 归档，运行时的 `setup` 仍获取最新后端源码。
 
 Runner 的冻结 Python 环境只含自身依赖；依赖额外第三方库的脚本应由 BAT 调用自己的环境。
 

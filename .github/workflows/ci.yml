@@ -38,11 +38,11 @@ jobs:
 
       - name: Lint with ruff
         run: |
-          uv run ruff check python-backend python-gui tools runner
+          uv run ruff check python-backend python-gui tools runner .agents/skills/onedragon-helper/scripts
 
       - name: Format check with ruff
         run: |
-          uv run ruff format --check python-backend python-gui tools runner
+          uv run ruff format --check python-backend python-gui tools runner .agents/skills/onedragon-helper/scripts
 
       - name: Run tests
         run: |
