@@ -114,12 +114,13 @@ jobs:
           RUSTUP_TOOLCHAIN: 1.97.1
         run: uv run --frozen python tools/build_rust.py --test
 
-      # 同样用 bash：两条 archive 都要生效，pwsh 只会透传最后一条的退出码。
-      - name: Package dist into zip
+      # 用 bash 确保任一归档失败都会停止发布。
+      - name: Package release archives
         shell: bash
         run: |
           uv run python tools/release_package.py archive --package deploy/dist/OneDragon-Helper --output OneDragon-Helper.zip
           uv run python tools/release_package.py archive --package deploy/dist/rust/OneDragon-Helper --output deploy/dist/rust/OneDragon-Helper-Rust.zip
+          uv run python tools/package_skill.py --output onedragon-helper-skill.zip
 
       # 仅 tag 触发时发布正式 release（手动 dispatch 跳过，避免用分支名造出错误 release）。
       - name: Create release
@@ -147,11 +148,12 @@ jobs:
           else
             changelog=$'\n\n## 首次发布'
           fi
-          notes=$(printf '%s\n\n推荐使用 **OneDragon-Helper-Rust.zip**，备用包为 **OneDragon-Helper.zip**，下载后解压即可使用。%s' "自动构建发布 $version（对应 commit: $GITHUB_SHA）" "$changelog")
+          notes=$(printf '%s\n\n推荐使用 **OneDragon-Helper-Rust.zip**，备用包为 **OneDragon-Helper.zip**，下载后解压即可使用。Agent Skill 另见 **onedragon-helper-skill.zip**。%s' "自动构建发布 $version（对应 commit: $GITHUB_SHA）" "$changelog")
           gh release create "$version" \
             --target "$GITHUB_SHA" \
             --title "$version" \
             --notes "$notes" \
             OneDragon-Helper.zip OneDragon-Helper.zip.sha256 \
             deploy/dist/rust/OneDragon-Helper-Rust.zip \
-            deploy/dist/rust/OneDragon-Helper-Rust.zip.sha256
+            deploy/dist/rust/OneDragon-Helper-Rust.zip.sha256 \
+            onedragon-helper-skill.zip onedragon-helper-skill.zip.sha256
