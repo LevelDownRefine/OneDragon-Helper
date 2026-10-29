@@ -33,6 +33,17 @@ def default_cache() -> Path:
 
 def _git(*args: str, cwd: Path | None = None) -> str:
     env = dict(os.environ)
+    # Commands target the source tree, even when called from another Git process.
+    for name in (
+        "GIT_DIR",
+        "GIT_WORK_TREE",
+        "GIT_COMMON_DIR",
+        "GIT_INDEX_FILE",
+        "GIT_OBJECT_DIRECTORY",
+        "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+        "GIT_PREFIX",
+    ):
+        env.pop(name, None)
     env["GIT_TERMINAL_PROMPT"] = "0"
     try:
         result = subprocess.run(

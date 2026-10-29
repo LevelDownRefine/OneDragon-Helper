@@ -136,14 +136,6 @@ def _encoding(path: Path, requested: str) -> str:
             return "utf-16"
         if prefix.startswith(codecs.BOM_UTF8):
             return "utf-8-sig"
-        source.seek(0)
-        decoder = codecs.getincrementaldecoder("utf-8")("strict")
-        try:
-            while chunk := source.read(65_536):
-                decoder.decode(chunk)
-            decoder.decode(b"", final=True)
-        except UnicodeDecodeError:
-            return "gb18030"
     return "utf-8"
 
 
@@ -171,6 +163,26 @@ def read_log(
         raise ValueError("find must be a single-line literal")
     path = Path(path).resolve()
     selected_encoding = _encoding(path, encoding)
+    try:
+        return _read_log(
+            path, start_line, lines, find, context, max_matches, selected_encoding
+        )
+    except UnicodeDecodeError:
+        if encoding != "auto" or selected_encoding != "utf-8":
+            raise
+    # Restart with fresh output, context and counters after a failed UTF-8 pass.
+    return _read_log(path, start_line, lines, find, context, max_matches, "gb18030")
+
+
+def _read_log(
+    path: Path,
+    start_line: int,
+    lines: int,
+    find: str | None,
+    context: int,
+    max_matches: int,
+    selected_encoding: str,
+) -> dict:
     output = []
     matches = []
     reasons = set()

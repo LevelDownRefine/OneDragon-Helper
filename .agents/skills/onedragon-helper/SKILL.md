@@ -17,7 +17,13 @@ uv run scripts/odh.py setup
 
 `setup` 从 [助手仓库](https://github.com/LevelDownRefine/OneDragon-Helper) 获取并快进更新 GitHub 默认分支的最新源码，默认放在操作系统缓存目录，不按 EXE 版本锁定。自动获取需要 Git；工具需要 Python 3.11+ 和 `ruamel.yaml`，`uv run` 可准备 Python 运行环境及依赖。
 
-离线或使用已有源码时，跳过 `setup`，给后续命令加 `--source '已有源码根目录'`，不联网更新。以下检查命令的 `--install` 指向完整 EXE 安装目录：
+离线或使用已有源码时，跳过 `setup`，用 `--source` 指定源码，不联网更新。`--source` 和 `--install` 必须放在子命令前：
+
+```powershell
+uv run scripts/odh.py --source '已有源码根目录' --install 'D:\OneDragon-Helper' inspect --script ok-ww
+```
+
+以下检查命令的 `--install` 指向完整 EXE 安装目录：
 
 ```powershell
 uv run scripts/odh.py --install 'D:\OneDragon-Helper' list

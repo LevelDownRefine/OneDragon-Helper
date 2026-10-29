@@ -6,7 +6,7 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 SKILL_DIR = Path(
     os.environ.get(
@@ -81,6 +81,79 @@ class LogToolsTests(unittest.TestCase):
         path = self.root / "utf-16-be.log"
         path.write_bytes(codecs.BOM_UTF16_BE + text.encode("utf-16-be"))
         self.assertEqual(log_tools.read_log(path)["lines"][0]["text"], "启动")
+
+    def test_utf8_auto_only_probes_bom_before_single_text_pass(self):
+        path = self.write("utf8.log", "中文日志\n" * 20_000)
+        original_open = Path.open
+        probes = []
+        text_encodings = []
+
+        def open_log(target, mode="r", **kwargs):
+            source = original_open(target, mode, **kwargs)
+            if mode == "rb":
+                probe = MagicMock(wraps=source)
+                probe.__enter__.return_value = probe
+                probe.__exit__.side_effect = source.__exit__
+                probes.append(probe)
+                return probe
+            text_encodings.append(kwargs["encoding"])
+            return source
+
+        with patch.object(Path, "open", open_log):
+            result = log_tools.read_log(path, lines=1)
+        self.assertEqual(result["total_lines"], 20_000)
+        self.assertEqual(result["lines"], [{"line": 1, "text": "中文日志"}])
+        self.assertEqual(text_encodings, ["utf-8"])
+        self.assertEqual(len(probes), 1)
+        probes[0].read.assert_called_once_with(4)
+        probes[0].seek.assert_not_called()
+
+    def test_late_gb18030_fallback_restarts_all_read_state(self):
+        path = self.write(
+            "late.log",
+            "before\n[ERR] early\nafter\n"
+            + "padding\n" * 20_000
+            + "[ERR] 中文错误\nend\n",
+            "gb18030",
+        )
+        for options in (
+            {"lines": 2},
+            {"find": "[ERR]", "context": 1, "max_matches": 1},
+            {"find": "[ERR]", "context": 1, "max_matches": 2},
+        ):
+            with self.subTest(options=options):
+                expected = log_tools.read_log(path, encoding="gb18030", **options)
+                with patch.object(
+                    log_tools, "_read_log", wraps=log_tools._read_log
+                ) as read:
+                    actual = log_tools.read_log(path, **options)
+                self.assertEqual(actual, expected)
+                self.assertEqual(actual["total_lines"], 20_005)
+                self.assertEqual(
+                    [call.args[-1] for call in read.call_args_list],
+                    ["utf-8", "gb18030"],
+                )
+
+    def test_explicit_encoding_and_bom_errors_do_not_fallback(self):
+        for encoding, content in (
+            ("utf-8", "中文".encode("gb18030")),
+            ("auto", codecs.BOM_UTF8 + b"\xff"),
+            ("auto", codecs.BOM_UTF16_LE + b"x"),
+        ):
+            with self.subTest(encoding=encoding, content=content):
+                path = self.root / "invalid.log"
+                path.write_bytes(content)
+                with (
+                    patch.object(
+                        log_tools, "_read_log", wraps=log_tools._read_log
+                    ) as read,
+                    self.assertRaises(UnicodeDecodeError),
+                ):
+                    log_tools.read_log(path, encoding=encoding)
+                read.assert_called_once()
+        path.write_bytes(b"\xff")
+        with self.assertRaises(UnicodeDecodeError):
+            log_tools.read_log(path)
 
     def test_literal_context_merges_and_limits_matching_lines(self):
         path = self.write(

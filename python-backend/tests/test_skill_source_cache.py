@@ -245,6 +245,39 @@ class SourceCacheTests(unittest.TestCase):
                     self.root / "OneDragon-Helper/skill-source",
                 )
 
+    def test_git_ignores_caller_repository_but_preserves_connection_settings(self):
+        selectors = dict.fromkeys(
+            (
+                "GIT_DIR",
+                "GIT_WORK_TREE",
+                "GIT_COMMON_DIR",
+                "GIT_INDEX_FILE",
+                "GIT_OBJECT_DIRECTORY",
+                "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+                "GIT_PREFIX",
+            ),
+            "caller-repository",
+        )
+        connection = {
+            "HTTPS_PROXY": "http://proxy.example:8080",
+            "GIT_ASKPASS": "credential-helper",
+            "GIT_CONFIG_GLOBAL": "custom-gitconfig",
+        }
+        inherited = {**selectors, **connection, "GIT_TERMINAL_PROMPT": "1"}
+        result = subprocess.CompletedProcess(["git"], 0, "source-commit\n", "")
+        with (
+            patch.dict(os.environ, inherited),
+            patch.object(source_cache.subprocess, "run", return_value=result) as run,
+        ):
+            self.assertEqual(source_cache._git("rev-parse", "HEAD"), "source-commit")
+            child_env = run.call_args.kwargs["env"]
+            self.assertTrue(selectors.keys().isdisjoint(child_env))
+            for name, value in connection.items():
+                self.assertEqual(child_env[name], value)
+            self.assertEqual(child_env["GIT_TERMINAL_PROMPT"], "0")
+            for name, value in inherited.items():
+                self.assertEqual(os.environ[name], value)
+
     def test_git_errors_and_utf8_timeout_options(self):
         result = subprocess.CompletedProcess(["git"], 1, "", "中文错误")
         with (
