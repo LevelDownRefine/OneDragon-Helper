@@ -15,13 +15,14 @@ _GROUPS = {
     "帝江号任务": ["送礼", "帝江号整理", "帝江号收菜"],
     "其他任务": [
         "收邮件",
+        "清理基质",
         "转交运送委托",
         "地区建设",
         "造装备",
         "收信用",
         "买信用商店",
     ],
-    "战斗任务": ["演算"],
+    "战斗任务": ["演算", "影拓丰碑"],
     "奖励任务": ["活动奖励", "日常奖励"],
     "农牧任务": ["农牧相关"],
     "自动送货任务": ["自动送货"],
@@ -78,9 +79,15 @@ class TestEndfieldTaskSwitches(unittest.TestCase):
         before = self.snapshot()
         self.assertEqual(
             self.switch.read(),
-            [{"name": name, "enabled": name != "执行外部命令"} for name in expected],
+            [
+                {
+                    "name": name,
+                    "enabled": name not in {"执行外部命令", "清理基质", "影拓丰碑"},
+                }
+                for name in expected
+            ],
         )
-        self.assertEqual(len(expected), 24)
+        self.assertEqual(len(expected), 26)
         self.assertEqual(len(set(expected)), len(expected))
         self.assertNotIn("刷体力", expected)
         self.assertEqual(self.snapshot(), before)
@@ -90,6 +97,8 @@ class TestEndfieldTaskSwitches(unittest.TestCase):
         for group, names in _GROUPS.items():
             seed[group].append("上游新增任务")
             for name in names:
+                if name not in seed[group]:
+                    seed[group].append(name)
                 seed[f"⭐{name}"] = False
         seed["⭐刷体力"] = False
         seed["⭐新增布尔设置"] = True
@@ -101,7 +110,7 @@ class TestEndfieldTaskSwitches(unittest.TestCase):
             expected[group] = [name for name in seed[group] if name not in names]
 
         rows = self.switch.read()
-        self.assertEqual(len(rows), 24, "旧布尔字段不能产生重复行或额外入口")
+        self.assertEqual(len(rows), 26, "旧布尔字段不能产生重复行或额外入口")
         self.assertTrue(all(row["enabled"] for row in rows if row["name"] in states))
         self.assertEqual(self.switch.write(states), len(states))
         self.assertEqual(self.load(), expected)
@@ -146,16 +155,69 @@ class TestEndfieldTaskSwitches(unittest.TestCase):
             self.assertEqual(self.load(name), config)
 
     def test_battle_switch_and_daily_card_do_not_overwrite_each_other(self):
+        seed = self.load()
+        seed["战斗任务"].append("影拓丰碑")
+        self.save("DailyTask.json", seed)
         cfg = EndfieldConfig()
         cfg.set_daily_enabled("每日任务", False)
-        self.assertEqual(self.load()["战斗任务"], ["演算"])
+        self.assertEqual(self.load()["战斗任务"], ["演算", "影拓丰碑"])
         self.assertEqual(self.switch.write({"演算": False}), 1)
-        self.assertEqual(self.load()["战斗任务"], [])
+        self.assertEqual(self.load()["战斗任务"], ["影拓丰碑"])
         cfg.set_daily_task("每日任务", "能量淤积点", "枢纽区")
-        self.assertEqual(self.load()["战斗任务"], ["刷体力"])
+        self.assertEqual(self.load()["战斗任务"], ["影拓丰碑", "刷体力"])
         self.assertEqual(self.load("DailyBattleTask.json")["体力本"], "枢纽区")
         self.assertEqual(self.switch.write({"演算": True}), 1)
-        self.assertEqual(self.load()["战斗任务"], ["刷体力", "演算"])
+        self.assertEqual(self.load()["战斗任务"], ["影拓丰碑", "刷体力", "演算"])
+
+    def test_new_tasks_require_explicit_selection_and_preserve_other_configuration(
+        self,
+    ):
+        seed = self.load()
+        seed["其他任务"].append("未知日常")
+        seed["战斗任务"].append("未知战斗")
+        seed["⭐清理基质"] = True
+        seed["⭐影拓丰碑"] = True
+        self.save("DailyTask.json", seed)
+        before = self.snapshot()
+        rows = {row["name"]: row["enabled"] for row in self.switch.read()}
+        self.assertFalse(rows["清理基质"])
+        self.assertFalse(rows["影拓丰碑"])
+        self.assertEqual(self.snapshot(), before)
+        self.assertEqual(self.switch.write({"清理基质": False, "影拓丰碑": False}), 0)
+        self.assertEqual(self.snapshot(), before)
+
+        expected = deepcopy(seed)
+        expected["其他任务"].append("清理基质")
+        self.assertEqual(self.switch.write({"清理基质": True}), 1)
+        self.assertEqual(self.load(), expected)
+        expected["战斗任务"].append("影拓丰碑")
+        self.assertEqual(self.switch.write({"影拓丰碑": True}), 1)
+        self.assertEqual(self.load(), expected)
+        self.assertEqual(self.switch.write({"清理基质": False, "影拓丰碑": False}), 2)
+        self.assertEqual(self.load(), seed)
+        self.assertEqual(
+            {
+                name: data
+                for name, data in self.snapshot().items()
+                if name != "DailyTask.json"
+            },
+            {name: data for name, data in before.items() if name != "DailyTask.json"},
+        )
+
+    def test_missing_new_task_groups_are_not_created_from_legacy_switches(self):
+        seed = self.load()
+        del seed["其他任务"]
+        del seed["战斗任务"]
+        seed["⭐清理基质"] = True
+        seed["⭐影拓丰碑"] = True
+        self.save("DailyTask.json", seed)
+        before = self.snapshot()
+        with self.assertLogs("src.config.native_task_switch", level="WARNING"):
+            names = [row["name"] for row in self.switch.read()]
+            self.assertEqual(self.switch.write({"清理基质": True, "影拓丰碑": True}), 0)
+        self.assertNotIn("清理基质", names)
+        self.assertNotIn("影拓丰碑", names)
+        self.assertEqual(self.snapshot(), before)
 
     def test_external_command_boolean_still_round_trips(self):
         expected = self.load()
