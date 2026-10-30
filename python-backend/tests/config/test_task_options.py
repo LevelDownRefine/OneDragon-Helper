@@ -228,6 +228,54 @@ class TestTaskOptions(unittest.TestCase):
                     expected,
                 )
 
+    def test_endfield_options_write_the_daily_task_files(self):
+        config_dir = self.root / "data/apps/ok-ef/working/configs"
+        config_dir.mkdir(parents=True)
+        cases = (
+            (
+                "RegionalBuildTask",
+                "据点兑换仅购买优先商品",
+                "regional_priority_only",
+                False,
+                True,
+            ),
+            (
+                "DailyDeliveryTask",
+                "到达方式",
+                "delivery_arrival_mode",
+                "仅滑索",
+                "网格导航",
+            ),
+            (
+                "DailyYingTuoTask",
+                "⭐领取影拓丰碑奖励",
+                "yingtuo_claim_reward",
+                True,
+                False,
+            ),
+        )
+        for name, key, _, initial, _ in cases:
+            (config_dir / f"{name}.json").write_text(
+                json.dumps({key: initial}), encoding="utf-8"
+            )
+        source = config_dir.parent / "assets/data/delivery_area.json"
+        source.parent.mkdir(parents=True)
+        source.write_text('{"delivery_area_config": {}}', encoding="utf-8")
+        options = mod.task_options_of("ok-ef")
+        rows = {row["id"]: row for row in options.read()}
+        self.assertEqual(rows["delivery_arrival_mode"]["tasks"], ["自动送货"])
+        self.assertEqual(rows["yingtuo_claim_reward"]["tasks"], ["影拓丰碑"])
+        options.write_prepared(
+            options.prepare({ident: selected for _, _, ident, _, selected in cases})
+        )
+        self.assertEqual(
+            {
+                path.stem: json.loads(path.read_text(encoding="utf-8"))
+                for path in config_dir.iterdir()
+            },
+            {name: {key: selected} for name, key, _, _, selected in cases},
+        )
+
     def test_accepted_scope_is_declared(self):
         declarations = mod.load_declarations()
         self.assertEqual(

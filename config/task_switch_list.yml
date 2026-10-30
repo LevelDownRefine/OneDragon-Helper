@@ -48,13 +48,14 @@ BetterGI:
   tasks_key: TaskDefinitions
   enabled_key: TaskEnabledList
 
-# 终末地：日常总开关在 DailyTask 的七组多选中；刷体力由日常卡管理。
+# 终末地：按 ok-ef v2.0.6 的 DailyTask 七组多选声明；刷体力由日常卡管理。
 # 子任务开关仍在各自文件，外部命令保留独立布尔开关。
 ok-ef:
   options:
   - display_name: 地区建设
     config: data/apps/ok-ef/working/configs/RegionalBuildTask.json
     fields:
+    - {id: regional_priority_only, display_name: 据点兑换仅购买优先商品, keys: [据点兑换仅购买优先商品], type: bool}
     - {id: regional_buy_only, display_name: 只买不卖, keys: [只买不卖], type: bool}
     - {id: regional_gift, display_name: 买礼物, keys: [是否买礼物], type: bool}
     - {id: regional_wuling, display_name: 武陵, keys: [武陵], type: bool}
@@ -88,8 +89,19 @@ ok-ef:
       keys: [地区切换]
       type: choice
       source: {path: data/apps/ok-ef/working/assets/data/delivery_area.json, key: [delivery_area_config]}
+    - id: delivery_arrival_mode
+      display_name: 到达方式
+      keys: [到达方式]
+      type: choice
+      values: [仅滑索, 网格导航]
     tasks:
     - 自动送货
+  - display_name: 影拓丰碑
+    config: data/apps/ok-ef/working/configs/DailyYingTuoTask.json
+    fields:
+    - {id: yingtuo_claim_reward, display_name: 领取影拓丰碑奖励, keys: [⭐领取影拓丰碑奖励], type: bool}
+    tasks:
+    - 影拓丰碑
   - display_name: 帝江号整理
     config: data/apps/ok-ef/working/configs/BoatOrganizeTask.json
     fields:
@@ -102,9 +114,9 @@ ok-ef:
     - list_key: 帝江号任务
       names: [送礼, 帝江号整理, 帝江号收菜]
     - list_key: 其他任务
-      names: [收邮件, 转交运送委托, 地区建设, 造装备, 收信用, 买信用商店]
+      names: [收邮件, 清理基质, 转交运送委托, 地区建设, 造装备, 收信用, 买信用商店]
     - list_key: 战斗任务
-      names: [演算]
+      names: [演算, 影拓丰碑]
     - list_key: 奖励任务
       names: [活动奖励, 日常奖励]
     - list_key: 农牧任务
