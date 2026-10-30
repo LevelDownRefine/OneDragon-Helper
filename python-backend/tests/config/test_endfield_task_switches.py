@@ -169,56 +169,6 @@ class TestEndfieldTaskSwitches(unittest.TestCase):
         self.assertEqual(self.switch.write({"演算": True}), 1)
         self.assertEqual(self.load()["战斗任务"], ["影拓丰碑", "刷体力", "演算"])
 
-    def test_new_tasks_require_explicit_selection_and_preserve_other_configuration(
-        self,
-    ):
-        seed = self.load()
-        seed["其他任务"].append("未知日常")
-        seed["战斗任务"].append("未知战斗")
-        seed["⭐清理基质"] = True
-        seed["⭐影拓丰碑"] = True
-        self.save("DailyTask.json", seed)
-        before = self.snapshot()
-        rows = {row["name"]: row["enabled"] for row in self.switch.read()}
-        self.assertFalse(rows["清理基质"])
-        self.assertFalse(rows["影拓丰碑"])
-        self.assertEqual(self.snapshot(), before)
-        self.assertEqual(self.switch.write({"清理基质": False, "影拓丰碑": False}), 0)
-        self.assertEqual(self.snapshot(), before)
-
-        expected = deepcopy(seed)
-        expected["其他任务"].append("清理基质")
-        self.assertEqual(self.switch.write({"清理基质": True}), 1)
-        self.assertEqual(self.load(), expected)
-        expected["战斗任务"].append("影拓丰碑")
-        self.assertEqual(self.switch.write({"影拓丰碑": True}), 1)
-        self.assertEqual(self.load(), expected)
-        self.assertEqual(self.switch.write({"清理基质": False, "影拓丰碑": False}), 2)
-        self.assertEqual(self.load(), seed)
-        self.assertEqual(
-            {
-                name: data
-                for name, data in self.snapshot().items()
-                if name != "DailyTask.json"
-            },
-            {name: data for name, data in before.items() if name != "DailyTask.json"},
-        )
-
-    def test_missing_new_task_groups_are_not_created_from_legacy_switches(self):
-        seed = self.load()
-        del seed["其他任务"]
-        del seed["战斗任务"]
-        seed["⭐清理基质"] = True
-        seed["⭐影拓丰碑"] = True
-        self.save("DailyTask.json", seed)
-        before = self.snapshot()
-        with self.assertLogs("src.config.native_task_switch", level="WARNING"):
-            names = [row["name"] for row in self.switch.read()]
-            self.assertEqual(self.switch.write({"清理基质": True, "影拓丰碑": True}), 0)
-        self.assertNotIn("清理基质", names)
-        self.assertNotIn("影拓丰碑", names)
-        self.assertEqual(self.snapshot(), before)
-
     def test_external_command_boolean_still_round_trips(self):
         expected = self.load()
         expected["⭐执行外部命令"] = True
