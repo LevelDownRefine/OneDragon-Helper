@@ -132,6 +132,22 @@ class TestMaaLog(unittest.TestCase):
         self.assertEqual(result["status"], ScriptLogStatus.NO_LOG)
 
     def test_error_limit_retains_multiline_record(self):
-        errors = MaaLogParser().collect_error_lines(self.fixture, limit=2)
+        errors = MaaLogParser().collect_error_lines(
+            self.fixture.split("[2026-11-02 10:51:04")[0], limit=2
+        )
         self.assertEqual(len(errors), 2)
         self.assertIn("开始唤醒, 剿灭作战", errors[1])
+
+    def test_failure_summary_survives_more_than_ten_errors(self):
+        content = "".join(
+            f"[2026-11-02 04:14:{index:02d}.000][ERR][TaskQueueViewModel] <2> 任务出错: task {index}\n"
+            for index in range(12)
+        ) + (
+            "[2026-11-02 04:15:00.000][ERR][TaskQueueViewModel] <2> 任务已结束，以下任务出现错误:\n"
+            "开始唤醒, 剿灭作战, 理智作战\n"
+        )
+        errors = MaaLogParser().collect_error_lines(content)
+        self.assertEqual(len(errors), 10)
+        self.assertIn("开始唤醒, 剿灭作战, 理智作战", errors[-1])
+        self.assertNotIn("task 0\n", "\n".join(errors))
+        self.assertEqual(MaaLogParser().collect_error_lines(content, limit=0), [])

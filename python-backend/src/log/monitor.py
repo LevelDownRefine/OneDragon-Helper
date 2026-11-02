@@ -341,6 +341,9 @@ class MaaLogParser(BaseLogParser):
 
     def collect_error_lines(self, content: str, limit: int = 10) -> list[str]:
         # 失败任务清单及异常详情为无时间戳续行，与其所属记录一起保留。
+        # 优先保留最近的报错，避免大量任务失败挤掉末尾的失败总结。
+        if limit <= 0:
+            return []
         records = list(self._record.finditer(content))
         errors = []
         for index, record in enumerate(records):
@@ -352,9 +355,7 @@ class MaaLogParser(BaseLogParser):
             text = content[record.start() : end].strip()
             if text not in errors:
                 errors.append(text)
-            if len(errors) >= limit:
-                break
-        return errors
+        return errors[-limit:]
 
 
 class OkWwLogParser(BaseLogParser):
