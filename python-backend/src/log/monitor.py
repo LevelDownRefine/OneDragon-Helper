@@ -238,6 +238,10 @@ class BaseLogParser:
             }
 
         content = self._read_file(log_path)
+        return self._parse_content(content, log_path)
+
+    def _parse_content(self, content: str, log_path: Path) -> dict:
+        """将已选定的日志正文转为统一结果。"""
         # 成败唯一判据=当日每日是否做完（与重跑判据同口径）：跑完流程但日常没做完仍算
         # 失败，避免漏重跑。parse_daily 恒返 bool，无需再按脚本自身状态兜底。
         daily_done = self.parse_daily(content)
@@ -250,6 +254,108 @@ class BaseLogParser:
             "daily_done": daily_done,
             "errors": self.collect_error_lines(content),
         }
+
+
+class MaaLogParser(BaseLogParser):
+    """MAA 以最新一轮所选队列全部完成作为 daily_done。"""
+
+    script_name = "MAA"
+    _record = re.compile(
+        r"^\[(?P<time>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+)\]"
+        r"\[(?P<level>\w+)\]\[(?P<source>[^\]]+)\]\s+<\d+> (?P<message>[^\r\n]*)",
+        re.M,
+    )
+
+    def _is_valid_log(self, log_path: Path) -> bool:
+        # 累积日志可能从其他机器复制；有效期由正文时间判断，不依赖 mtime。
+        return True
+
+    def _latest_run(self, content: str) -> str:
+        now = datetime.now()
+        boundary = now.replace(hour=4, minute=0, second=0, microsecond=0)
+        if now < boundary:
+            boundary -= timedelta(days=1)
+        selected: list[str] = []
+        running = False
+        current_day = False
+        records = list(self._record.finditer(content))
+        for index, record in enumerate(records):
+            try:
+                timestamp = datetime.strptime(record["time"], "%Y-%m-%d %H:%M:%S.%f")
+            except ValueError:
+                logger.warning("[MAA] 无效日志时间: %s", record["time"])
+                continue
+            if timestamp > now:
+                continue
+            source, message = record["source"], record["message"]
+            if (
+                source == "Bootstrapper"
+                and message == "MaaAssistantArknights GUI started"
+            ):
+                selected = []
+                running = False
+                current_day = False
+            if source == "TaskQueueViewModel" and message == "LinkStart Enter":
+                selected = []
+                running = True
+                current_day = False
+            if running:
+                end = (
+                    records[index + 1].start()
+                    if index + 1 < len(records)
+                    else len(content)
+                )
+                selected.append(content[record.start() : end])
+                if timestamp >= boundary and source in (
+                    "TaskQueueViewModel",
+                    "AsstProxy",
+                ):
+                    current_day = True
+        return "".join(selected) if current_day else ""
+
+    def parse(self, log_path: str = "") -> dict:
+        path = self.get_log_path(log_path)
+        if path is None:
+            return {"status": ScriptLogStatus.NO_LOG, "log_path": None}
+        content = self._latest_run(self._read_file(path))
+        if not content:
+            return {"status": ScriptLogStatus.NO_LOG, "log_path": str(path)}
+        return self._parse_content(content, path)
+
+    def parse_daily(self, content: str) -> bool:
+        kw = _keywords_for(self.script_name)
+        # MAA 的失败总结是可选声明；辅助报错不改变队列完成状态。
+        failures = kw.get("fail_markers", ())
+        done = False
+        for record in self._record.finditer(content):
+            if record["source"] != "TaskQueueViewModel":
+                continue
+            message = record["message"]
+            if any(message.startswith(marker) for marker in failures):
+                done = False
+            elif any(
+                message.startswith(marker) for marker in self.daily_success_marker
+            ):
+                done = True
+        return done
+
+    def collect_error_lines(self, content: str, limit: int = 10) -> list[str]:
+        # 失败任务清单及异常详情为无时间戳续行，与其所属记录一起保留。
+        # 优先保留最近的报错，避免大量任务失败挤掉末尾的失败总结。
+        if limit <= 0:
+            return []
+        records = list(self._record.finditer(content))
+        errors = []
+        for index, record in enumerate(records):
+            if not any(marker in record.group(0) for marker in self.error_markers):
+                continue
+            end = (
+                records[index + 1].start() if index + 1 < len(records) else len(content)
+            )
+            text = content[record.start() : end].strip()
+            if text not in errors:
+                errors.append(text)
+        return errors[-limit:]
 
 
 class OkWwLogParser(BaseLogParser):
@@ -328,6 +434,7 @@ class BGILogParser(BaseLogParser):
 
 
 _PARSERS = [
+    MaaLogParser,
     OkWwLogParser,
     OkNteLogParser,
     OkEfLogParser,

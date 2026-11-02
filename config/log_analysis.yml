@@ -10,9 +10,10 @@
 # 未声明或空字符串表示不使用文件日志。只有路径的条目不代表已有成败解析器。
 #
 # 约定：
-# - 分析关键词均为子串（substring）匹配，非正则（stamina_pattern 除外，它是正则）。
+# - 分析关键词通常为子串匹配；MAA 完成/失败标记限定为任务队列消息前缀。
+#   stamina_pattern 是正则。
 # - 命中任一即成立（any）。error_noise 命中则该行不计入报错。
-# - success_markers / fail_markers 仅用于 parse_content 的成败判定（见各 Parser 逻辑）。
+# - MAA 的 fail_markers 用于 parse_daily，失败总结会清除本轮完成状态。
 # - exit_markers 仅崩铁（March7th-Launcher）消费：作「游戏终止」横幅、截断其后的良性收尾报错；
 #   其余游戏不读取它（parse_exit 已移除，无其它消费者）。
 # - 缺失字段以空值兜底（如某游戏无体力提取，省略 stamina_pattern）。
@@ -112,6 +113,14 @@ parsers:
   MAA:
     # 正常作战期间也可能长时间不更新，无日志阈值由用户设置。
     log_path: 'debug/gui.log'
+    # daily_done 表示最新一轮所选队列全部完成，不保证每日奖励已拿满。
+    daily_success_marker:
+      - '任务已全部完成！'
+    fail_markers:
+      - '任务已结束，以下任务出现错误:'
+    error_markers:
+      - '[ERR]'
+    stamina_pattern: '(?m)^理智[:：]\s*(\d+)/\d+'
 
   MaaEnd:
     # MaaFramework 的实时执行日志，位于 MaaEnd.exe 同级 debug 目录。
