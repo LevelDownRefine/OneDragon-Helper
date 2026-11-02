@@ -12,6 +12,7 @@ import src.log.monitor as collect_log
 from src.log import (
     BGILogParser,
     M7ALogParser,
+    MaaLogParser,
     OkEfLogParser,
     OkNteLogParser,
     OkWwLogParser,
@@ -105,7 +106,7 @@ class TestLogParser(unittest.TestCase):
     def test_parse_log_rejects_unsupported(self):
         """不支持的脚本在 parse_logs 入口已过滤，进入 parse_log 即不可能 → 断言失败。"""
         with self.assertRaises(AssertionError):
-            parse_log("MAA")
+            parse_log("unsupported-script")
 
 
 class TestCollectLogSetup(unittest.TestCase):
@@ -390,6 +391,11 @@ class TestParseLogsRerunList(unittest.TestCase):
                     if parser_cls is OkEfLogParser
                     else marker
                 )
+                if parser_cls is MaaLogParser:
+                    content = (
+                        "[2026-11-02 13:04:34.642][INF][TaskQueueViewModel] "
+                        f"<2> {marker}\n"
+                    )
                 self.assertTrue(p.parse_daily(content))
 
     def test_parse_daily_no_marker_returns_true(self):

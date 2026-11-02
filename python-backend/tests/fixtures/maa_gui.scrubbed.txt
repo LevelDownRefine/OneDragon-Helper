@@ -1,0 +1,26 @@
+[2026-11-01 04:11:37.941][INF][TaskQueueViewModel]     <2> LinkStart Enter
+[2026-11-01 04:32:52.152][INF][TaskQueueViewModel]     <2> 任务已全部完成！
+[2026-11-02 04:11:37.610][INF][TaskQueueViewModel]     <2> LinkStart Enter
+[2026-11-02 04:13:36.024][ERR][TaskQueueViewModel]     <2> 任务出错: 开始唤醒
+[2026-11-02 04:15:34.732][ERR][TaskQueueViewModel]     <2> 任务已结束，以下任务出现错误:
+开始唤醒, 剿灭作战, 理智作战, 基建换班, 自动公招, 信用收支, 领取奖励, 更新数据
+[2026-11-02 10:51:04.563][INF][TaskQueueViewModel]     <2> LinkStart Enter
+[2026-11-02 10:51:26.608][ERR][TaskQueueViewModel]     <2> 连接失败
+请 ｢检查连接设置｣ → ｢尝试重启模拟器与 ADB｣ → ｢重启电脑｣
+[2026-11-02 10:51:26.609][INF][TaskQueueViewModel]     <2> 已停止
+[2026-11-02 10:51:26.613][INF][TaskQueueViewModel]     <2> LinkStart Exit, 22,050 ms
+[2026-11-02 12:32:57.820][INF][TaskQueueViewModel]     <2> LinkStart Enter
+[2026-11-02 12:33:00.518][INF][TaskQueueViewModel]     <2> LinkStart Exit, 2,697 ms
+[2026-11-02 12:42:25.540][ERR][GameDataReportService]  <2> Error during HTTP POST request
+[2026-11-02 12:48:45.302][INF][TaskQueueViewModel]     <2> 完成任务: 理智作战
+理智: 8/210
+[2026-11-02 12:51:12.551][INF][TaskQueueViewModel]     <2> 完成任务: 理智作战
+(用时 0h 2m 26s)
+理智: 2/210
+[2026-11-02 13:03:09.591][INF][AsstProxy]              <2> Completed Task Chain: Award, Task ID: 8
+[2026-11-02 13:04:34.642][INF][TaskQueueViewModel]     <2> 任务已全部完成！
+(用时 0h 31m 34s)
+理智将在 2026-11-03 09:39 回满。(20h 34m 后)
+[2026-11-02 13:04:39.785][ERR][EmulatorHelper]         <2> Failed to get emulator PID
+[2026-11-02 13:04:39.785][ERR][TaskQueueViewModel]     <2> 模拟器关闭失败
+[2026-11-02 13:04:40.822][INF][Bootstrapper]           <2> MaaAssistantArknights GUI exited
