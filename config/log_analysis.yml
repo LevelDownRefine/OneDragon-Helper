@@ -30,6 +30,7 @@ parsers:
     error_noise:
       - 'target_enemy failed'
       - 'combat check not in combat'
+      - 'clicked liberation but no effect'
       - 'Failed to terminate process'
       - 'Game window is not connected'
       - 'waiting for game to start error'

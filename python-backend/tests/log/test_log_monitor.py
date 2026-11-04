@@ -727,6 +727,7 @@ class TestFourFieldExtraction(unittest.TestCase):
             "DailyTask:claim daily reward via  coordinate\n"
             "TaskExecutor:Successfully Executed Task, Exiting Game and App!\n"
             "ERROR CombatCheck:target_enemy failed, try recheck\n"  # 噪声：战斗复检
+            "ERROR TaskExecutor Cantarella:clicked liberation but no effect\n"
             "ERROR TaskExecutor:Daily Task exception stopped Traceback\n"  # 真实报错
         )
         self.assertEqual(p.parse_stamina(content), "240")
@@ -735,7 +736,7 @@ class TestFourFieldExtraction(unittest.TestCase):
             OkWwLogParser().parse_stamina("info_set current_stamina: 240"), "240"
         )
         self.assertTrue(p.parse_daily(content))
-        # 战斗复检噪声应被过滤，仅保留真实报错。
+        # 战斗复检和技能释放噪声应被过滤，仅保留真实报错。
         self.assertEqual(
             p.collect_error_lines(content),
             ["ERROR TaskExecutor:Daily Task exception stopped Traceback"],
