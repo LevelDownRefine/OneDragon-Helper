@@ -8,7 +8,35 @@
 # key 含 {Day} 时展开成 Monday…Sunday 七个字段（原神地脉花，一次写满一周）。
 # source.path 为资源文件，source.key 为多级键路径；原神暂保留 category 分类筛选。
 
-ok-ap: []
+ok-ap:
+- display_name: 委托每日
+  class: SingleLayerDaily
+  config: data/apps/ok-ap/working/configs/CommissionDailyTask.json
+  routine: data/apps/ok-ap/working/configs/DailyTask.json
+  enable_key: 委托每日
+  options:
+    key: 选择委托
+    values:
+    - display_name: 银光闪闪
+    - display_name: 结晶萃取
+    - display_name: 千锤百炼
+    - display_name: 无惧之战砧
+    - display_name: 凋零的挽歌
+    - display_name: 温和的雷鸣
+    - display_name: 深巢梦魇
+    - display_name: 林间幻梦
+    - display_name: 吞噬之渊
+    - display_name: 焚灼之域
+    - display_name: 苍雷之卫
+    - display_name: 烈炎之佑
+    - display_name: 常青之庇
+    - display_name: 湍流之守
+    - display_name: 丘薮之陲
+    - display_name: 长风之护
+    - display_name: 厚岩之盾
+    - display_name: 严寒之屏
+    - display_name: 日月之捍
+    - display_name: 急炽之御
 
 ok-ww:
 - display_name: 每日任务

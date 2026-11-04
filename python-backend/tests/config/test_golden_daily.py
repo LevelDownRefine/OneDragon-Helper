@@ -109,7 +109,12 @@ def _seed_files():
             },
         },
     }
-    stores["ok-ap"] = {}
+    stores["ok-ap"] = {
+        "data/apps/ok-ap/working/configs/CommissionDailyTask.json": {
+            "选择委托": "银光闪闪"
+        },
+        "data/apps/ok-ap/working/configs/DailyTask.json": {"委托每日": False},
+    }
     for files in stores.values():
         for config in files.values():
             config["untouched"] = {"value": 42}

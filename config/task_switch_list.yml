@@ -28,7 +28,6 @@ ok-ap:
   task_pattern: "(.+)"
   names:
   - 家园每日
-  - 委托每日
   - 每日收菜
 
 BetterGI:
