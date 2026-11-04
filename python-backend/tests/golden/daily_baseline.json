@@ -62,6 +62,14 @@
         "task": "培养方案"
       }
     ],
+    "ok-ap": [
+      {
+        "enabled": false,
+        "name": "委托每日",
+        "sequence": "银光闪闪",
+        "task": "委托每日"
+      }
+    ],
     "ok-ef": [
       {
         "enabled": false,
@@ -3897,6 +3905,448 @@
         ],
         "sequence": true,
         "task": "培养方案"
+      }
+    },
+    "ok-ap": {
+      "委托每日|委托每日|丘薮之陲": {
+        "daily": "委托每日",
+        "diff": {
+          "data/apps/ok-ap/working/configs/CommissionDailyTask.json.选择委托": [
+            "湍流之守",
+            "丘薮之陲"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "委托每日",
+            "sequence": "丘薮之陲",
+            "task": "委托每日"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-ap/working/configs/CommissionDailyTask.json"
+        ],
+        "sequence": "丘薮之陲",
+        "task": "委托每日"
+      },
+      "委托每日|委托每日|严寒之屏": {
+        "daily": "委托每日",
+        "diff": {
+          "data/apps/ok-ap/working/configs/CommissionDailyTask.json.选择委托": [
+            "厚岩之盾",
+            "严寒之屏"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "委托每日",
+            "sequence": "严寒之屏",
+            "task": "委托每日"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-ap/working/configs/CommissionDailyTask.json"
+        ],
+        "sequence": "严寒之屏",
+        "task": "委托每日"
+      },
+      "委托每日|委托每日|凋零的挽歌": {
+        "daily": "委托每日",
+        "diff": {
+          "data/apps/ok-ap/working/configs/CommissionDailyTask.json.选择委托": [
+            "无惧之战砧",
+            "凋零的挽歌"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "委托每日",
+            "sequence": "凋零的挽歌",
+            "task": "委托每日"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-ap/working/configs/CommissionDailyTask.json"
+        ],
+        "sequence": "凋零的挽歌",
+        "task": "委托每日"
+      },
+      "委托每日|委托每日|千锤百炼": {
+        "daily": "委托每日",
+        "diff": {
+          "data/apps/ok-ap/working/configs/CommissionDailyTask.json.选择委托": [
+            "结晶萃取",
+            "千锤百炼"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "委托每日",
+            "sequence": "千锤百炼",
+            "task": "委托每日"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-ap/working/configs/CommissionDailyTask.json"
+        ],
+        "sequence": "千锤百炼",
+        "task": "委托每日"
+      },
+      "委托每日|委托每日|厚岩之盾": {
+        "daily": "委托每日",
+        "diff": {
+          "data/apps/ok-ap/working/configs/CommissionDailyTask.json.选择委托": [
+            "长风之护",
+            "厚岩之盾"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "委托每日",
+            "sequence": "厚岩之盾",
+            "task": "委托每日"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-ap/working/configs/CommissionDailyTask.json"
+        ],
+        "sequence": "厚岩之盾",
+        "task": "委托每日"
+      },
+      "委托每日|委托每日|吞噬之渊": {
+        "daily": "委托每日",
+        "diff": {
+          "data/apps/ok-ap/working/configs/CommissionDailyTask.json.选择委托": [
+            "林间幻梦",
+            "吞噬之渊"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "委托每日",
+            "sequence": "吞噬之渊",
+            "task": "委托每日"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-ap/working/configs/CommissionDailyTask.json"
+        ],
+        "sequence": "吞噬之渊",
+        "task": "委托每日"
+      },
+      "委托每日|委托每日|常青之庇": {
+        "daily": "委托每日",
+        "diff": {
+          "data/apps/ok-ap/working/configs/CommissionDailyTask.json.选择委托": [
+            "烈炎之佑",
+            "常青之庇"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "委托每日",
+            "sequence": "常青之庇",
+            "task": "委托每日"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-ap/working/configs/CommissionDailyTask.json"
+        ],
+        "sequence": "常青之庇",
+        "task": "委托每日"
+      },
+      "委托每日|委托每日|急炽之御": {
+        "daily": "委托每日",
+        "diff": {
+          "data/apps/ok-ap/working/configs/CommissionDailyTask.json.选择委托": [
+            "日月之捍",
+            "急炽之御"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "委托每日",
+            "sequence": "急炽之御",
+            "task": "委托每日"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-ap/working/configs/CommissionDailyTask.json"
+        ],
+        "sequence": "急炽之御",
+        "task": "委托每日"
+      },
+      "委托每日|委托每日|无惧之战砧": {
+        "daily": "委托每日",
+        "diff": {
+          "data/apps/ok-ap/working/configs/CommissionDailyTask.json.选择委托": [
+            "千锤百炼",
+            "无惧之战砧"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "委托每日",
+            "sequence": "无惧之战砧",
+            "task": "委托每日"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-ap/working/configs/CommissionDailyTask.json"
+        ],
+        "sequence": "无惧之战砧",
+        "task": "委托每日"
+      },
+      "委托每日|委托每日|日月之捍": {
+        "daily": "委托每日",
+        "diff": {
+          "data/apps/ok-ap/working/configs/CommissionDailyTask.json.选择委托": [
+            "严寒之屏",
+            "日月之捍"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "委托每日",
+            "sequence": "日月之捍",
+            "task": "委托每日"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-ap/working/configs/CommissionDailyTask.json"
+        ],
+        "sequence": "日月之捍",
+        "task": "委托每日"
+      },
+      "委托每日|委托每日|林间幻梦": {
+        "daily": "委托每日",
+        "diff": {
+          "data/apps/ok-ap/working/configs/CommissionDailyTask.json.选择委托": [
+            "深巢梦魇",
+            "林间幻梦"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "委托每日",
+            "sequence": "林间幻梦",
+            "task": "委托每日"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-ap/working/configs/CommissionDailyTask.json"
+        ],
+        "sequence": "林间幻梦",
+        "task": "委托每日"
+      },
+      "委托每日|委托每日|深巢梦魇": {
+        "daily": "委托每日",
+        "diff": {
+          "data/apps/ok-ap/working/configs/CommissionDailyTask.json.选择委托": [
+            "温和的雷鸣",
+            "深巢梦魇"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "委托每日",
+            "sequence": "深巢梦魇",
+            "task": "委托每日"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-ap/working/configs/CommissionDailyTask.json"
+        ],
+        "sequence": "深巢梦魇",
+        "task": "委托每日"
+      },
+      "委托每日|委托每日|温和的雷鸣": {
+        "daily": "委托每日",
+        "diff": {
+          "data/apps/ok-ap/working/configs/CommissionDailyTask.json.选择委托": [
+            "凋零的挽歌",
+            "温和的雷鸣"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "委托每日",
+            "sequence": "温和的雷鸣",
+            "task": "委托每日"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-ap/working/configs/CommissionDailyTask.json"
+        ],
+        "sequence": "温和的雷鸣",
+        "task": "委托每日"
+      },
+      "委托每日|委托每日|湍流之守": {
+        "daily": "委托每日",
+        "diff": {
+          "data/apps/ok-ap/working/configs/CommissionDailyTask.json.选择委托": [
+            "常青之庇",
+            "湍流之守"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "委托每日",
+            "sequence": "湍流之守",
+            "task": "委托每日"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-ap/working/configs/CommissionDailyTask.json"
+        ],
+        "sequence": "湍流之守",
+        "task": "委托每日"
+      },
+      "委托每日|委托每日|烈炎之佑": {
+        "daily": "委托每日",
+        "diff": {
+          "data/apps/ok-ap/working/configs/CommissionDailyTask.json.选择委托": [
+            "苍雷之卫",
+            "烈炎之佑"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "委托每日",
+            "sequence": "烈炎之佑",
+            "task": "委托每日"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-ap/working/configs/CommissionDailyTask.json"
+        ],
+        "sequence": "烈炎之佑",
+        "task": "委托每日"
+      },
+      "委托每日|委托每日|焚灼之域": {
+        "daily": "委托每日",
+        "diff": {
+          "data/apps/ok-ap/working/configs/CommissionDailyTask.json.选择委托": [
+            "吞噬之渊",
+            "焚灼之域"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "委托每日",
+            "sequence": "焚灼之域",
+            "task": "委托每日"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-ap/working/configs/CommissionDailyTask.json"
+        ],
+        "sequence": "焚灼之域",
+        "task": "委托每日"
+      },
+      "委托每日|委托每日|结晶萃取": {
+        "daily": "委托每日",
+        "diff": {
+          "data/apps/ok-ap/working/configs/CommissionDailyTask.json.选择委托": [
+            "银光闪闪",
+            "结晶萃取"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "委托每日",
+            "sequence": "结晶萃取",
+            "task": "委托每日"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-ap/working/configs/CommissionDailyTask.json"
+        ],
+        "sequence": "结晶萃取",
+        "task": "委托每日"
+      },
+      "委托每日|委托每日|苍雷之卫": {
+        "daily": "委托每日",
+        "diff": {
+          "data/apps/ok-ap/working/configs/CommissionDailyTask.json.选择委托": [
+            "焚灼之域",
+            "苍雷之卫"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "委托每日",
+            "sequence": "苍雷之卫",
+            "task": "委托每日"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-ap/working/configs/CommissionDailyTask.json"
+        ],
+        "sequence": "苍雷之卫",
+        "task": "委托每日"
+      },
+      "委托每日|委托每日|银光闪闪": {
+        "daily": "委托每日",
+        "diff": {
+          "data/apps/ok-ap/working/configs/DailyTask.json.委托每日": [
+            false,
+            true
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "委托每日",
+            "sequence": "银光闪闪",
+            "task": "委托每日"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-ap/working/configs/DailyTask.json"
+        ],
+        "sequence": "银光闪闪",
+        "task": "委托每日"
+      },
+      "委托每日|委托每日|长风之护": {
+        "daily": "委托每日",
+        "diff": {
+          "data/apps/ok-ap/working/configs/CommissionDailyTask.json.选择委托": [
+            "丘薮之陲",
+            "长风之护"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "委托每日",
+            "sequence": "长风之护",
+            "task": "委托每日"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-ap/working/configs/CommissionDailyTask.json"
+        ],
+        "sequence": "长风之护",
+        "task": "委托每日"
       }
     },
     "ok-ef": {

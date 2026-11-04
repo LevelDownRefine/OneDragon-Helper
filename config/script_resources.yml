@@ -2,6 +2,17 @@
 # 相对路径用 /；game、background、backup_paths 相对脚本目录。
 version: 1
 scripts:
+  ok-ap:
+    backup_paths:
+    - data/apps/ok-ap/working/configs
+    game:
+      config: data/apps/ok-ap/working/configs/devices.json
+      keys:
+      - pc_full_path
+    links:
+      homepage: https://azurpromilia.manjuu.com/
+      bilibili: https://space.bilibili.com/3546569016085336
+      github: https://github.com/longer-sausage/OK-AzurPromilia
   ok-ww:
     backup_paths:
     - data/apps/ok-ww/working/configs

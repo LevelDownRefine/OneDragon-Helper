@@ -81,6 +81,7 @@ class TestTaskDeclarations(unittest.TestCase):
     def test_same_schema_in_two_separate_files(self):
         daily = m.load_daily_map()
         weekly = m.load_weekly_map()
+        self.assertEqual(len(daily["ok-ap"]), 1)
         self.assertEqual(len(daily["ok-nte"]), 2)
         self.assertEqual(len(daily["BetterGI"]), 4)
         self.assertEqual(len(daily["MAA"]), 3)
@@ -88,7 +89,7 @@ class TestTaskDeclarations(unittest.TestCase):
             all(
                 len(tasks) == 1
                 for script, tasks in daily.items()
-                if script not in ("ok-nte", "BetterGI", "MAA")
+                if script not in ("ok-nte", "BetterGI", "MAA", "ok-ap")
             )
         )
         self.assertEqual(
