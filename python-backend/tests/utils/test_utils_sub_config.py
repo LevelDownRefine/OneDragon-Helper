@@ -468,7 +468,7 @@ class TestGetConfigPath(unittest.TestCase):
             patch("os.path.exists", return_value=True),
         ):
             for name in scripts:
-                rel = get_daily_configs(name)[0]["config"]
+                rel = set_config._CONFIGS[name]().resources["game"]["config"]
                 path = utils_sub_config.get_sub_config_path(name, rel)
                 self.assertIsNotNone(path, f"{name} 路径推导失败")
                 # 路径中应包含相对路径的各段（不依赖具体分隔符）
@@ -524,7 +524,7 @@ class TestLoadConfig(unittest.TestCase):
         fake_config_yml = {"script_list": fake_script_list}
 
         for name in scripts:
-            rel = get_daily_configs(name)[0]["config"]
+            rel = set_config._CONFIGS[name]().resources["game"]["config"]
             ext = os.path.splitext(rel)[1].lower()
             fake_data = {"test_key": "test_value"}
             if ext == ".json":

@@ -34,6 +34,7 @@ class TestConfigRelPaths(unittest.TestCase):
 
     def test_registry_and_public_names_cover_all_scripts(self):
         expected = {
+            "ok-ap",
             "ok-ww",
             "BetterGI",
             "ok-ef",

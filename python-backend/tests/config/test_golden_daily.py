@@ -109,6 +109,7 @@ def _seed_files():
             },
         },
     }
+    stores["ok-ap"] = {}
     for files in stores.values():
         for config in files.values():
             config["untouched"] = {"value": 42}

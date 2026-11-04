@@ -23,6 +23,14 @@
 # 形态），节点级的 config 作为各段默认、只写一次，如 ok-ef / ok-ww。
 #
 # config 为该脚本的原生配置文件（相对脚本安装目录）。
+ok-ap:
+  config: data/apps/ok-ap/working/configs/DailyTask.json
+  task_pattern: "(.+)"
+  names:
+  - 家园每日
+  - 委托每日
+  - 每日收菜
+
 BetterGI:
   options:
   - display_name: 完成后操作

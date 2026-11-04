@@ -8,6 +8,8 @@
 # key 含 {Day} 时展开成 Monday…Sunday 七个字段（原神地脉花，一次写满一周）。
 # source.path 为资源文件，source.key 为多级键路径；原神暂保留 category 分类筛选。
 
+ok-ap: []
+
 ok-ww:
 - display_name: 每日任务
   class: Daily

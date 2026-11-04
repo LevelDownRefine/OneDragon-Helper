@@ -19,6 +19,8 @@
 # - 缺失字段以空值兜底（如某游戏无体力提取，省略 stamina_pattern）。
 
 parsers:
+  ok-ap:
+    log_path: 'data/apps/ok-ap/working/logs/ok-script.log'
   ok-ww:
     log_path: 'data/apps/ok-ww/working/logs/ok-script.log'
     # 鸣潮体力：TacetTask 反复记「info_set current_stamina <N>」（分隔符空格/冒号均可），

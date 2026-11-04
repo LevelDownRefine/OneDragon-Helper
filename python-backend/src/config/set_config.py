@@ -263,6 +263,16 @@ class GenshinConfig(ScriptConfig):
     display_name = "原神"
 
 
+# ---- 蓝色星原：旅谣 ----
+@register
+class AzurPromiliaConfig(ScriptConfig):
+    _script_name = "ok-ap"
+    display_name = "蓝色星原：旅谣"
+
+    def _daily_config_rel_path(self) -> str:
+        return "data/apps/ok-ap/working/configs/DailyTask.json"
+
+
 # ---- 终末地 Arknights: Endfield ----
 @register
 class EndfieldConfig(ScriptConfig):
