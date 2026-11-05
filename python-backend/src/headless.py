@@ -104,7 +104,7 @@ def _run_target(script_names: list[str], options) -> dict:
     }
 
 
-def _daily_task():
+def _daily_task(plan_id="default"):
     """计划任务只保存 CLI 入口与前端路径，每次触发读取最新配置。"""
     from src.service.daily_plan import WindowsDailyTask
     from src.utils.utils_shutdown import SHUTDOWN_UI_ARGS_ENV, SHUTDOWN_UI_ENV
@@ -115,9 +115,13 @@ def _daily_task():
     args = ["daily", "--shutdown-ui", frontend]
     if SHUTDOWN_UI_ARGS_ENV in os.environ:
         args.extend(["--shutdown-ui-args", os.environ[SHUTDOWN_UI_ARGS_ENV]])
+    if plan_id != "default":
+        args.extend(["--plan-id", plan_id])
     if not getattr(sys, "frozen", False):
         args = ["-m", "src.headless", *args]
-    return WindowsDailyTask(entry=(sys.executable, args))
+    if plan_id == "default":
+        return WindowsDailyTask(entry=(sys.executable, args))
+    return WindowsDailyTask(entry=(sys.executable, args), plan_id=plan_id)
 
 
 class HeadlessApi:
@@ -229,6 +233,38 @@ class HeadlessApi:
             task=_daily_task(),
         )
 
+    def plans_list(self):
+        from src.utils.utils_shutdown import shutdown_ui_supported
+
+        return {
+            **self.service.plans_list(task_factory=_daily_task),
+            "shutdown_supported": shutdown_ui_supported(),
+        }
+
+    def plans_save(self, id, name, enabled, target_time, run_options):
+        from src.service.daily_plan import DailyPlanOptions
+        from src.service.schedule import is_valid_target_time
+
+        if (
+            not isinstance(id, str)
+            or not isinstance(name, str)
+            or type(enabled) is not bool
+            or not is_valid_target_time(target_time)
+        ):
+            raise InvalidParams("计划字段无效")
+        options = _parse_run_options(run_options, require_shutdown_ui=enabled)
+        return self.service.plans_save(
+            id,
+            name,
+            DailyPlanOptions(enabled, target_time, options),
+            task_factory=_daily_task,
+        )
+
+    def plans_delete(self, id):
+        if not isinstance(id, str):
+            raise InvalidParams("计划 ID 无效")
+        return self.service.plans_delete(id, task_factory=_daily_task)
+
 
 def rpc_methods(service, *, persistent=True) -> dict:
     """显式开放助手方法，保留业务互斥和错误语义；协议和参数绑定交给库。"""
@@ -252,6 +288,9 @@ def rpc_methods(service, *, persistent=True) -> dict:
         "settings.view": api.settings_view,
         "startup.view": api.settings_view,
         "plan.view": api.plan_view,
+        "plans.list": api.plans_list,
+        "plans.save": api.plans_save,
+        "plans.delete": api.plans_delete,
         "plan.save": api.save_plan,
         "settings.startup_save": api.save_startup,
         "settings.run_save": api.save_run,
@@ -283,6 +322,7 @@ def rpc_methods(service, *, persistent=True) -> dict:
         "settings.view",
         "startup.view",
         "plan.view",
+        "plans.list",
         "run.saved",
         "run.view",
         "script.view",
@@ -421,6 +461,7 @@ def main(argv: list[str] | None = None) -> int:
         "run", help="从 stdin 读取一次运行配置，在独立进程中执行批量任务"
     )
     daily = commands.add_parser("daily", help="系统每日计划入口，读取独立计划配置")
+    daily.add_argument("--plan-id", default="default")
     daily.add_argument("--shutdown-ui", required=True)
     daily.add_argument("--shutdown-ui-args", default="[]")
     commands.add_parser("legacy", help="原助手 CLI 参数透传").add_argument(
@@ -484,7 +525,10 @@ def _run_command(args: argparse.Namespace) -> int:
 
                 os.environ[SHUTDOWN_UI_ENV] = args.shutdown_ui
                 os.environ[SHUTDOWN_UI_ARGS_ENV] = args.shutdown_ui_args
-                service.run_daily_plan()
+                if getattr(args, "plan_id", "default") == "default":
+                    service.run_daily_plan()
+                else:
+                    service.run_daily_plan(args.plan_id)
                 return 0
             if args.command == "run":
                 payload = _parse_json(sys.stdin.read())

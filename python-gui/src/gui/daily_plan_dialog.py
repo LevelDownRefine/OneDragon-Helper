@@ -5,6 +5,9 @@ from PySide6.QtWidgets import (
     QAbstractSpinBox,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
+    QListWidget,
+    QPushButton,
     QTimeEdit,
     QVBoxLayout,
 )
@@ -38,6 +41,8 @@ class DailyPlanDialog(FormDialogBase):
         plan: DailyPlanOptions,
         state: DailyTaskState,
         parent=None,
+        *,
+        name=None,
     ):
         super().__init__(parent)
         self.setWindowTitle("每日计划")
@@ -54,6 +59,13 @@ class DailyPlanDialog(FormDialogBase):
         hint.setFont(make_font(size=12))
         hint.setStyleSheet(f"color: {TEXT_MUTED}; background: transparent;")
         layout.addWidget(hint)
+        self.name_edit = None
+        if name is not None:
+            self.name_edit = QLineEdit(name, self)
+            self.name_edit.setPlaceholderText("计划名称")
+            self.name_edit.setAccessibleName("计划名称")
+            self.name_edit.setStyleSheet(self._LINE_EDIT_STYLE)
+            layout.addWidget(self.name_edit)
         row = QHBoxLayout()
         self.enabled_cb = self._make_checkbox("启用每日计划")
         self.enabled_cb.setChecked(plan.enabled)
@@ -106,3 +118,78 @@ class DailyPlanDialog(FormDialogBase):
         """保存失败时保留输入，允许继续修改或取消。"""
         self.error_label.setText(message)
         self.error_label.show()
+
+
+class DailyPlanListDialog(FormDialogBase):
+    """展示计划，操作由控制器执行。"""
+
+    addRequested = Signal()
+    editRequested = Signal(str)
+    copyRequested = Signal(str)
+    deleteRequested = Signal(str)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("计划任务")
+        self.setFixedWidth(520)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(24, 22, 24, 20)
+        title = QLabel("计划任务")
+        title.setFont(make_font(size=20, bold=True))
+        title.setStyleSheet(f"color: {TEXT}; background: transparent;")
+        layout.addWidget(title)
+        self.list_widget = QListWidget(self)
+        self.list_widget.setAccessibleName("计划列表")
+        layout.addWidget(self.list_widget)
+        self.error_label = QLabel(self)
+        self.error_label.setWordWrap(True)
+        self.error_label.setStyleSheet("color: #F5A7A7; background: transparent;")
+        layout.addWidget(self.error_label)
+        buttons = QHBoxLayout()
+        for text, callback in (
+            ("新增", self.addRequested.emit),
+            ("编辑", lambda: self._selected(self.editRequested)),
+            ("复制", lambda: self._selected(self.copyRequested)),
+            ("删除", lambda: self._selected(self.deleteRequested)),
+            ("关闭", self.accept),
+        ):
+            button = QPushButton(text, self)
+            button.clicked.connect(callback)
+            buttons.addWidget(button)
+        layout.addLayout(buttons)
+        self._ids = []
+
+    def set_plans(self, plans):
+        self._ids = []
+        self.list_widget.clear()
+        for item in plans:
+            plan = item["plan"]
+            status = "启用" if plan["enabled"] else "停用"
+            state = item["state"]
+            if item["state_error"]:
+                task_status = "读取失败"
+            elif state is None or not state["exists"]:
+                task_status = "未注册"
+            elif not state["enabled"]:
+                task_status = "系统任务已禁用"
+            elif (
+                not state["entry_matches"]
+                or state["target_time"] != plan["target_time"]
+            ):
+                task_status = "系统任务不一致"
+            else:
+                task_status = "系统任务正常"
+            self._ids.append(item["id"])
+            self.list_widget.addItem(
+                f"{item['name']}    每天 {plan['target_time']}    {status}    {task_status}"
+            )
+        if self._ids:
+            self.list_widget.setCurrentRow(0)
+
+    def _selected(self, signal):
+        row = self.list_widget.currentRow()
+        if 0 <= row < len(self._ids):
+            signal.emit(self._ids[row])
+
+    def show_error(self, message):
+        self.error_label.setText(message)

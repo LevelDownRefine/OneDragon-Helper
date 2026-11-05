@@ -13,9 +13,11 @@ import os
 import re
 import subprocess
 import sys
+import uuid
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta
+from pathlib import Path
 
 from ruamel.yaml.error import YAMLError
 
@@ -141,15 +143,22 @@ class WindowsDailyTask:
     """按安装目录和用户区分任务；更新同一个任务，关闭时删除。"""
 
     def __init__(
-        self, root_dir: str | None = None, *, entry: tuple[str, list[str]] | None = None
+        self,
+        root_dir: str | None = None,
+        *,
+        entry: tuple[str, list[str]] | None = None,
+        plan_id: str = "default",
     ):
         self.root_dir = os.path.abspath(root_dir or get_root_dir())
         self.entry = entry
+        self.plan_id = plan_id
         self._snapshot_taken = False
         self._previous_xml: str | None = None
         identity = os.path.normcase(self.root_dir) + "\0" + getpass.getuser()
         digest = hashlib.sha256(identity.encode("utf-8")).hexdigest()[:16]
         self.name = f"OneDragon-Helper-Daily-{digest}"
+        if plan_id != "default":
+            self.name += f"-{plan_id}"
 
     def read(self) -> DailyTaskState:
         """回读当前安装对应的系统任务；未注册返回缺省状态。"""
@@ -233,6 +242,8 @@ class WindowsDailyTask:
                 else:
                     program = sys.executable
                     args = ["--run-daily"]
+                    if self.plan_id != "default":
+                        args.extend(["--plan-id", self.plan_id])
                     if not getattr(sys, "frozen", False):
                         args = ["-m", "gui.launcher", *args]
                 action.Path = program
@@ -261,7 +272,10 @@ class WindowsDailyTask:
 
 
 def apply_daily_plan(
-    options: DailyPlanOptions, *, task: WindowsDailyTask | None = None
+    options: DailyPlanOptions,
+    *,
+    task: WindowsDailyTask | None = None,
+    name: str | None = None,
 ) -> None:
     """先更新系统任务再保存配置；写盘失败时恢复原计划。
 
@@ -289,6 +303,10 @@ def apply_daily_plan(
             saved_options.get("notify") if isinstance(saved_options, dict) else None,
         ),
     }
+    if name is not None:
+        data["daily_run"]["name"] = name
+    elif isinstance(daily_run, dict) and "name" in daily_run:
+        data["daily_run"]["name"] = daily_run["name"]
     # 授权码（仅本次填写时）：注册进系统凭据管理器，避免明文落盘 schedule.yml。
     auth = options.run_options.auth_code
     if auth:
@@ -340,9 +358,16 @@ def read_daily_task_state() -> DailyTaskState:
         return DailyTaskState()
 
 
-def run_daily_plan() -> None:
+def run_daily_plan(plan_id: str = "default") -> None:
     """按计划运行全部脚本，运行选项使用每日计划独立的 RunOptions。"""
-    plan = load_daily_plan()
+    if plan_id == "default":
+        plan = load_daily_plan()
+    else:
+        plans = _extra_plans(load_schedule())
+        if plan_id not in plans:
+            logger.warning("[daily] 计划不存在：%s", plan_id)
+            return
+        plan = load_daily_plan({"daily_run": plans[plan_id]})
     if not plan.enabled:
         logger.info("[daily] 每日计划已关闭，跳过此次触发")
         return
@@ -369,6 +394,16 @@ def run_daily_plan() -> None:
             "smtp_port": smtp_port,
         }
     # 计划任务用独立链文件，避免与手动运行的 today.yml 互相覆盖。
+    from updater.utils import FileLease, UpdateBusyError
+
+    try:
+        with FileLease(Path(get_root_dir()) / "config" / "daily-plan.lock", timeout=0):
+            _run_plan_chain(scripts, opts, smtp_config)
+    except UpdateBusyError:
+        logger.warning("[daily] 其他计划正在运行，跳过 %s", plan_id)
+
+
+def _run_plan_chain(scripts, opts, smtp_config):
     chain_service.schedule_run(
         scripts,
         "now",
@@ -383,4 +418,143 @@ def run_daily_plan() -> None:
         close_running=opts.close_running_enabled,
         rerun_enabled=opts.rerun_enabled,
         smtp_config=smtp_config,
+    )
+
+
+def _extra_plans(data):
+    value = data.get("daily_plans", {})
+    if not isinstance(value, dict):
+        raise ValueError("每日计划列表无效")
+    return value
+
+
+def plans_list(task_factory=None):
+    data = load_schedule()
+    factory = task_factory or (lambda plan_id: WindowsDailyTask(plan_id=plan_id))
+    default = data.get("daily_run", {})
+    if not isinstance(default, dict):
+        logger.warning("[daily] 每日计划配置无效")
+        default = {}
+    items = (
+        []
+        if default.get("deleted", False)
+        else [("default", default.get("name", "默认计划"), default)]
+    )
+    items.extend(
+        (key, value["name"], value) for key, value in _extra_plans(data).items()
+    )
+    result = []
+    for plan_id, name, block in items:
+        error = None
+        state = None
+        try:
+            state = asdict(factory(plan_id).read())
+        except OSError as exc:
+            error = str(exc)
+        result.append(
+            {
+                "id": plan_id,
+                "name": name,
+                "plan": asdict(load_daily_plan({"daily_run": block})),
+                "state": state,
+                "state_error": error,
+            }
+        )
+    return {"plans": result, "supported": sys.platform == "win32"}
+
+
+def plans_save(plan_id, name, options, task_factory=None):
+    if not isinstance(name, str) or not name.strip():
+        raise ValueError("计划名称不能为空")
+    creating = not plan_id
+    if creating:
+        plan_id = uuid.uuid4().hex
+    if plan_id != "default" and not re.fullmatch(r"[0-9a-f]{32}", plan_id):
+        raise ValueError("计划 ID 无效")
+    factory = task_factory or (lambda ident: WindowsDailyTask(plan_id=ident))
+    task = factory(plan_id)
+    if plan_id == "default":
+        apply_daily_plan(options, task=task, name=name.strip())
+        return plan_id
+    data = load_schedule()
+    plans = _extra_plans(data)
+    if not creating and plan_id not in plans:
+        raise ValueError("计划不存在")
+    old = plans.get(plan_id, {})
+    previous = load_daily_plan({"daily_run": old})
+    synced = not task.read().matches(options)
+    if synced:
+        task.sync(options)
+    saved = old.get("run_options", {})
+    plans[plan_id] = {
+        "name": name.strip(),
+        "enabled": options.enabled,
+        "target_time": options.target_time,
+        "run_options": _dump_run_options(options.run_options, saved.get("notify")),
+    }
+    data["daily_plans"] = plans
+    try:
+        save_schedule(data)
+    except (OSError, YAMLError):
+        if synced:
+            try:
+                task.restore(previous)
+            except OSError:
+                logger.exception("[daily] 保存失败后恢复系统任务也失败")
+        raise
+    if options.run_options.auth_code:
+        from src.log.notify_mail import register_credentials
+
+        try:
+            register_credentials(
+                options.run_options.email, options.run_options.auth_code
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.error("[daily] 授权码保存失败：%s", exc)
+    return plan_id
+
+
+def plans_delete(plan_id, task_factory=None):
+    if plan_id == "default":
+        data = load_schedule()
+        factory = task_factory or (lambda ident: WindowsDailyTask(plan_id=ident))
+        task = factory(plan_id)
+        previous = load_daily_plan(data)
+        task.read()
+        task.sync(DailyPlanOptions())
+        data["daily_run"] = {"enabled": False, "deleted": True}
+        try:
+            save_schedule(data)
+        except (OSError, YAMLError):
+            try:
+                task.restore(previous)
+            except OSError:
+                logger.exception("[daily] 删除失败后恢复系统任务也失败")
+            raise
+        return
+    data = load_schedule()
+    plans = _extra_plans(data)
+    if plan_id not in plans:
+        raise ValueError("计划不存在")
+    factory = task_factory or (lambda ident: WindowsDailyTask(plan_id=ident))
+    task = factory(plan_id)
+    previous = load_daily_plan({"daily_run": plans[plan_id]})
+    task.read()
+    task.sync(DailyPlanOptions())
+    del plans[plan_id]
+    try:
+        save_schedule(data)
+    except (OSError, YAMLError):
+        try:
+            task.restore(previous)
+        except OSError:
+            logger.exception("[daily] 删除失败后恢复系统任务也失败")
+        raise
+
+
+def any_plan_enabled(schedule=None):
+    data = load_schedule() if schedule is None else schedule
+    return load_daily_plan(data).enabled or any(
+        load_daily_plan({"daily_run": item}).enabled
+        for item in _extra_plans(data).values()
     )

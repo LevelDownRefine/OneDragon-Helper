@@ -318,11 +318,12 @@ class WorkflowTests(TestCase):
         options = DailyPlanOptions(enabled=True, target_time="06:00")
         dialog = Mock()
         dialog.daily_plan = options
-        dialog.isVisible.return_value = True
+        dialog.name_edit.text.return_value = "默认计划"
+        listing = Mock()
         changed = Mock()
         controller.changed.connect(changed)
 
-        def execute():
+        def execute_editor():
             save = dialog.saveRequested.connect.call_args.args[0]
             save()
             save()
@@ -331,33 +332,45 @@ class WorkflowTests(TestCase):
             self.transport.failed.emit(2, CliFailure(-32002, "registration failed"))
             dialog.show_error.assert_called_with("registration failed")
             dialog.accept.assert_not_called()
-            changed.assert_not_called()
             save()
             self.reply(None)
 
-        dialog.exec.side_effect = execute
-        with patch(
-            "gui.controllers.cli_daily_plan.DailyPlanDialog", return_value=dialog
+        dialog.exec.side_effect = execute_editor
+        listing.exec.side_effect = lambda: listing.editRequested.connect.call_args.args[
+            0
+        ]("default")
+        with (
+            patch(
+                "gui.controllers.cli_daily_plan.DailyPlanDialog", return_value=dialog
+            ),
+            patch(
+                "gui.controllers.cli_daily_plan.DailyPlanListDialog",
+                return_value=listing,
+            ),
         ):
             controller.edit()
             self.reply(
                 {
-                    "plan": asdict(DailyPlanOptions()),
-                    "state": None,
-                    "state_error": "access denied",
+                    "plans": [
+                        {
+                            "id": "default",
+                            "name": "默认计划",
+                            "plan": asdict(DailyPlanOptions()),
+                            "state": None,
+                            "state_error": "access denied",
+                        }
+                    ],
                     "supported": True,
                     "shutdown_supported": True,
                 }
             )
-        dialog.state_label.setText.assert_called_once_with(
-            "系统任务：读取失败（access denied）"
-        )
         self.assertEqual(
-            self.transport.requests[1:], [("plan.save", {"plan": asdict(options)})] * 2
+            self.transport.requests[1:3],
+            [("plans.save", {"id": "default", "name": "默认计划", **asdict(options)})]
+            * 2,
         )
         dialog.accept.assert_called_once()
         changed.assert_called_once()
-        self.assertEqual(controller.plan, options)
 
     def test_update_close_during_download_waits_for_cancelled_state(self):
         controller = CliUpdateController(self.session)

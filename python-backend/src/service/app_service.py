@@ -195,7 +195,7 @@ class AppService:
         schedule = load_schedule()
         return {
             "startup": asdict(load_startup_options(schedule)),
-            "daily_enabled": daily_plan.load_daily_plan(schedule).enabled,
+            "daily_enabled": daily_plan.any_plan_enabled(schedule),
             "run_options": asdict(load_run_options(schedule)),
         }
 
@@ -422,8 +422,19 @@ class AppService:
     def read_daily_task_state(self) -> daily_plan.DailyTaskState:
         return daily_plan.read_daily_task_state()
 
-    def run_daily_plan(self) -> None:
-        return daily_plan.run_daily_plan()
+    def plans_list(self, task_factory=None):
+        return daily_plan.plans_list(task_factory)
+
+    def plans_save(self, id, name, options, task_factory=None):
+        return daily_plan.plans_save(id, name, options, task_factory)
+
+    def plans_delete(self, id, task_factory=None):
+        return daily_plan.plans_delete(id, task_factory)
+
+    def run_daily_plan(self, plan_id="default") -> None:
+        if plan_id == "default":
+            return daily_plan.run_daily_plan()
+        return daily_plan.run_daily_plan(plan_id)
 
     def collect_invalid_scripts(self, script_list: list) -> list:
         return collect_invalid_script_messages(script_list)

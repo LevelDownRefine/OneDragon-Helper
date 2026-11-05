@@ -203,7 +203,7 @@ impl App {
                     | "script.launch_target"
                     | "run.view"
                     | "settings.view"
-                    | "plan.view"
+                    | "plans.list"
                     | "update.view"
                     | "startup.view"
                     | "run.saved"
@@ -326,7 +326,7 @@ impl App {
         let result = match reply.result {
             Ok(value) => value,
             Err(failure) => {
-                if reply.method.starts_with("settings.") || reply.method.starts_with("plan.") {
+                if reply.method.starts_with("settings.") || reply.method.starts_with("plans.") {
                     let reload = failure.refresh_required
                         || failure.code == "transport_failed"
                         || self.write_confirmed;
@@ -456,7 +456,10 @@ impl App {
             "backup.start" | "restore.start" | "job.poll"
         ) {
             self.receive_backup(&reply.method, result);
-        } else if matches!(reply.method.as_str(), "plan.view" | "plan.save") {
+        } else if matches!(
+            reply.method.as_str(),
+            "plans.list" | "plans.save" | "plans.delete"
+        ) {
             self.receive_plan(&reply.method, result);
         } else if matches!(
             reply.method.as_str(),

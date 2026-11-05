@@ -412,6 +412,15 @@ class TestWindowsDailyTask(unittest.TestCase):
             [self.task.name, self.task.name],
         )
 
+    def test_additional_task_passes_its_plan_id_to_legacy_entry(self):
+        task = WindowsDailyTask(os.path.abspath("中文 project"), plan_id="a" * 32)
+        task.sync(DailyPlanOptions(True))
+        action = self.definition.Actions.Create.return_value
+        self.assertEqual(
+            action.Arguments, f"-m gui.launcher --run-daily --plan-id {'a' * 32}"
+        )
+        self.assertNotEqual(task.name, self.task.name)
+
     def test_packaged_executable_uses_direct_entry(self):
         with (
             patch("sys.frozen", True, create=True),

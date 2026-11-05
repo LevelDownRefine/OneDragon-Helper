@@ -115,6 +115,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="每日计划入口：按当前保存的脚本勾选和运行选项立即运行，不进入 GUI",
     )
+    parser.add_argument("--plan-id", default="default", help="每日计划 ID")
     parser.add_argument(
         "--enable",
         type=str,
@@ -560,6 +561,9 @@ def run_cli(args) -> int | None:
     if args.schedule_run is not None:
         return _run_scheduled(args)
     if args.run_daily:
-        AppService().run_daily_plan()
+        if args.plan_id == "default":
+            AppService().run_daily_plan()
+        else:
+            AppService().run_daily_plan(args.plan_id)
         return 0
     return None

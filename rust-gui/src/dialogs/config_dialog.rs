@@ -45,9 +45,8 @@ impl SettingsDialog {
         }
     }
 
-    pub fn set_daily(&mut self, mut data: DailyView) {
-        data.plan.run_options.form_defaults();
-        self.data.daily_enabled = data.plan.enabled;
+    pub fn set_daily(&mut self, data: DailyView) {
+        self.data.daily_enabled = data.plans.iter().any(|item| item.plan.enabled);
         self.daily_draft = Some(data);
         self.error = None;
         self.needs_reload = false;
@@ -89,7 +88,11 @@ impl SettingsDialog {
                 crate::dialogs::common::dialog_body(ui, |ui| {
                     ui.add_enabled_ui(!blocked && !self.needs_reload, |ui| {
                         if let Some(draft) = &mut self.daily_draft {
-                            draft.show(ui);
+                            if let Some(request) =
+                                draft.show(ui, self.data.shutdown_supported, &self.data.run_options)
+                            {
+                                action = Some(SettingsAction::Request(request));
+                            }
                         } else if let Some(draft) = &mut self.run_draft {
                             draft.show(ui, self.data.shutdown_supported);
                         } else {
@@ -148,7 +151,7 @@ impl SettingsDialog {
                             .clicked()
                             {
                                 action = Some(SettingsAction::Request(Request {
-                                    method: "plan.view".into(),
+                                    method: "plans.list".into(),
                                     params: json!({}),
                                 }));
                             }
@@ -199,16 +202,13 @@ impl SettingsDialog {
                                 && self
                                     .daily_draft
                                     .as_ref()
-                                    .is_none_or(|draft| draft.supported),
+                                    .is_none_or(|draft| draft.supported && draft.editing.is_some()),
                             crate::dialogs::common::primary_button("保存"),
                         )
                         .clicked()
                     {
                         if let Some(draft) = &self.daily_draft {
-                            action = Some(SettingsAction::Request(Request {
-                                method: "plan.save".into(),
-                                params: json!({"plan":draft.plan}),
-                            }));
+                            action = draft.save_request().map(SettingsAction::Request);
                             return;
                         }
                         let (method, options) = if let Some(draft) = &self.run_draft {
@@ -237,7 +237,7 @@ impl SettingsDialog {
                         {
                             action = Some(SettingsAction::Request(Request {
                                 method: if self.daily_draft.is_some() {
-                                    "plan.view"
+                                    "plans.list"
                                 } else {
                                     "settings.view"
                                 }
@@ -250,7 +250,11 @@ impl SettingsDialog {
             });
         if !blocked && (back || close) {
             if self.daily_draft.is_some() && !self.needs_reload {
-                self.daily_draft = None;
+                if self.daily_draft.as_ref().unwrap().editing.is_some() {
+                    self.daily_draft.as_mut().unwrap().editing = None;
+                } else {
+                    self.daily_draft = None;
+                }
                 self.error = None;
             } else if self.run_draft.is_some() && !self.needs_reload {
                 self.run_draft = None;

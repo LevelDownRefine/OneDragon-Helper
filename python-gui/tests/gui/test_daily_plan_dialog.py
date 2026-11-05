@@ -6,12 +6,14 @@ from unittest.mock import Mock, patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from dataclasses import asdict  # noqa: E402
+
 from PySide6.QtCore import Qt, QTime  # noqa: E402
 from PySide6.QtTest import QTest  # noqa: E402
 from PySide6.QtWidgets import QApplication, QPushButton  # noqa: E402
 
 from gui.controllers.daily_plan import DailyPlanController  # noqa: E402
-from gui.daily_plan_dialog import DailyPlanDialog  # noqa: E402
+from gui.daily_plan_dialog import DailyPlanDialog, DailyPlanListDialog  # noqa: E402
 from src.service.daily_plan import DailyPlanOptions, DailyTaskState  # noqa: E402
 from src.service.schedule import RunOptions  # noqa: E402
 
@@ -30,14 +32,38 @@ class TestDailyPlanDialog(unittest.TestCase):
         self.controller = DailyPlanController(self.service, self.toast)
 
     def _run(self, action):
-        dialog = DailyPlanDialog(
-            self.plan,
-            self.service.read_daily_task_state(),
+        self.service.plans_list.side_effect = lambda: {
+            "plans": [
+                {
+                    "id": "default",
+                    "name": "默认计划",
+                    "plan": asdict(self.service.load_daily_plan()),
+                    "state": asdict(self.service.read_daily_task_state()),
+                    "state_error": None,
+                }
+            ],
+            "supported": True,
+        }
+        self.service.plans_save.side_effect = lambda _id, _name, options: (
+            self.service.apply_daily_plan(options)
         )
+        dialog = DailyPlanDialog(
+            self.plan, self.service.read_daily_task_state(), name="默认计划"
+        )
+        listing = DailyPlanListDialog()
         self.addCleanup(dialog.deleteLater)
         self.addCleanup(dialog.close)
+        self.addCleanup(listing.deleteLater)
         with (
             patch("gui.controllers.daily_plan.DailyPlanDialog", return_value=dialog),
+            patch(
+                "gui.controllers.daily_plan.DailyPlanListDialog", return_value=listing
+            ),
+            patch.object(
+                listing,
+                "exec",
+                side_effect=lambda: listing.editRequested.emit("default"),
+            ),
             patch.object(dialog, "exec", side_effect=lambda: action(dialog)),
         ):
             self.controller.edit()
@@ -105,8 +131,7 @@ class TestDailyPlanDialog(unittest.TestCase):
             button = next(
                 b for b in dialog.findChildren(QPushButton) if b.text() == "保存"
             )
-            with self.assertLogs("gui.controllers.daily_plan", level="ERROR"):
-                button.click()
+            button.click()
             self.assertTrue(dialog.isVisible())
             self.assertIn("denied", dialog.error_label.text())
             self.assertEqual(dialog.daily_plan.target_time, "09:45")

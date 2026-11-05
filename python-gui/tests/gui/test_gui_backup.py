@@ -8,7 +8,6 @@ from unittest.mock import MagicMock, patch
 from PySide6.QtWidgets import QDialog
 
 from gui.controllers.backup import BackupController
-from src.service.daily_plan import DailyPlanOptions
 from src.service.schedule import StartupOptions
 
 
@@ -16,9 +15,15 @@ class TestOpenConfig(unittest.TestCase):
     def setUp(self):
         self.service = MagicMock()
         self.service.load_startup_options.return_value = StartupOptions()
-        self.service.load_daily_plan.return_value = DailyPlanOptions()
+        self.service.settings_view.return_value = {"daily_enabled": False}
         self.toast = MagicMock()
         self.ctrl = BackupController(app_service=self.service, toast=self.toast)
+
+    @patch("gui.controllers.backup.ConfigDialog")
+    def test_other_enabled_plan_blocks_auto_start(self, dialog_class):
+        self.service.settings_view.return_value = {"daily_enabled": True}
+        self.ctrl.openConfig()
+        self.assertTrue(dialog_class.call_args.kwargs["daily_plan"].enabled)
 
     @patch("gui.controllers.backup.ConfigDialog")
     def test_cancel_does_not_save_any_settings(self, dialog_class):
