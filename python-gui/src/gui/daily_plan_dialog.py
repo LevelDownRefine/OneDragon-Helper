@@ -1,6 +1,6 @@
 """每日计划表单：时间、脚本与开关统一编辑，保存由控制器处理。"""
 
-from PySide6.QtCore import QTime, Signal
+from PySide6.QtCore import Qt, QTime, Signal
 from PySide6.QtWidgets import (
     QAbstractSpinBox,
     QHBoxLayout,
@@ -13,6 +13,11 @@ from PySide6.QtWidgets import (
 )
 
 from gui.dialogs import (
+    BG_HOVER,
+    BG_INPUT,
+    BLUE,
+    BORDER,
+    DARK_BLUE,
     TEXT,
     TEXT_MUTED,
     FormDialogBase,
@@ -134,18 +139,36 @@ class DailyPlanListDialog(FormDialogBase):
         self.setFixedWidth(520)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 22, 24, 20)
+        layout.setSpacing(16)
         title = QLabel("计划任务")
         title.setFont(make_font(size=20, bold=True))
         title.setStyleSheet(f"color: {TEXT}; background: transparent;")
         layout.addWidget(title)
         self.list_widget = QListWidget(self)
         self.list_widget.setAccessibleName("计划列表")
+        self.list_widget.setFont(make_font(size=12))
+        self.list_widget.setMinimumHeight(180)
+        self.list_widget.setStyleSheet(
+            f"""
+            QListWidget {{
+                background: {BG_INPUT}; color: {TEXT};
+                border: 1px solid {BORDER}; border-radius: 8px;
+                padding: 5px; outline: none;
+            }}
+            QListWidget::item {{ padding: 10px 12px; border-radius: 6px; }}
+            QListWidget::item:hover {{ background: {BG_HOVER}; }}
+            QListWidget::item:selected {{ background: {DARK_BLUE}; color: {TEXT}; }}
+            QListWidget:focus {{ border-color: {BLUE}; }}
+            """
+        )
         layout.addWidget(self.list_widget)
         self.error_label = QLabel(self)
         self.error_label.setWordWrap(True)
         self.error_label.setStyleSheet("color: #F5A7A7; background: transparent;")
+        self.error_label.hide()
         layout.addWidget(self.error_label)
         buttons = QHBoxLayout()
+        buttons.setSpacing(8)
         for text, callback in (
             ("新增", self.addRequested.emit),
             ("编辑", lambda: self._selected(self.editRequested)),
@@ -154,6 +177,13 @@ class DailyPlanListDialog(FormDialogBase):
             ("关闭", self.accept),
         ):
             button = QPushButton(text, self)
+            button.setFixedHeight(28)
+            button.setFont(make_font(size=11, bold=text == "新增"))
+            button.setCursor(Qt.PointingHandCursor)
+            button.setAutoDefault(False)
+            button.setStyleSheet(
+                self._PRIMARY_BTN_STYLE if text == "新增" else self._SECONDARY_BTN_STYLE
+            )
             button.clicked.connect(callback)
             buttons.addWidget(button)
         layout.addLayout(buttons)
@@ -193,3 +223,4 @@ class DailyPlanListDialog(FormDialogBase):
 
     def show_error(self, message):
         self.error_label.setText(message)
+        self.error_label.setVisible(bool(message))
