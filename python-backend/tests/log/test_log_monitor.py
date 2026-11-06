@@ -73,7 +73,7 @@ class TestLogParser(unittest.TestCase):
             ),
             (
                 OkWwLogParser,
-                "INFO claim daily reward via  coordinate",
+                "INFO current daily progress 180",
                 "INFO TaskExecutor:Successfully Executed Task",
             ),
             (M7ALogParser, "游戏终止：StarRail\n每日实训已完成", "游戏终止：StarRail"),
@@ -424,7 +424,7 @@ class TestParseLogsRerunList(unittest.TestCase):
             self.assertFalse(res["daily_done"])
         finally:
             os.unlink(path)
-        # 命中「claim daily reward via  coordinate」标记 → 当日做完。
+        # 领取动作本身不代表日常完成。
         with tempfile.NamedTemporaryFile(
             "w", suffix=".log", delete=False, encoding="utf-8"
         ) as tf:
@@ -433,7 +433,7 @@ class TestParseLogsRerunList(unittest.TestCase):
         try:
             p.get_log_path = lambda sp="": Path(path)  # type: ignore[method-assign]
             res = p.parse("")
-            self.assertTrue(res["daily_done"])
+            self.assertFalse(res["daily_done"])
         finally:
             os.unlink(path)
         # 命中「current daily progress 180」（每日进度满分）兜底标记 → 当日做完。
@@ -448,6 +448,16 @@ class TestParseLogsRerunList(unittest.TestCase):
             self.assertTrue(res["daily_done"])
         finally:
             os.unlink(path)
+
+    def test_ok_ww_chinese_daily_markers(self):
+        parser = OkWwLogParser()
+        self.assertTrue(
+            parser.parse_daily("INFO TaskExecutor DailyTask:每日任务已完成")
+        )
+        self.assertFalse(
+            parser.parse_daily("INFO TaskExecutor DailyTask:通过坐标领取每日奖励")
+        )
+        self.assertFalse(parser.parse_daily("INFO TaskExecutor DailyTask:每日任务开始"))
 
     def test_parse_logs_report_never_shows_unknown_daily(self):
         """聚合方仅消费定稿后的 daily_done，不得自行产出「未知」。"""
@@ -724,7 +734,7 @@ class TestFourFieldExtraction(unittest.TestCase):
         content = (
             "info_set current_stamina 240\n"
             "info_set back_up_stamina 79\n"
-            "DailyTask:claim daily reward via  coordinate\n"
+            "DailyTask:info_set current daily progress 180\n"
             "TaskExecutor:Successfully Executed Task, Exiting Game and App!\n"
             "ERROR CombatCheck:target_enemy failed, try recheck\n"  # 噪声：战斗复检
             "ERROR TaskExecutor Cantarella:clicked liberation but no effect\n"
@@ -983,7 +993,7 @@ class TestFourFieldExtraction(unittest.TestCase):
         ) as tf:
             tf.write(
                 "info_set current_stamina 100\n"
-                "DailyTask:claim daily reward via  coordinate\n"
+                "DailyTask:info_set current daily progress 180\n"
                 "Successfully Executed Task, Exiting Game and App!"
             )
             path = tf.name
@@ -1184,10 +1194,12 @@ class TestLogAnalysisConfigDriven(unittest.TestCase):
         oww = OkWwLogParser()
         self.assertNotIn("log_pattern", collect_log._keywords_for("ok-ww"))
         self.assertEqual(oww.error_markers, ("ERROR",))
-        # 双空格领奖标记必须原样保留（成败判据即此标记）。
         self.assertEqual(
             oww.daily_success_marker,
-            ("claim daily reward via  coordinate", "current daily progress 180"),
+            (
+                "current daily progress 180",
+                "每日任务已完成",
+            ),
         )
 
         bgi = BGILogParser()
