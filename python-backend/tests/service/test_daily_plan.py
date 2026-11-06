@@ -338,6 +338,12 @@ class TestWindowsDailyTask(unittest.TestCase):
         self.addCleanup(patcher.stop)
         self.task = WindowsDailyTask(os.path.abspath("中文 project"))
 
+    def test_constructor_accepts_positional_entry_and_plan_id(self):
+        entry = ("python.exe", ["daily"])
+        task = WindowsDailyTask("project", entry, "a" * 32)
+        self.assertEqual(task.entry, entry)
+        self.assertTrue(task.name.endswith("-" + "a" * 32))
+
     def _foreign_task(self) -> Mock:
         foreign = Mock()
         foreign.Name = "UserDailyTask"

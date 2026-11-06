@@ -145,7 +145,6 @@ class WindowsDailyTask:
     def __init__(
         self,
         root_dir: str | None = None,
-        *,
         entry: tuple[str, list[str]] | None = None,
         plan_id: str = "default",
     ):
