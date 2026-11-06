@@ -166,6 +166,7 @@ class WindowsDailyTask:
         self.plan_id = plan_id
         self._snapshot_taken = False
         self._previous_xml: str | None = None
+        self._previous_enabled = False
         identity = os.path.normcase(self.root_dir) + "\0" + getpass.getuser()
         digest = hashlib.sha256(identity.encode("utf-8")).hexdigest()[:16]
         self.name = f"OneDragon-Helper-Daily-{digest}"
@@ -174,18 +175,19 @@ class WindowsDailyTask:
 
     def read(self) -> DailyTaskState:
         """回读当前安装对应的系统任务；未注册返回缺省状态。"""
+        self._snapshot_taken = False
+        self._previous_xml = None
         with _task_service() as service:
             folder = task = actions = action = None
             try:
                 folder = service.GetFolder("\\")
-                self._snapshot_taken = True
-                self._previous_xml = None
                 # GetTasks(1) 与 sync 同源，含隐藏任务，口径一致。
                 for task in folder.GetTasks(1):
                     if task.Name == self.name:
                         entry_matches = True
+                        self._previous_xml = str(task.Xml)
+                        self._previous_enabled = bool(task.Enabled)
                         if self.entry is not None:
-                            self._previous_xml = str(task.Xml)
                             actions = task.Definition.Actions
                             entry_matches = actions.Count == 1
                             if entry_matches:
@@ -198,9 +200,12 @@ class WindowsDailyTask:
                                     and os.path.normcase(str(action.WorkingDirectory))
                                     == os.path.normcase(self.working_directory)
                                 )
-                        return DailyTaskState(
+                        state = DailyTaskState(
                             True, bool(task.Enabled), _trigger_time(task), entry_matches
                         )
+                        self._snapshot_taken = True
+                        return state
+                self._snapshot_taken = True
                 return DailyTaskState()
             finally:
                 # COM 包装对象须先释放，之后才能 CoUninitialize。
@@ -266,21 +271,22 @@ class WindowsDailyTask:
                 # COM 包装对象须先释放，之后才能 CoUninitialize。
                 action = trigger = settings = definition = folder = service = None
 
-    def restore(self, previous: DailyPlanOptions) -> None:
-        """迁移入口失败时恢复原 XML，保留旧任务的入口及其他实际设置。"""
-        if self.entry is None:
-            self.sync(previous)
-            return
+    def restore(self) -> None:
+        """恢复读取时的系统任务，包括其实际启用状态。"""
         assert self._snapshot_taken, "恢复系统任务前须读取原状态"
         if self._previous_xml is None:
             self.sync(DailyPlanOptions(enabled=False))
             return
         with _task_service() as service:
             folder = service.GetFolder("\\")
+            restored = None
             try:
-                folder.RegisterTask(self.name, self._previous_xml, 6, "", "", 3)
+                restored = folder.RegisterTask(
+                    self.name, self._previous_xml, 6, "", "", 3
+                )
+                restored.Enabled = self._previous_enabled
             finally:
-                folder = service = None
+                restored = folder = service = None
 
 
 def apply_daily_plan(
@@ -296,7 +302,6 @@ def apply_daily_plan(
     """
     assert isinstance(options, DailyPlanOptions)
     data = load_schedule()
-    previous = load_daily_plan(data)
     task = WindowsDailyTask() if task is None else task
     synced = not task.read().matches(options)
     if synced:
@@ -338,7 +343,7 @@ def apply_daily_plan(
     except (OSError, YAMLError):
         try:
             if synced:
-                task.restore(previous)
+                task.restore()
         except OSError:
             logger.exception("[daily] 保存失败后恢复系统任务也失败，请重新设置每日计划")
         raise
@@ -512,7 +517,6 @@ def plans_save(plan_id, name, options, task_factory=None):
     if not creating and plan_id not in plans:
         raise ValueError("计划不存在")
     old = plans.get(plan_id, {})
-    previous = load_daily_plan({"daily_run": old})
     synced = not task.read().matches(options)
     if synced:
         task.sync(options)
@@ -530,7 +534,7 @@ def plans_save(plan_id, name, options, task_factory=None):
     except (OSError, YAMLError):
         if synced:
             try:
-                task.restore(previous)
+                task.restore()
             except OSError:
                 logger.exception("[daily] 保存失败后恢复系统任务也失败")
         raise
@@ -551,7 +555,6 @@ def plans_delete(plan_id, task_factory=None):
         data = load_schedule()
         factory = task_factory or (lambda ident: WindowsDailyTask(plan_id=ident))
         task = factory(plan_id)
-        previous = load_daily_plan(data)
         task.read()
         task.sync(DailyPlanOptions())
         data["daily_run"] = {"enabled": False, "deleted": True}
@@ -559,7 +562,7 @@ def plans_delete(plan_id, task_factory=None):
             save_schedule(data)
         except (OSError, YAMLError):
             try:
-                task.restore(previous)
+                task.restore()
             except OSError:
                 logger.exception("[daily] 删除失败后恢复系统任务也失败")
             raise
@@ -570,7 +573,6 @@ def plans_delete(plan_id, task_factory=None):
         raise ValueError("计划不存在")
     factory = task_factory or (lambda ident: WindowsDailyTask(plan_id=ident))
     task = factory(plan_id)
-    previous = load_daily_plan({"daily_run": plans[plan_id]})
     task.read()
     task.sync(DailyPlanOptions())
     del plans[plan_id]
@@ -578,7 +580,7 @@ def plans_delete(plan_id, task_factory=None):
         save_schedule(data)
     except (OSError, YAMLError):
         try:
-            task.restore(previous)
+            task.restore()
         except OSError:
             logger.exception("[daily] 删除失败后恢复系统任务也失败")
         raise

@@ -26,6 +26,15 @@ pub struct TaskState {
     entry_matches: bool,
 }
 
+impl TaskState {
+    fn matches(&self, plan: &DailyPlan) -> bool {
+        if !plan.enabled {
+            return !self.exists;
+        }
+        self.exists && self.enabled && self.entry_matches && self.target_time == plan.target_time
+    }
+}
+
 #[derive(Deserialize)]
 pub struct PlanEntry {
     pub id: String,
@@ -45,6 +54,19 @@ pub struct DailyView {
     pub editing: Option<PlanEntry>,
     #[serde(skip)]
     pub delete_id: Option<String>,
+}
+
+fn missing_script_checkbox(
+    ui: &mut egui::Ui,
+    selected: &mut Vec<String>,
+    id: &str,
+) -> egui::Response {
+    let mut checked = true;
+    let response = ui.checkbox(&mut checked, format!("未找到：{id}"));
+    if response.changed() && !checked {
+        selected.retain(|selected_id| selected_id != id);
+    }
+    response
 }
 
 impl DailyView {
@@ -120,11 +142,13 @@ impl DailyView {
                             }
                         }
                     }
-                    if selected
+                    let missing: Vec<_> = selected
                         .iter()
-                        .any(|id| !self.scripts.iter().any(|script| &script.id == id))
-                    {
-                        ui.colored_label(theme::MUTED, "部分已选脚本当前不可用，保存时会保留。 ");
+                        .filter(|id| !self.scripts.iter().any(|script| &script.id == *id))
+                        .cloned()
+                        .collect();
+                    for id in missing {
+                        missing_script_checkbox(ui, selected, &id);
                     }
                     if selected.is_empty() {
                         ui.colored_label(theme::MUTED, "未选择脚本，此计划到时间时不会运行。");
@@ -196,11 +220,7 @@ impl DailyView {
                 if let Some(error) = &item.state_error {
                     ui.colored_label(egui::Color32::LIGHT_RED, error);
                 } else if let Some(state) = &item.state
-                    && item.plan.enabled
-                    && (!state.exists
-                        || !state.enabled
-                        || !state.entry_matches
-                        || state.target_time != item.plan.target_time)
+                    && !state.matches(&item.plan)
                 {
                     ui.colored_label(
                         egui::Color32::LIGHT_RED,
@@ -235,6 +255,84 @@ impl DailyView {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn disabled_plan_requires_absent_system_task() {
+        let plan: DailyPlan = serde_json::from_value(json!({
+            "enabled": false, "target_time": "04:10", "run_options": {
+                "shutdown_enabled": false, "shutdown_delay": 0, "mute_enabled": false,
+                "unmute_enabled": false, "close_running_enabled": false,
+                "rerun_enabled": false, "notify_enabled": false, "email": "",
+                "smtp_host": "", "smtp_port": "", "auth_code": ""
+            }
+        }))
+        .unwrap();
+        let mut state = TaskState {
+            exists: false,
+            enabled: false,
+            target_time: String::new(),
+            entry_matches: true,
+        };
+        assert!(state.matches(&plan));
+        state.exists = true;
+        assert!(!state.matches(&plan));
+        state.enabled = true;
+        assert!(!state.matches(&plan));
+        let enabled = DailyPlan {
+            enabled: true,
+            ..plan
+        };
+        assert!(!state.matches(&enabled));
+        state.target_time = "04:10".into();
+        assert!(state.matches(&enabled));
+        state.entry_matches = false;
+        assert!(!state.matches(&enabled));
+    }
+
+    #[test]
+    fn missing_script_can_be_removed_without_changing_other_selections() {
+        let ctx = egui::Context::default();
+        let mut selected = vec![
+            "available".to_owned(),
+            "missing".to_owned(),
+            "other".to_owned(),
+        ];
+        let position = std::cell::Cell::new(egui::Pos2::ZERO);
+        let mut frame = |events: Vec<egui::Event>| {
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    events,
+                    ..Default::default()
+                },
+                |ui| {
+                    position.set(
+                        missing_script_checkbox(ui, &mut selected, "missing")
+                            .rect
+                            .center(),
+                    );
+                },
+            );
+            output.textures_delta.clear();
+        };
+        frame(vec![]);
+        let pos = position.get();
+        frame(vec![
+            egui::Event::PointerMoved(pos),
+            egui::Event::PointerButton {
+                pos,
+                button: egui::PointerButton::Primary,
+                pressed: true,
+                modifiers: Default::default(),
+            },
+        ]);
+        frame(vec![egui::Event::PointerButton {
+            pos,
+            button: egui::PointerButton::Primary,
+            pressed: false,
+            modifiers: Default::default(),
+        }]);
+        assert_eq!(selected, ["available", "other"]);
+    }
 
     #[test]
     fn saves_selection_and_preserves_all_scripts_default() {

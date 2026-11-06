@@ -285,6 +285,8 @@ class DailyPlanListDialog(FormDialogBase):
             state = item["state"]
             if item["state_error"]:
                 task_status = "读取失败"
+            elif not plan["enabled"] and state is not None and state["exists"]:
+                task_status = "系统任务不一致"
             elif state is None or not state["exists"]:
                 task_status = "未注册"
             elif not state["enabled"]:

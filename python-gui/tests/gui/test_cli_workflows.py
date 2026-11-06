@@ -372,6 +372,48 @@ class WorkflowTests(TestCase):
         dialog.accept.assert_called_once()
         changed.assert_called_once()
 
+    def test_daily_plan_delete_protects_session_until_ack_and_blocks_duplicates(self):
+        controller = CliDailyPlanController(self.session, Mock())
+        listing = Mock()
+        changed = Mock()
+        controller.changed.connect(changed)
+
+        def execute_listing():
+            delete = listing.deleteRequested.connect.call_args.args[0]
+            delete("default")
+            self.assertTrue(self.session.busy)
+            self.assertTrue(self.transport.protected)
+            listing.set_pending.assert_called_with(True)
+            delete("default")
+            self.assertEqual(len(self.transport.requests), 2)
+            self.transport.failed.emit(2, CliFailure(-32002, "delete failed"))
+            self.assertFalse(self.session.busy)
+            listing.show_error.assert_called_with("delete failed")
+            delete("default")
+            self.reply(None)
+            self.assertFalse(self.session.busy)
+            listing.set_pending.assert_called_with(False)
+
+        listing.exec.side_effect = execute_listing
+        with (
+            patch(
+                "gui.controllers.cli_daily_plan.DailyPlanListDialog",
+                return_value=listing,
+            ),
+            patch(
+                "gui.controllers.cli_daily_plan.QMessageBox.question",
+                return_value=QMessageBox.Yes,
+            ),
+        ):
+            controller.edit()
+            self.reply(
+                {"plans": [{"id": "default", "name": "默认计划"}], "scripts": []}
+            )
+        self.assertEqual(
+            self.transport.requests[1:3], [("plans.delete", {"id": "default"})] * 2
+        )
+        changed.assert_called_once()
+
     def test_update_close_during_download_waits_for_cancelled_state(self):
         controller = CliUpdateController(self.session)
         controller._dialog = Mock()

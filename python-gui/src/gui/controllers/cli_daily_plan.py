@@ -118,7 +118,13 @@ class CliDailyPlanController(QObject):
                 editor.saveRequested.connect(save)
                 editor.exec()
 
+            deleting = False
+
             def delete(plan_id):
+                nonlocal deleting
+                if deleting or self._session.busy:
+                    listing.show_error("已有后台操作，请稍候")
+                    return
                 item = plans[plan_id]
                 if (
                     QMessageBox.question(
@@ -128,11 +134,28 @@ class CliDailyPlanController(QObject):
                 ):
                     return
 
+                if not self._session.hold():
+                    listing.show_error("已有后台操作，请稍候")
+                    return
+                deleting = True
+                listing.set_pending(True)
+
+                def rejected(failure):
+                    nonlocal deleting
+                    deleting = False
+                    listing.set_pending(False)
+                    self._session.release()
+                    error(failure)
+
                 def deleted(_value):
+                    nonlocal deleting
+                    deleting = False
+                    listing.set_pending(False)
+                    self._session.release()
                     self.changed.emit()
                     refresh()
 
-                self._session.call("plans.delete", {"id": plan_id}, deleted, error)
+                self._session.call("plans.delete", {"id": plan_id}, deleted, rejected)
 
             listing.addRequested.connect(lambda: edit_one())
             listing.editRequested.connect(edit_one)
