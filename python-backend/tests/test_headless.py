@@ -1487,6 +1487,26 @@ class ProtocolValidationTests(unittest.TestCase):
 
 
 class HeadlessEntryTests(unittest.TestCase):
+    def test_daily_without_standard_streams_or_console_reaches_entry(self):
+        import io
+
+        console = io.StringIO()
+        with (
+            patch("sys.stdin", None),
+            patch("sys.stdout", None),
+            patch("sys.stderr", None),
+            patch("src.headless.os.name", "nt"),
+            patch(
+                "src.headless.open", side_effect=[OSError("no console"), console]
+            ) as f,
+            patch("src.headless._run_command", return_value=0) as entry,
+        ):
+            result = main(["daily", "--shutdown-ui", "ui.exe", "--plan-id", "test"])
+        self.assertEqual(result, 0)
+        self.assertEqual(entry.call_args.args[0].plan_id, "test")
+        self.assertEqual(f.call_args_list[0].args[0], "CONOUT$")
+        self.assertEqual(f.call_args_list[1].args[0], os.devnull)
+
     def setUp(self):
         self.root = Path(self.enterContext(tempfile.TemporaryDirectory()))
         self.fixture = HeadlessFixture(self.root)

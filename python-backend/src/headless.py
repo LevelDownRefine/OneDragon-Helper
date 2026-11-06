@@ -5,7 +5,13 @@ import json
 import logging
 import os
 import sys
-from contextlib import contextmanager, nullcontext, redirect_stderr, redirect_stdout
+from contextlib import (
+    ExitStack,
+    contextmanager,
+    nullcontext,
+    redirect_stderr,
+    redirect_stdout,
+)
 from dataclasses import asdict, fields
 from functools import wraps
 from pathlib import Path
@@ -465,7 +471,8 @@ def main(argv: list[str] | None = None) -> int:
     if not arguments or arguments[0] not in {"call", "serve", "run", "daily", "legacy"}:
         arguments = ["legacy", "--", *arguments]
     for stream in (sys.stdin, sys.stdout, sys.stderr):
-        stream.reconfigure(encoding="utf-8")
+        if stream is not None:
+            stream.reconfigure(encoding="utf-8")
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser(
@@ -497,11 +504,18 @@ def main(argv: list[str] | None = None) -> int:
 @contextmanager
 def _console_output():
     """将独立运行进程的输出绑定到新控制台，stdin 留给 JSON 载荷。"""
-    with (
-        open("CONOUT$", "w", encoding="utf-8", buffering=1) as console,
-        redirect_stdout(console),
-        redirect_stderr(console),
-    ):
+    with ExitStack() as stack:
+        try:
+            console = stack.enter_context(
+                open("CONOUT$", "w", encoding="utf-8", buffering=1)
+            )
+        except OSError:
+            # 任务计划程序启动 pythonw 时没有控制台；运行日志仍由 setup_logging 写文件。
+            console = stack.enter_context(
+                open(os.devnull, "w", encoding="utf-8", buffering=1)
+            )
+        stack.enter_context(redirect_stdout(console))
+        stack.enter_context(redirect_stderr(console))
         yield
 
 
