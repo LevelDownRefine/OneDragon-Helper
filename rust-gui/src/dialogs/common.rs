@@ -121,14 +121,22 @@ pub fn dialog_body(ui: &mut egui::Ui, contents: impl FnOnce(&mut egui::Ui)) {
         .show(ui, contents);
 }
 
+/// Give different pages of one dialog independent scroll state.
+pub fn dialog_body_with_id(ui: &mut egui::Ui, id: &str, contents: impl FnOnce(&mut egui::Ui)) {
+    ui.push_id(id, |ui| dialog_body(ui, contents));
+}
+
 /// Actions are ordered from the primary action at the right edge.
 pub fn dialog_footer(ui: &mut egui::Ui, contents: impl FnOnce(&mut egui::Ui)) {
     ui.add_space(4.0);
     ui.separator();
-    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-        ui.set_min_height(34.0);
-        contents(ui);
-    });
+    ui.allocate_ui_with_layout(
+        vec2(ui.available_width(), 34.0),
+        egui::Layout::right_to_left(egui::Align::Center),
+        |ui| {
+            contents(ui);
+        },
+    );
 }
 
 pub fn dialog_status(ui: &mut egui::Ui, error: Option<&str>, notice: Option<&str>) {

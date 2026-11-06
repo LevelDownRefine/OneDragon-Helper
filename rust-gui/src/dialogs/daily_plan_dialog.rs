@@ -210,10 +210,14 @@ impl DailyView {
                     } else {
                         "已停用"
                     };
-                    ui.label(format!(
-                        "{}  每天 {}  {}",
-                        item.name, item.plan.target_time, status
-                    ));
+                    let summary =
+                        format!("{}  每天 {}  {}", item.name, item.plan.target_time, status);
+                    // Reserve space for all actions, even when the plan name is long.
+                    let label_width = (ui.available_width()
+                        - 3.0 * (64.0 + ui.spacing().item_spacing.x))
+                        .max(0.0);
+                    ui.add_sized([label_width, 30.0], egui::Label::new(&summary).truncate())
+                        .on_hover_text(&summary);
                     if ui.button("编辑").clicked() {
                         let mut plan = item.plan.clone();
                         plan.run_options.form_defaults();
