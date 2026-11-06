@@ -148,7 +148,31 @@ impl View {
         let dx = screen.width() - SIZE.x;
         let dy = screen.height() - SIZE.y;
         let launch = rect(960.0 + dx, 636.0 + dy, 236.0, 60.0);
+        let response = ui.interact(
+            rect(launch.left(), launch.top(), 180.0, 60.0),
+            Id::new("launch"),
+            Sense::click(),
+        );
         panel(ui, launch, 18, PRIMARY);
+        if data.editing_blocked || response.hovered() || response.is_pointer_button_down_on() {
+            let fill = if data.editing_blocked {
+                CONTROL
+            } else if response.is_pointer_button_down_on() {
+                egui::Color32::from_rgb(33, 61, 94)
+            } else {
+                egui::Color32::from_rgb(58, 99, 145)
+            };
+            ui.painter().rect_filled(
+                response.rect,
+                egui::CornerRadius {
+                    nw: 18,
+                    sw: 18,
+                    ne: 0,
+                    se: 0,
+                },
+                fill,
+            );
+        }
         self.assets.icon(
             ui,
             "play",
@@ -159,7 +183,7 @@ impl View {
             rect(launch.left() + 54.0, launch.top() + 7.0, 117.0, 28.0),
             "启动脚本",
             17.0,
-            TEXT,
+            if data.editing_blocked { MUTED } else { TEXT },
         );
         label(
             ui,
@@ -168,11 +192,11 @@ impl View {
             10.0,
             MUTED,
         );
-        let response = ui.interact(
-            rect(launch.left(), launch.top(), 180.0, 60.0),
-            Id::new("launch"),
-            Sense::click(),
-        );
+        let response = if data.editing_blocked {
+            response
+        } else {
+            response.on_hover_cursor(egui::CursorIcon::PointingHand)
+        };
         if response.on_hover_text("启动当前脚本").clicked() && !data.editing_blocked {
             if let Some(name) = data.selected {
                 actions.push(Action::Request(Request {

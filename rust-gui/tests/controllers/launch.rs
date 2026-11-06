@@ -88,6 +88,46 @@ fn unavailable_and_invalid_targets_fail_before_launch() {
 }
 
 use super::super::tests::{Scene, only_request};
+
+#[test]
+fn launch_hover_and_press_feedback_stays_within_launch_area() {
+    let mut scene = Scene::new();
+    let launch = scene.ctx.read_response(Id::new("launch")).unwrap().rect;
+    let has_fill = |output: &egui::FullOutput, color| {
+        output.shapes.iter().any(|shape| {
+            matches!(&shape.shape, egui::Shape::Rect(rect) if rect.rect == launch && rect.fill == color)
+        })
+    };
+    let hover = egui::Color32::from_rgb(58, 99, 145);
+    let pressed = egui::Color32::from_rgb(33, 61, 94);
+    assert!(!has_fill(&scene.output, hover));
+    scene.frame(vec![egui::Event::PointerMoved(launch.center())]);
+    assert!(has_fill(&scene.output, hover));
+    scene.frame(vec![egui::Event::PointerButton {
+        pos: launch.center(),
+        button: egui::PointerButton::Primary,
+        pressed: true,
+        modifiers: Default::default(),
+    }]);
+    assert!(has_fill(&scene.output, pressed));
+    scene.frame(vec![egui::Event::PointerButton {
+        pos: launch.center(),
+        button: egui::PointerButton::Primary,
+        pressed: false,
+        modifiers: Default::default(),
+    }]);
+    scene.editing_blocked = true;
+    scene.frame(vec![egui::Event::PointerMoved(launch.center())]);
+    assert!(!has_fill(&scene.output, hover));
+    scene.editing_blocked = false;
+    let settings = scene
+        .ctx
+        .read_response(Id::new(("icon", "脚本配置")))
+        .unwrap()
+        .rect;
+    scene.frame(vec![egui::Event::PointerMoved(settings.center())]);
+    assert!(!has_fill(&scene.output, hover));
+}
 #[test]
 fn script_settings_opens_edit_form_for_current_script() {
     let mut scene = Scene::new();

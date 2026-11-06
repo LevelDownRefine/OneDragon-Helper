@@ -1,6 +1,129 @@
 use super::*;
+use crate::dialogs::test_support::text_rect;
 fn data() -> SettingsView {
     serde_json::from_value(json!({"startup":{"enabled":true,"delay_seconds":60},"daily_enabled":false,"shutdown_supported":false,"run_options":{"shutdown_enabled":false,"shutdown_delay":0,"mute_enabled":false,"unmute_enabled":false,"close_running_enabled":false,"rerun_enabled":false,"notify_enabled":false,"email":"","smtp_host":"","smtp_port":"","auth_code":""}})).unwrap()
+}
+
+#[test]
+fn daily_list_footer_follows_content_without_empty_save() {
+    let ctx = egui::Context::default();
+    theme::configure(&ctx);
+    let mut dialog = SettingsDialog::new(data());
+    let plan = json!({"plans":[{"id":"default","name":"默认计划","plan":{"enabled":false,"target_time":"04:10","run_options":dialog.data.run_options},"state":null,"state_error":null}],"supported":true});
+    dialog.set_daily(serde_json::from_value(plan).unwrap());
+    let mut output = egui::FullOutput::default();
+    for _ in 0..12 {
+        output = ctx.run_ui(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, theme::SIZE)),
+                ..Default::default()
+            },
+            |ui| {
+                dialog.show(ui.ctx(), false);
+            },
+        );
+        output.textures_delta.clear();
+    }
+    let row = text_rect(&output, "默认计划  每天 04:10  已停用");
+    let back = text_rect(&output, "返回");
+    assert!(
+        back.top() - row.bottom() < 100.0,
+        "footer too far below list: {row:?} {back:?}"
+    );
+    assert!(!output.shapes.iter().any(
+        |shape| matches!(&shape.shape, egui::Shape::Text(text) if text.galley.text() == "保存")
+    ));
+    let modal = output
+        .shapes
+        .iter()
+        .filter_map(|shape| match &shape.shape {
+            egui::Shape::Rect(rect)
+                if rect.fill == egui::Color32::from_rgb(17, 27, 42)
+                    && rect.rect.contains(back.center()) =>
+            {
+                Some(rect.rect)
+            }
+            _ => None,
+        })
+        .min_by(|a, b| a.area().total_cmp(&b.area()))
+        .expect("dialog frame");
+    assert!(
+        modal.bottom() - back.bottom() < 70.0,
+        "footer too far above bottom: {modal:?} {back:?}"
+    );
+}
+
+#[test]
+fn daily_list_keeps_footer_visible_with_many_plans_on_small_screen() {
+    let ctx = egui::Context::default();
+    theme::configure(&ctx);
+    let mut dialog = SettingsDialog::new(data());
+    let plans: Vec<_> = (0..30).map(|i| json!({
+        "id": format!("plan-{i}"), "name": format!("计划{i}"),
+        "plan": {"enabled":false,"target_time":"04:10","run_options":dialog.data.run_options},
+        "state":null, "state_error":null
+    })).collect();
+    dialog.set_daily(serde_json::from_value(json!({"plans":plans,"supported":true})).unwrap());
+    let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(800.0, 480.0));
+    let mut output = egui::FullOutput::default();
+    for _ in 0..12 {
+        output = ctx.run_ui(
+            egui::RawInput {
+                screen_rect: Some(screen),
+                ..Default::default()
+            },
+            |ui| {
+                dialog.show(ui.ctx(), false);
+            },
+        );
+        output.textures_delta.clear();
+    }
+    assert!(screen.contains_rect(text_rect(&output, "返回")));
+    assert!(screen.contains_rect(text_rect(&output, "刷新")));
+}
+
+#[test]
+fn daily_list_keeps_actions_visible_with_long_plan_name() {
+    let ctx = egui::Context::default();
+    theme::configure(&ctx);
+    let mut dialog = SettingsDialog::new(data());
+    let plan = json!({"plans":[{"id":"default","name":"非常长的计划名称".repeat(30),"plan":{"enabled":false,"target_time":"04:10","run_options":dialog.data.run_options},"state":null,"state_error":null}],"supported":true});
+    dialog.set_daily(serde_json::from_value(plan).unwrap());
+    let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(800.0, 480.0));
+    let mut output = egui::FullOutput::default();
+    for _ in 0..12 {
+        output = ctx.run_ui(
+            egui::RawInput {
+                screen_rect: Some(screen),
+                ..Default::default()
+            },
+            |ui| {
+                dialog.show(ui.ctx(), false);
+            },
+        );
+        output.textures_delta.clear();
+    }
+    let back = text_rect(&output, "返回");
+    let modal = output
+        .shapes
+        .iter()
+        .filter_map(|shape| match &shape.shape {
+            egui::Shape::Rect(rect)
+                if rect.fill == egui::Color32::from_rgb(17, 27, 42)
+                    && rect.rect.contains(back.center()) =>
+            {
+                Some(rect.rect)
+            }
+            _ => None,
+        })
+        .min_by(|a, b| a.area().total_cmp(&b.area()))
+        .expect("dialog frame");
+    for label in ["编辑", "复制", "删除"] {
+        assert!(
+            modal.contains_rect(text_rect(&output, label)),
+            "{label} outside dialog"
+        );
+    }
 }
 
 fn frame(

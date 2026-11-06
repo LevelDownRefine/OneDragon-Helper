@@ -82,10 +82,16 @@ impl SettingsDialog {
         } else {
             ("配置", "运行设置、配置备份与程序更新")
         };
+        let body_id = match &self.daily_draft {
+            Some(draft) if draft.editing.is_some() => "daily-edit",
+            Some(_) => "daily-list",
+            None if self.run_draft.is_some() => "run-options",
+            None => "settings",
+        };
         let close = crate::dialogs::common::Dialog::new("global-settings", title)
             .description(description)
             .show(ctx, !blocked, |ui| {
-                crate::dialogs::common::dialog_body(ui, |ui| {
+                crate::dialogs::common::dialog_body_with_id(ui, body_id, |ui| {
                     ui.add_enabled_ui(!blocked && !self.needs_reload, |ui| {
                         if let Some(draft) = &mut self.daily_draft {
                             if let Some(request) =
@@ -195,17 +201,21 @@ impl SettingsDialog {
                     self.needs_reload.then_some("配置可能已保存，请刷新核对。"),
                 );
                 crate::dialogs::common::dialog_footer(ui, |ui| {
-                    if ui
-                        .add_enabled(
-                            !blocked
-                                && !self.needs_reload
-                                && self
-                                    .daily_draft
-                                    .as_ref()
-                                    .is_none_or(|draft| draft.supported && draft.editing.is_some()),
-                            crate::dialogs::common::primary_button("保存"),
-                        )
-                        .clicked()
+                    let daily_list = self
+                        .daily_draft
+                        .as_ref()
+                        .is_some_and(|draft| draft.editing.is_none());
+                    if !daily_list
+                        && ui
+                            .add_enabled(
+                                !blocked
+                                    && !self.needs_reload
+                                    && self.daily_draft.as_ref().is_none_or(|draft| {
+                                        draft.supported && draft.editing.is_some()
+                                    }),
+                                crate::dialogs::common::primary_button("保存"),
+                            )
+                            .clicked()
                     {
                         if let Some(draft) = &self.daily_draft {
                             action = draft.save_request().map(SettingsAction::Request);
@@ -222,7 +232,14 @@ impl SettingsDialog {
                         }));
                     }
                     if ui
-                        .add_enabled(!blocked, crate::dialogs::common::secondary_button("取消"))
+                        .add_enabled(
+                            !blocked,
+                            crate::dialogs::common::secondary_button(if daily_list {
+                                "返回"
+                            } else {
+                                "取消"
+                            }),
+                        )
                         .clicked()
                     {
                         back = true;
@@ -230,22 +247,32 @@ impl SettingsDialog {
                     if blocked {
                         ui.spinner();
                     }
-                    ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
-                        if ui
-                            .add_enabled(!blocked, crate::dialogs::common::secondary_button("刷新"))
-                            .clicked()
-                        {
-                            action = Some(SettingsAction::Request(Request {
-                                method: if self.daily_draft.is_some() {
-                                    "plans.list"
-                                } else {
-                                    "settings.view"
-                                }
-                                .into(),
-                                params: json!({}),
-                            }));
-                        }
-                    });
+                    let show_refresh = self.needs_reload
+                        || self
+                            .daily_draft
+                            .as_ref()
+                            .is_none_or(|draft| draft.editing.is_none());
+                    if show_refresh {
+                        ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                            if ui
+                                .add_enabled(
+                                    !blocked,
+                                    crate::dialogs::common::secondary_button("刷新"),
+                                )
+                                .clicked()
+                            {
+                                action = Some(SettingsAction::Request(Request {
+                                    method: if self.daily_draft.is_some() {
+                                        "plans.list"
+                                    } else {
+                                        "settings.view"
+                                    }
+                                    .into(),
+                                    params: json!({}),
+                                }));
+                            }
+                        });
+                    }
                 });
             });
         if !blocked && (back || close) {
