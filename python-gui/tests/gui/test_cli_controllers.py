@@ -96,6 +96,21 @@ class SessionTests(TestCase):
         self.factory.assert_called_once()
         recovered.assert_called_once()
 
+    def test_plan_list_recovers_failed_session_without_replaying_writes(self):
+        self.session.request("plans.save", {"id": "default"})
+        self.old.usable = False
+        success, failure, recovered = Mock(), Mock(), Mock()
+        self.session.recovered.connect(recovered)
+
+        self.session.call("plans.list", {}, success, failure)
+
+        self.factory.assert_called_once()
+        self.assertEqual(self.new.requests, [("plans.list", {})])
+        self.new.succeeded.emit(1, {"plans": [], "scripts": []})
+        success.assert_called_once_with({"plans": [], "scripts": []})
+        failure.assert_not_called()
+        recovered.assert_called_once()
+
     def test_malformed_callback_is_reported_and_association_is_removed(self):
         failures = []
 

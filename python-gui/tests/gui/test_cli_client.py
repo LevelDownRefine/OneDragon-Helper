@@ -73,6 +73,37 @@ class CliClientTests(unittest.TestCase):
         self.client.close()
         self.wait_for(lambda: not self.client.running)
 
+    def test_plan_list_reconnects_after_backend_process_exit(self):
+        clients = []
+
+        def factory():
+            client = CliClient(
+                sys.executable, [str(self.script)], self.temporary, timeout_ms=2000
+            )
+            clients.append(client)
+            return client
+
+        def close_created_clients():
+            for client in clients:
+                client.close()
+                self.wait_for(lambda client=client: not client.running)
+
+        self.addCleanup(close_created_clients)
+        session = CliSession(self.client, factory)
+        errors, responses = [], []
+        session.call("exit", {}, responses.append, errors.append)
+        self.wait_for(lambda: bool(errors))
+        self.assertFalse(session.usable)
+
+        session.call(
+            "plans.list", {"probe": "reconnected"}, responses.append, errors.append
+        )
+        self.wait_for(lambda: bool(responses))
+        self.assertEqual(responses, [{"probe": "reconnected"}])
+        self.assertEqual(len(errors), 1)
+        self.assertEqual(len(clients), 1)
+        self.assertTrue(clients[0].running)
+
     def test_protected_timeout_sends_eof_and_waits_for_backend_cleanup(self):
         self.script.write_text(
             "import sys,time,pathlib\n"

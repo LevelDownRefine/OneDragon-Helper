@@ -54,6 +54,39 @@ pub struct DailyView {
     pub editing: Option<PlanEntry>,
     #[serde(skip)]
     pub delete_id: Option<String>,
+    #[serde(skip)]
+    previous_selection: Option<Vec<String>>,
+}
+
+fn set_all_scripts(
+    plan: &mut DailyPlan,
+    previous_selection: &mut Option<Vec<String>>,
+    scripts: &[PlanScript],
+    all: bool,
+) {
+    if all {
+        *previous_selection = plan.selected_scripts.take();
+    } else {
+        plan.selected_scripts = Some(
+            previous_selection
+                .take()
+                .unwrap_or_else(|| scripts.iter().map(|script| script.id.clone()).collect()),
+        );
+    }
+}
+
+fn all_scripts_checkbox(
+    ui: &mut egui::Ui,
+    plan: &mut DailyPlan,
+    previous_selection: &mut Option<Vec<String>>,
+    scripts: &[PlanScript],
+) -> egui::Response {
+    let mut all = plan.selected_scripts.is_none();
+    let response = ui.checkbox(&mut all, "全部脚本（包括以后添加的脚本）");
+    if response.changed() {
+        set_all_scripts(plan, previous_selection, scripts, all);
+    }
+    response
 }
 
 fn missing_script_checkbox(
@@ -115,22 +148,12 @@ impl DailyView {
                 ui.small("关闭助手后仍有效；需开机并登录，错过时间不补跑。");
             });
             crate::dialogs::common::form_section(ui, "运行脚本", |ui| {
-                let mut all = draft.plan.selected_scripts.is_none();
-                if ui
-                    .checkbox(&mut all, "全部脚本（包括以后添加的脚本）")
-                    .changed()
-                {
-                    draft.plan.selected_scripts = if all {
-                        None
-                    } else {
-                        Some(
-                            self.scripts
-                                .iter()
-                                .map(|script| script.id.clone())
-                                .collect(),
-                        )
-                    };
-                }
+                all_scripts_checkbox(
+                    ui,
+                    &mut draft.plan,
+                    &mut self.previous_selection,
+                    &self.scripts,
+                );
                 if let Some(selected) = &mut draft.plan.selected_scripts {
                     for script in &self.scripts {
                         let mut checked = selected.contains(&script.id);
@@ -166,6 +189,7 @@ impl DailyView {
             {
                 let mut options = defaults.clone();
                 options.auth_code.clear();
+                self.previous_selection = None;
                 self.editing = Some(PlanEntry {
                     id: String::new(),
                     name: "新计划".into(),
@@ -193,6 +217,7 @@ impl DailyView {
                     if ui.button("编辑").clicked() {
                         let mut plan = item.plan.clone();
                         plan.run_options.form_defaults();
+                        self.previous_selection = None;
                         self.editing = Some(PlanEntry {
                             id: item.id.clone(),
                             name: item.name.clone(),
@@ -205,6 +230,7 @@ impl DailyView {
                         let mut plan = item.plan.clone();
                         plan.enabled = false;
                         plan.run_options.auth_code.clear();
+                        self.previous_selection = None;
                         self.editing = Some(PlanEntry {
                             id: String::new(),
                             name: format!("{} 副本", item.name),
@@ -371,6 +397,120 @@ mod tests {
         assert_eq!(
             view.save_request().unwrap().params["selected_scripts"],
             json!([])
+        );
+    }
+
+    #[test]
+    fn toggling_all_preserves_specified_selection_and_missing_scripts() {
+        let mut view: DailyView = serde_json::from_value(json!({
+            "plans": [], "supported": true,
+            "scripts": [
+                {"id": "a", "display_name": "脚本 A"},
+                {"id": "b", "display_name": "脚本 B"}
+            ]
+        }))
+        .unwrap();
+        let mut plan: DailyPlan = serde_json::from_value(json!({
+            "enabled": true, "target_time": "04:10", "run_options": {
+                "shutdown_enabled": false, "shutdown_delay": 0, "mute_enabled": false,
+                "unmute_enabled": false, "close_running_enabled": false,
+                "rerun_enabled": false, "notify_enabled": false, "email": "",
+                "smtp_host": "", "smtp_port": "", "auth_code": ""
+            },
+            "selected_scripts": ["a", "missing"]
+        }))
+        .unwrap();
+        set_all_scripts(&mut plan, &mut view.previous_selection, &view.scripts, true);
+        assert!(plan.selected_scripts.is_none());
+        set_all_scripts(
+            &mut plan,
+            &mut view.previous_selection,
+            &view.scripts,
+            false,
+        );
+        assert_eq!(
+            plan.selected_scripts,
+            Some(vec!["a".into(), "missing".into()])
+        );
+        plan.selected_scripts = Some(vec![]);
+        set_all_scripts(&mut plan, &mut view.previous_selection, &view.scripts, true);
+        set_all_scripts(
+            &mut plan,
+            &mut view.previous_selection,
+            &view.scripts,
+            false,
+        );
+        assert_eq!(plan.selected_scripts, Some(vec![]));
+        plan.selected_scripts = None;
+        set_all_scripts(
+            &mut plan,
+            &mut view.previous_selection,
+            &view.scripts,
+            false,
+        );
+        assert_eq!(plan.selected_scripts, Some(vec!["a".into(), "b".into()]));
+    }
+
+    #[test]
+    fn clicking_all_twice_restores_the_original_selection() {
+        let mut plan: DailyPlan = serde_json::from_value(json!({
+            "enabled": true, "target_time": "04:10", "run_options": {
+                "shutdown_enabled": false, "shutdown_delay": 0, "mute_enabled": false,
+                "unmute_enabled": false, "close_running_enabled": false,
+                "rerun_enabled": false, "notify_enabled": false, "email": "",
+                "smtp_host": "", "smtp_port": "", "auth_code": ""
+            },
+            "selected_scripts": ["a", "missing"]
+        }))
+        .unwrap();
+        let scripts: Vec<PlanScript> = serde_json::from_value(json!([
+            {"id": "a", "display_name": "A"},
+            {"id": "b", "display_name": "B"}
+        ]))
+        .unwrap();
+        let mut previous = None;
+        let ctx = egui::Context::default();
+        let position = std::cell::Cell::new(egui::Pos2::ZERO);
+        {
+            let mut frame = |events: Vec<egui::Event>| {
+                let mut output = ctx.run_ui(
+                    egui::RawInput {
+                        events,
+                        ..Default::default()
+                    },
+                    |ui| {
+                        position.set(
+                            all_scripts_checkbox(ui, &mut plan, &mut previous, &scripts)
+                                .rect
+                                .center(),
+                        );
+                    },
+                );
+                output.textures_delta.clear();
+            };
+            frame(vec![]);
+            let pos = position.get();
+            for _ in 0..2 {
+                frame(vec![
+                    egui::Event::PointerMoved(pos),
+                    egui::Event::PointerButton {
+                        pos,
+                        button: egui::PointerButton::Primary,
+                        pressed: true,
+                        modifiers: Default::default(),
+                    },
+                ]);
+                frame(vec![egui::Event::PointerButton {
+                    pos,
+                    button: egui::PointerButton::Primary,
+                    pressed: false,
+                    modifiers: Default::default(),
+                }]);
+            }
+        }
+        assert_eq!(
+            plan.selected_scripts,
+            Some(vec!["a".into(), "missing".into()])
         );
     }
 }

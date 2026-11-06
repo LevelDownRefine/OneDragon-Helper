@@ -31,6 +31,7 @@ class CliSession(QObject):
         "wallpaper.current",
         "wallpaper.view",
         "plan.view",
+        "plans.list",
         "run.view",
         "run.saved",
         "update.view",
