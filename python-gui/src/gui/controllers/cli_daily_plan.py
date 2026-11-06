@@ -36,10 +36,12 @@ class CliDailyPlanController(QObject):
             self._opening = False
             listing = DailyPlanListDialog()
             plans = {}
+            scripts = []
 
             def update(value):
                 plans.clear()
                 plans.update({item["id"]: item for item in value["plans"]})
+                scripts[:] = value.get("scripts", [])
                 listing.set_plans(value["plans"])
 
             def refresh():
@@ -57,7 +59,9 @@ class CliDailyPlanController(QObject):
                     wrapper = {**view, **item}
                     plan, state = parse_plan_view(wrapper)
                     name = item["name"] + (" 副本" if copy else "")
-                editor = DailyPlanDialog(plan, state, listing, name=name)
+                editor = DailyPlanDialog(
+                    plan, state, listing, name=name, scripts=scripts
+                )
                 if item is not None and item["state_error"]:
                     editor.state_label.setText(
                         f"系统任务：读取失败（{item['state_error']}）"
@@ -164,14 +168,25 @@ def parse_plan_view(view):
     plan = view["plan"]
     if (
         not isinstance(plan, dict)
-        or set(plan) != {"enabled", "target_time", "run_options"}
+        or not {"enabled", "target_time", "run_options"} <= set(plan)
+        or not set(plan)
+        <= {"enabled", "target_time", "run_options", "selected_scripts"}
         or type(plan["enabled"]) is not bool
         or not isinstance(plan["target_time"], str)
         or not is_valid_target_time(plan["target_time"])
     ):
         raise ValueError("每日计划字段无效")
+    selected = plan.get("selected_scripts")
+    if selected is not None and (
+        not isinstance(selected, list)
+        or not all(isinstance(s, str) and s for s in selected)
+    ):
+        raise ValueError("每日计划脚本选择无效")
     options = DailyPlanOptions(
-        plan["enabled"], plan["target_time"], parse_run_options(plan["run_options"])
+        plan["enabled"],
+        plan["target_time"],
+        parse_run_options(plan["run_options"]),
+        selected,
     )
     state = view["state"]
     if state is None:

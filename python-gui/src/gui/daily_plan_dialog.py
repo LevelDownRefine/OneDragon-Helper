@@ -3,16 +3,20 @@
 from PySide6.QtCore import Qt, QTime, Signal
 from PySide6.QtWidgets import (
     QAbstractSpinBox,
+    QApplication,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QListWidget,
     QPushButton,
+    QScrollArea,
     QTimeEdit,
     QVBoxLayout,
+    QWidget,
 )
 
 from gui.dialogs import (
+    BG_CARD,
     BG_HOVER,
     BG_INPUT,
     BLUE,
@@ -26,6 +30,14 @@ from gui.dialogs import (
 )
 from gui.run_options_editor import RunOptionsEditor
 from src.service.daily_plan import DailyPlanOptions, DailyTaskState
+
+_SCROLLBAR_STYLE = f"""
+    QScrollBar:vertical {{ background: {BG_CARD}; width: 8px; margin: 0; }}
+    QScrollBar::handle:vertical {{ background: {BORDER}; min-height: 24px; border-radius: 4px; }}
+    QScrollBar::handle:vertical:hover {{ background: {TEXT_MUTED}; }}
+    QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
+    QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{ background: transparent; }}
+"""
 
 
 def _task_state_text(state: DailyTaskState) -> str:
@@ -46,8 +58,8 @@ class DailyPlanDialog(FormDialogBase):
         plan: DailyPlanOptions,
         state: DailyTaskState,
         parent=None,
-        *,
         name=None,
+        scripts=None,
     ):
         super().__init__(parent)
         self.setWindowTitle("每日计划")
@@ -59,7 +71,7 @@ class DailyPlanDialog(FormDialogBase):
         title.setFont(make_font(size=20, bold=True))
         title.setStyleSheet(f"color: {TEXT}; background: transparent;")
         layout.addWidget(title)
-        hint = QLabel("每日计划对所有脚本生效，运行选项单独设置。")
+        hint = QLabel("选择本计划运行的脚本，脚本设置与其他计划共用。")
         hint.setWordWrap(True)
         hint.setFont(make_font(size=12))
         hint.setStyleSheet(f"color: {TEXT_MUTED}; background: transparent;")
@@ -93,6 +105,41 @@ class DailyPlanDialog(FormDialogBase):
         self.state_label.setFont(make_font(size=12))
         self.state_label.setStyleSheet(f"color: {TEXT_MUTED}; background: transparent;")
         layout.addWidget(self.state_label)
+        self.all_scripts_cb = self._make_checkbox("运行全部脚本（含以后新增的脚本）")
+        self.all_scripts_cb.setChecked(plan.selected_scripts is None)
+        layout.addWidget(self.all_scripts_cb)
+        self.script_checks = {}
+        selected = plan.selected_scripts
+        available = list(scripts or [])
+        known = {item["id"] for item in available}
+        if selected is not None:
+            available.extend(
+                {"id": ident, "display_name": f"未找到：{ident}"}
+                for ident in selected
+                if ident not in known
+            )
+        scroll = QScrollArea(self)
+        scroll.setWidgetResizable(True)
+        scroll.setFixedHeight(105)
+        scroll.setStyleSheet(
+            f"QScrollArea {{ background: {BG_INPUT}; border: 1px solid {BORDER}; border-radius: 8px; }}"
+            + _SCROLLBAR_STYLE
+        )
+        contents = QWidget()
+        contents.setStyleSheet("background: transparent;")
+        checks_layout = QVBoxLayout(contents)
+        checks_layout.setContentsMargins(10, 6, 10, 6)
+        for script in available:
+            ident = script["id"]
+            checkbox = self._make_checkbox(script["display_name"])
+            checkbox.setChecked(selected is None or ident in selected)
+            checkbox.setEnabled(selected is not None)
+            self.script_checks[ident] = checkbox
+            checks_layout.addWidget(checkbox)
+        checks_layout.addStretch()
+        scroll.setWidget(contents)
+        layout.addWidget(scroll)
+        self.all_scripts_cb.toggled.connect(self._set_all_scripts)
         note = QLabel(
             "运行选项仅对每日计划生效。暂停后保留设置。\n"
             "关闭助手后仍有效；需电脑开机并登录，错过时间不补跑。"
@@ -108,6 +155,33 @@ class DailyPlanDialog(FormDialogBase):
         self.error_label.setStyleSheet("color: #F5A7A7; background: transparent;")
         self.error_label.hide()
         layout.addWidget(self.error_label)
+        # 小屏幕下运行选项较多，正文滚动，保存按钮始终可见。
+        body = QWidget(self)
+        body_layout = QVBoxLayout(body)
+        body_layout.setContentsMargins(0, 0, 0, 0)
+        body_layout.setSpacing(16)
+        while layout.count():
+            item = layout.takeAt(0)
+            if item.widget() is not None:
+                body_layout.addWidget(item.widget())
+            elif item.layout() is not None:
+                body_layout.addLayout(item.layout())
+            else:
+                body_layout.addItem(item)
+        body_scroll = QScrollArea(self)
+        body_scroll.setWidgetResizable(True)
+        body_scroll.setStyleSheet(
+            "QScrollArea { background: transparent; border: none; }" + _SCROLLBAR_STYLE
+        )
+        body.setStyleSheet("background: transparent;")
+        body_scroll.setWidget(body)
+        screen = QApplication.primaryScreen()
+        if screen is not None:
+            available_height = max(300, screen.availableGeometry().height() - 150)
+            body_scroll.setFixedHeight(
+                min(body.sizeHint().height() + 2, available_height)
+            )
+        layout.addWidget(body_scroll)
         layout.addLayout(self._make_footer("保存", self.saveRequested.emit))
 
     @property
@@ -117,12 +191,25 @@ class DailyPlanDialog(FormDialogBase):
             self.enabled_cb.isChecked(),
             self.time_edit.time().toString("HH:mm"),
             self.editor.run_options,
+            None
+            if self.all_scripts_cb.isChecked()
+            else [
+                *(
+                    ident
+                    for ident, box in self.script_checks.items()
+                    if box.isChecked()
+                ),
+            ],
         )
 
     def show_error(self, message: str) -> None:
         """保存失败时保留输入，允许继续修改或取消。"""
         self.error_label.setText(message)
         self.error_label.show()
+
+    def _set_all_scripts(self, checked):
+        for box in self.script_checks.values():
+            box.setEnabled(not checked)
 
 
 class DailyPlanListDialog(FormDialogBase):

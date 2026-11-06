@@ -8,6 +8,14 @@ pub struct DailyPlan {
     pub enabled: bool,
     pub target_time: String,
     pub run_options: RunOptions,
+    #[serde(default)]
+    pub selected_scripts: Option<Vec<String>>,
+}
+
+#[derive(Deserialize)]
+pub struct PlanScript {
+    id: String,
+    display_name: String,
 }
 
 #[derive(Clone, Deserialize)]
@@ -30,6 +38,8 @@ pub struct PlanEntry {
 #[derive(Deserialize)]
 pub struct DailyView {
     pub plans: Vec<PlanEntry>,
+    #[serde(default)]
+    pub scripts: Vec<PlanScript>,
     pub supported: bool,
     #[serde(skip)]
     pub editing: Option<PlanEntry>,
@@ -51,7 +61,7 @@ impl DailyView {
                     ui.label("名称");
                     ui.text_edit_singleline(&mut draft.name);
                 });
-                ui.colored_label(theme::MUTED, "每日计划对所有脚本生效，运行选项单独设置。");
+                ui.colored_label(theme::MUTED, "每个计划单独选择脚本，脚本设置共用。");
                 ui.horizontal(|ui| {
                     ui.checkbox(&mut draft.plan.enabled, "启用每日计划");
                     ui.label("每天");
@@ -82,6 +92,45 @@ impl DailyView {
                 }
                 ui.small("关闭助手后仍有效；需开机并登录，错过时间不补跑。");
             });
+            crate::dialogs::common::form_section(ui, "运行脚本", |ui| {
+                let mut all = draft.plan.selected_scripts.is_none();
+                if ui
+                    .checkbox(&mut all, "全部脚本（包括以后添加的脚本）")
+                    .changed()
+                {
+                    draft.plan.selected_scripts = if all {
+                        None
+                    } else {
+                        Some(
+                            self.scripts
+                                .iter()
+                                .map(|script| script.id.clone())
+                                .collect(),
+                        )
+                    };
+                }
+                if let Some(selected) = &mut draft.plan.selected_scripts {
+                    for script in &self.scripts {
+                        let mut checked = selected.contains(&script.id);
+                        if ui.checkbox(&mut checked, &script.display_name).changed() {
+                            if checked {
+                                selected.push(script.id.clone());
+                            } else {
+                                selected.retain(|id| id != &script.id);
+                            }
+                        }
+                    }
+                    if selected
+                        .iter()
+                        .any(|id| !self.scripts.iter().any(|script| &script.id == id))
+                    {
+                        ui.colored_label(theme::MUTED, "部分已选脚本当前不可用，保存时会保留。 ");
+                    }
+                    if selected.is_empty() {
+                        ui.colored_label(theme::MUTED, "未选择脚本，此计划到时间时不会运行。");
+                    }
+                }
+            });
             draft.plan.run_options.show(ui, shutdown_supported);
         } else {
             if !self.supported {
@@ -100,6 +149,7 @@ impl DailyView {
                         enabled: false,
                         target_time: "04:10".into(),
                         run_options: options,
+                        selected_scripts: None,
                     },
                     state: None,
                     state_error: None,
@@ -177,6 +227,52 @@ impl DailyView {
     }
 
     pub fn save_request(&self) -> Option<onedragon_rust_gui::backend::Request> {
-        self.editing.as_ref().map(|draft| onedragon_rust_gui::backend::Request { method: "plans.save".into(), params: serde_json::json!({"id":draft.id,"name":draft.name,"enabled":draft.plan.enabled,"target_time":draft.plan.target_time,"run_options":draft.plan.run_options}) })
+        self.editing.as_ref().map(|draft| onedragon_rust_gui::backend::Request { method: "plans.save".into(), params: serde_json::json!({"id":draft.id,"name":draft.name,"enabled":draft.plan.enabled,"target_time":draft.plan.target_time,"run_options":draft.plan.run_options,"selected_scripts":draft.plan.selected_scripts}) })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn saves_selection_and_preserves_all_scripts_default() {
+        let value = json!({
+            "plans": [], "supported": true,
+            "scripts": [{"id": "a", "display_name": "脚本 A"}],
+        });
+        let mut view: DailyView = serde_json::from_value(value).unwrap();
+        let options: RunOptions = serde_json::from_value(json!({
+            "shutdown_enabled": false, "shutdown_delay": 0, "mute_enabled": false,
+            "unmute_enabled": false, "close_running_enabled": false,
+            "rerun_enabled": false, "notify_enabled": false, "email": "",
+            "smtp_host": "", "smtp_port": "", "auth_code": ""
+        }))
+        .unwrap();
+        view.editing = Some(PlanEntry {
+            id: "default".into(),
+            name: "默认".into(),
+            state: None,
+            state_error: None,
+            plan: DailyPlan {
+                enabled: true,
+                target_time: "04:10".into(),
+                run_options: options,
+                selected_scripts: None,
+            },
+        });
+        assert!(view.save_request().unwrap().params["selected_scripts"].is_null());
+        view.editing.as_mut().unwrap().plan.selected_scripts =
+            Some(vec!["a".into(), "missing".into()]);
+        assert_eq!(
+            view.save_request().unwrap().params["selected_scripts"],
+            json!(["a", "missing"])
+        );
+        view.editing.as_mut().unwrap().plan.selected_scripts = Some(vec![]);
+        assert_eq!(
+            view.save_request().unwrap().params["selected_scripts"],
+            json!([])
+        );
     }
 }

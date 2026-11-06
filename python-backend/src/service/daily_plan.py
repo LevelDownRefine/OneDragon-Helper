@@ -14,6 +14,7 @@ import re
 import subprocess
 import sys
 import uuid
+from collections import Counter
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta
@@ -42,11 +43,16 @@ class DailyPlanOptions:
     enabled: bool = False
     target_time: str = "04:10"
     run_options: RunOptions = RunOptions()
+    selected_scripts: list[str] | None = None
 
     def __post_init__(self):
         assert type(self.enabled) is bool
         assert is_valid_target_time(self.target_time)
         assert isinstance(self.run_options, RunOptions)
+        assert self.selected_scripts is None or (
+            isinstance(self.selected_scripts, list)
+            and all(isinstance(item, str) and item for item in self.selected_scripts)
+        )
 
 
 @dataclass(frozen=True)
@@ -77,8 +83,8 @@ class DailyTaskState:
 def load_daily_plan(schedule: dict | None = None) -> DailyPlanOptions:
     """读取每日计划；未设置时默认关闭，非法值关闭并记诊断。
 
-    每日计划对所有脚本生效，配置只记录启用状态、触发时间与独立运行选项，无脚本名单。
-    旧 ``daily_run.script_names`` 残留忽略不读；``run_options`` 缺省为空白 RunOptions。
+    selected_scripts 缺省或为空值时运行全部脚本，空列表表示不运行任何脚本。
+    旧 ``daily_run.script_names`` 残留忽略不读。
     """
     data = load_schedule() if schedule is None else schedule
     block = data.get("daily_run", None)
@@ -93,7 +99,14 @@ def load_daily_plan(schedule: dict | None = None) -> DailyPlanOptions:
                 if isinstance(block.get("run_options"), dict)
                 else RunOptions()
             )
-            return DailyPlanOptions(enabled, target, run_options)
+            selected = block.get("selected_scripts", None)
+            if selected is not None and (
+                not isinstance(selected, list)
+                or not all(isinstance(item, str) and item for item in selected)
+            ):
+                logger.warning("[daily] 计划脚本选择无效，跳过运行")
+                selected = []
+            return DailyPlanOptions(enabled, target, run_options, selected)
     logger.warning("[daily] 每日计划配置无效，按关闭处理")
     return DailyPlanOptions()
 
@@ -297,6 +310,7 @@ def apply_daily_plan(
     data["daily_run"] = {
         "enabled": options.enabled,
         "target_time": options.target_time,
+        "selected_scripts": options.selected_scripts,
         "run_options": _dump_run_options(
             options.run_options,
             saved_options.get("notify") if isinstance(saved_options, dict) else None,
@@ -358,7 +372,7 @@ def read_daily_task_state() -> DailyTaskState:
 
 
 def run_daily_plan(plan_id: str = "default") -> None:
-    """按计划运行全部脚本，运行选项使用每日计划独立的 RunOptions。"""
+    """按计划运行所选脚本，使用该计划的运行选项。"""
     if plan_id == "default":
         plan = load_daily_plan()
     else:
@@ -373,6 +387,12 @@ def run_daily_plan(plan_id: str = "default") -> None:
     config = load_config()
     assert "script_list" in config
     scripts = {get_script_name(s) for s in config["script_list"]}
+    if plan.selected_scripts is not None:
+        selected = set(plan.selected_scripts)
+        missing = selected - scripts
+        if missing:
+            logger.warning("[daily] 计划中的脚本不存在：%s", sorted(missing))
+        scripts &= selected
     if not scripts:
         logger.info("[daily] 没有可运行的脚本，跳过此次触发")
         return
@@ -459,7 +479,19 @@ def plans_list(task_factory=None):
                 "state_error": error,
             }
         )
-    return {"plans": result, "supported": sys.platform == "win32"}
+    config = load_config()
+    assert "script_list" in config
+    scripts = []
+    for script in config["script_list"]:
+        assert "display_name" in script
+    names = Counter(script["display_name"] for script in config["script_list"])
+    for script in config["script_list"]:
+        ident = get_script_name(script)
+        name = script["display_name"]
+        if names[name] > 1:
+            name = f"{name} ({ident})"
+        scripts.append({"id": ident, "display_name": name})
+    return {"plans": result, "scripts": scripts, "supported": sys.platform == "win32"}
 
 
 def plans_save(plan_id, name, options, task_factory=None):
@@ -489,6 +521,7 @@ def plans_save(plan_id, name, options, task_factory=None):
         "name": name.strip(),
         "enabled": options.enabled,
         "target_time": options.target_time,
+        "selected_scripts": options.selected_scripts,
         "run_options": _dump_run_options(options.run_options, saved.get("notify")),
     }
     data["daily_plans"] = plans

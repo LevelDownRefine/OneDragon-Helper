@@ -21,6 +21,26 @@ _APP = QApplication.instance() or QApplication([])
 
 
 class TestDailyPlanDialog(unittest.TestCase):
+    def test_script_selection_preserves_missing_and_all_mode(self):
+        plan = DailyPlanOptions(True, "08:30", RunOptions(), ["a", "removed"])
+        dialog = DailyPlanDialog(
+            plan,
+            DailyTaskState(),
+            scripts=[
+                {"id": "a", "display_name": "甲"},
+                {"id": "b", "display_name": "乙"},
+            ],
+        )
+        self.addCleanup(dialog.deleteLater)
+        self.assertEqual(dialog.daily_plan.selected_scripts, ["a", "removed"])
+        dialog.script_checks["a"].setChecked(False)
+        dialog.script_checks["b"].setChecked(True)
+        self.assertEqual(dialog.daily_plan.selected_scripts, ["b", "removed"])
+        dialog.script_checks["removed"].setChecked(False)
+        self.assertEqual(dialog.daily_plan.selected_scripts, ["b"])
+        dialog.all_scripts_cb.setChecked(True)
+        self.assertIsNone(dialog.daily_plan.selected_scripts)
+
     def setUp(self):
         self.plan = DailyPlanOptions(True, "08:30")
         self.service = Mock()

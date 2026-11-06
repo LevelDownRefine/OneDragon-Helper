@@ -32,12 +32,14 @@ class DailyPlanController(QObject):
     def edit(self):
         listing = DailyPlanListDialog()
         plans = {}
+        scripts = []
 
         def refresh():
             try:
                 view = self._app_service.plans_list()
                 plans.clear()
                 plans.update({item["id"]: item for item in view["plans"]})
+                scripts[:] = view.get("scripts", [])
                 listing.set_plans(view["plans"])
             except (OSError, ValueError, YAMLError) as exc:
                 listing.show_error(f"读取计划失败：{exc}")
@@ -60,7 +62,7 @@ class DailyPlanController(QObject):
                     }
                 )
                 name = item["name"] + (" 副本" if copy else "")
-            editor = DailyPlanDialog(plan, state, listing, name=name)
+            editor = DailyPlanDialog(plan, state, listing, name=name, scripts=scripts)
 
             def save():
                 name_value = editor.name_edit.text().strip()

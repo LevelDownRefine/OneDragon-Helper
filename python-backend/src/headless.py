@@ -212,7 +212,7 @@ class HeadlessApi:
         from src.service.schedule import is_valid_target_time
         from src.utils.utils_shutdown import shutdown_ui_supported
 
-        if not isinstance(plan, dict) or set(plan) != {
+        if not isinstance(plan, dict) or set(plan) - {"selected_scripts"} != {
             "enabled",
             "target_time",
             "run_options",
@@ -223,13 +223,19 @@ class HeadlessApi:
             plan["target_time"]
         ):
             raise InvalidParams("计划需要布尔开关与有效的 HH:MM 时间")
+        selected = plan.get("selected_scripts", None)
+        if selected is not None and (
+            not isinstance(selected, list)
+            or not all(isinstance(item, str) and item for item in selected)
+        ):
+            raise InvalidParams("计划脚本选择无效")
         if plan["enabled"] and not shutdown_ui_supported():
             raise InvalidParams("启用每日计划需要有效的 Windows 关机确认程序")
         options = _parse_run_options(
             plan["run_options"], require_shutdown_ui=plan["enabled"]
         )
         return self.service.apply_daily_plan(
-            DailyPlanOptions(plan["enabled"], plan["target_time"], options),
+            DailyPlanOptions(plan["enabled"], plan["target_time"], options, selected),
             task=_daily_task(),
         )
 
@@ -241,7 +247,9 @@ class HeadlessApi:
             "shutdown_supported": shutdown_ui_supported(),
         }
 
-    def plans_save(self, id, name, enabled, target_time, run_options):
+    def plans_save(
+        self, id, name, enabled, target_time, run_options, selected_scripts=None
+    ):
         from src.service.daily_plan import DailyPlanOptions
         from src.service.schedule import is_valid_target_time
 
@@ -250,13 +258,22 @@ class HeadlessApi:
             or not isinstance(name, str)
             or type(enabled) is not bool
             or not is_valid_target_time(target_time)
+            or (
+                selected_scripts is not None
+                and (
+                    not isinstance(selected_scripts, list)
+                    or not all(
+                        isinstance(item, str) and item for item in selected_scripts
+                    )
+                )
+            )
         ):
             raise InvalidParams("计划字段无效")
         options = _parse_run_options(run_options, require_shutdown_ui=enabled)
         return self.service.plans_save(
             id,
             name,
-            DailyPlanOptions(enabled, target_time, options),
+            DailyPlanOptions(enabled, target_time, options, selected_scripts),
             task_factory=_daily_task,
         )
 
