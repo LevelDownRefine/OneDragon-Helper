@@ -111,7 +111,7 @@ fn settings_cards_route_to_existing_actions_and_busy_blocks_them() {
                     assert_eq!(
                         request.method,
                         if id == "daily-plan" {
-                            "plan.view"
+                            "plans.list"
                         } else {
                             "update.view"
                         }
@@ -160,21 +160,22 @@ fn settings_card_supports_keyboard_and_failed_save_keeps_actions_disabled() {
 fn daily_refresh_preserves_startup_and_cancel_keeps_saved_plan_state() {
     let mut dialog = SettingsDialog::new(data());
     dialog.data.startup.delay_seconds = 99;
-    let plan = json!({"plan":{"enabled":true,"target_time":"04:10","run_options":dialog.data.run_options},"state":null,"state_error":"denied","supported":true,"shutdown_supported":false});
+    let plan = json!({"plans":[{"id":"default","name":"默认计划","plan":{"enabled":true,"target_time":"04:10","run_options":dialog.data.run_options},"state":null,"state_error":"denied"}],"supported":true});
     dialog.set_daily(serde_json::from_value(plan).unwrap());
     assert!(dialog.data.daily_enabled);
+    dialog.daily_draft.as_mut().unwrap().plans[0]
+        .plan
+        .run_options
+        .form_defaults();
     assert_eq!(
-        dialog
-            .daily_draft
-            .as_ref()
-            .unwrap()
+        dialog.daily_draft.as_ref().unwrap().plans[0]
             .plan
             .run_options
             .smtp_host,
         "smtp.qq.com"
     );
     assert_eq!(dialog.data.startup.delay_seconds, 99);
-    dialog.daily_draft.as_mut().unwrap().plan.enabled = false;
+    dialog.daily_draft.as_mut().unwrap().plans[0].plan.enabled = false;
     let ctx = egui::Context::default();
     for _ in 0..2 {
         let mut output = ctx.run_ui(Default::default(), |ui| {

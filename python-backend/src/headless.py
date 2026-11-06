@@ -5,7 +5,13 @@ import json
 import logging
 import os
 import sys
-from contextlib import contextmanager, nullcontext, redirect_stderr, redirect_stdout
+from contextlib import (
+    ExitStack,
+    contextmanager,
+    nullcontext,
+    redirect_stderr,
+    redirect_stdout,
+)
 from dataclasses import asdict, fields
 from functools import wraps
 from pathlib import Path
@@ -104,7 +110,7 @@ def _run_target(script_names: list[str], options) -> dict:
     }
 
 
-def _daily_task():
+def _daily_task(plan_id="default"):
     """计划任务只保存 CLI 入口与前端路径，每次触发读取最新配置。"""
     from src.service.daily_plan import WindowsDailyTask
     from src.utils.utils_shutdown import SHUTDOWN_UI_ARGS_ENV, SHUTDOWN_UI_ENV
@@ -115,9 +121,13 @@ def _daily_task():
     args = ["daily", "--shutdown-ui", frontend]
     if SHUTDOWN_UI_ARGS_ENV in os.environ:
         args.extend(["--shutdown-ui-args", os.environ[SHUTDOWN_UI_ARGS_ENV]])
+    if plan_id != "default":
+        args.extend(["--plan-id", plan_id])
     if not getattr(sys, "frozen", False):
         args = ["-m", "src.headless", *args]
-    return WindowsDailyTask(entry=(sys.executable, args))
+    if plan_id == "default":
+        return WindowsDailyTask(entry=(sys.executable, args))
+    return WindowsDailyTask(entry=(sys.executable, args), plan_id=plan_id)
 
 
 class HeadlessApi:
@@ -208,7 +218,7 @@ class HeadlessApi:
         from src.service.schedule import is_valid_target_time
         from src.utils.utils_shutdown import shutdown_ui_supported
 
-        if not isinstance(plan, dict) or set(plan) != {
+        if not isinstance(plan, dict) or set(plan) - {"selected_scripts"} != {
             "enabled",
             "target_time",
             "run_options",
@@ -219,15 +229,64 @@ class HeadlessApi:
             plan["target_time"]
         ):
             raise InvalidParams("计划需要布尔开关与有效的 HH:MM 时间")
+        selected = plan.get("selected_scripts", None)
+        if selected is not None and (
+            not isinstance(selected, list)
+            or not all(isinstance(item, str) and item for item in selected)
+        ):
+            raise InvalidParams("计划脚本选择无效")
         if plan["enabled"] and not shutdown_ui_supported():
             raise InvalidParams("启用每日计划需要有效的 Windows 关机确认程序")
         options = _parse_run_options(
             plan["run_options"], require_shutdown_ui=plan["enabled"]
         )
         return self.service.apply_daily_plan(
-            DailyPlanOptions(plan["enabled"], plan["target_time"], options),
+            DailyPlanOptions(plan["enabled"], plan["target_time"], options, selected),
             task=_daily_task(),
         )
+
+    def plans_list(self):
+        from src.utils.utils_shutdown import shutdown_ui_supported
+
+        return {
+            **self.service.plans_list(task_factory=_daily_task),
+            "shutdown_supported": shutdown_ui_supported(),
+        }
+
+    def plans_save(
+        self, id, name, enabled, target_time, run_options, selected_scripts=None
+    ):
+        from src.service.daily_plan import DailyPlanOptions
+        from src.service.schedule import is_valid_target_time
+
+        if (
+            not isinstance(id, str)
+            or not isinstance(name, str)
+            or type(enabled) is not bool
+            or not is_valid_target_time(target_time)
+            or (
+                selected_scripts is not None
+                and (
+                    not isinstance(selected_scripts, list)
+                    or not all(
+                        isinstance(item, str) and item for item in selected_scripts
+                    )
+                )
+            )
+        ):
+            raise InvalidParams("计划字段无效")
+        options = _parse_run_options(run_options, require_shutdown_ui=enabled)
+        return self.service.plans_save(
+            id,
+            name,
+            DailyPlanOptions(enabled, target_time, options, selected_scripts),
+            task_factory=_daily_task,
+        )
+
+    def plans_delete(self, id):
+        if not isinstance(id, str):
+            raise InvalidParams("计划 ID 无效")
+        return self.service.plans_delete(id, task_factory=_daily_task)
 
 
 def rpc_methods(service, *, persistent=True) -> dict:
@@ -252,6 +311,9 @@ def rpc_methods(service, *, persistent=True) -> dict:
         "settings.view": api.settings_view,
         "startup.view": api.settings_view,
         "plan.view": api.plan_view,
+        "plans.list": api.plans_list,
+        "plans.save": api.plans_save,
+        "plans.delete": api.plans_delete,
         "plan.save": api.save_plan,
         "settings.startup_save": api.save_startup,
         "settings.run_save": api.save_run,
@@ -283,6 +345,7 @@ def rpc_methods(service, *, persistent=True) -> dict:
         "settings.view",
         "startup.view",
         "plan.view",
+        "plans.list",
         "run.saved",
         "run.view",
         "script.view",
@@ -408,7 +471,8 @@ def main(argv: list[str] | None = None) -> int:
     if not arguments or arguments[0] not in {"call", "serve", "run", "daily", "legacy"}:
         arguments = ["legacy", "--", *arguments]
     for stream in (sys.stdin, sys.stdout, sys.stderr):
-        stream.reconfigure(encoding="utf-8")
+        if stream is not None:
+            stream.reconfigure(encoding="utf-8")
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser(
@@ -421,6 +485,7 @@ def main(argv: list[str] | None = None) -> int:
         "run", help="从 stdin 读取一次运行配置，在独立进程中执行批量任务"
     )
     daily = commands.add_parser("daily", help="系统每日计划入口，读取独立计划配置")
+    daily.add_argument("--plan-id", default="default")
     daily.add_argument("--shutdown-ui", required=True)
     daily.add_argument("--shutdown-ui-args", default="[]")
     commands.add_parser("legacy", help="原助手 CLI 参数透传").add_argument(
@@ -439,11 +504,18 @@ def main(argv: list[str] | None = None) -> int:
 @contextmanager
 def _console_output():
     """将独立运行进程的输出绑定到新控制台，stdin 留给 JSON 载荷。"""
-    with (
-        open("CONOUT$", "w", encoding="utf-8", buffering=1) as console,
-        redirect_stdout(console),
-        redirect_stderr(console),
-    ):
+    with ExitStack() as stack:
+        try:
+            console = stack.enter_context(
+                open("CONOUT$", "w", encoding="utf-8", buffering=1)
+            )
+        except OSError:
+            # 任务计划程序启动 pythonw 时没有控制台；运行日志仍由 setup_logging 写文件。
+            console = stack.enter_context(
+                open(os.devnull, "w", encoding="utf-8", buffering=1)
+            )
+        stack.enter_context(redirect_stdout(console))
+        stack.enter_context(redirect_stderr(console))
         yield
 
 
@@ -484,7 +556,10 @@ def _run_command(args: argparse.Namespace) -> int:
 
                 os.environ[SHUTDOWN_UI_ENV] = args.shutdown_ui
                 os.environ[SHUTDOWN_UI_ARGS_ENV] = args.shutdown_ui_args
-                service.run_daily_plan()
+                if getattr(args, "plan_id", "default") == "default":
+                    service.run_daily_plan()
+                else:
+                    service.run_daily_plan(args.plan_id)
                 return 0
             if args.command == "run":
                 payload = _parse_json(sys.stdin.read())

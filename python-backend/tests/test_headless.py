@@ -1343,6 +1343,32 @@ class ProtocolValidationTests(unittest.TestCase):
         service.apply_daily_plan.assert_not_called()
         task.assert_not_called()
 
+    def test_multiple_plan_save_passes_and_validates_selection(self):
+        service = mock_service()
+        payload = {
+            "id": "default",
+            "name": "计划",
+            "enabled": False,
+            "target_time": "04:10",
+            "run_options": asdict(RunOptions()),
+            "selected_scripts": ["first", "missing"],
+        }
+        with patch("src.headless._daily_task") as task:
+            response = handle_request(service, request("plans.save", payload))
+            self.assertIn("result", response)
+            service.plans_save.assert_called_once_with(
+                "default",
+                "计划",
+                DailyPlanOptions(selected_scripts=["first", "missing"]),
+                task_factory=task,
+            )
+            for invalid in ("first", [""], [1]):
+                response = handle_request(
+                    service,
+                    request("plans.save", {**payload, "selected_scripts": invalid}),
+                )
+                self.assertEqual(response["error"]["code"], -32602)
+
     def test_daily_entry_uses_headless_and_frontend_without_config_snapshot(self):
         from src.utils.utils_shutdown import SHUTDOWN_UI_ENV
 
@@ -1461,6 +1487,26 @@ class ProtocolValidationTests(unittest.TestCase):
 
 
 class HeadlessEntryTests(unittest.TestCase):
+    def test_daily_without_standard_streams_or_console_reaches_entry(self):
+        import io
+
+        console = io.StringIO()
+        with (
+            patch("sys.stdin", None),
+            patch("sys.stdout", None),
+            patch("sys.stderr", None),
+            patch("src.headless.os.name", "nt"),
+            patch(
+                "src.headless.open", side_effect=[OSError("no console"), console]
+            ) as f,
+            patch("src.headless._run_command", return_value=0) as entry,
+        ):
+            result = main(["daily", "--shutdown-ui", "ui.exe", "--plan-id", "test"])
+        self.assertEqual(result, 0)
+        self.assertEqual(entry.call_args.args[0].plan_id, "test")
+        self.assertEqual(f.call_args_list[0].args[0], "CONOUT$")
+        self.assertEqual(f.call_args_list[1].args[0], os.devnull)
+
     def setUp(self):
         self.root = Path(self.enterContext(tempfile.TemporaryDirectory()))
         self.fixture = HeadlessFixture(self.root)

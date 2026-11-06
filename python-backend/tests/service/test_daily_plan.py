@@ -179,7 +179,7 @@ class TestDailyPlanConfig(unittest.TestCase):
             [c.args[0] for c in task.return_value.sync.call_args_list],
             [DailyPlanOptions(True, "08:00")],
         )
-        task.return_value.restore.assert_called_once_with(DailyPlanOptions())
+        task.return_value.restore.assert_called_once_with()
         self.assertEqual(
             load_data(self.path, file_format="yaml", cached=True), self.original
         )
@@ -338,6 +338,12 @@ class TestWindowsDailyTask(unittest.TestCase):
         self.addCleanup(patcher.stop)
         self.task = WindowsDailyTask(os.path.abspath("中文 project"))
 
+    def test_constructor_accepts_positional_entry_and_plan_id(self):
+        entry = ("python.exe", ["daily"])
+        task = WindowsDailyTask("project", entry, "a" * 32)
+        self.assertEqual(task.entry, entry)
+        self.assertTrue(task.name.endswith("-" + "a" * 32))
+
     def _foreign_task(self) -> Mock:
         foreign = Mock()
         foreign.Name = "UserDailyTask"
@@ -364,6 +370,29 @@ class TestWindowsDailyTask(unittest.TestCase):
     def test_read_disabled_task_is_reported_as_disabled(self):
         self.folder.GetTasks.return_value = [self._own_task(enabled=False)]
         self.assertEqual(self.task.read(), DailyTaskState(True, False, "08:30"))
+
+    def test_repeated_read_replaces_previous_snapshot(self):
+        own = self._own_task(enabled=False)
+        own.Xml = "<Task>old</Task>"
+        self.folder.GetTasks.return_value = [own]
+        self.task.read()
+        self.folder.GetTasks.return_value = []
+        self.task.read()
+        self.folder.GetTasks.return_value = [self._own_task()]
+        self.task.restore()
+        self.folder.RegisterTask.assert_not_called()
+        self.folder.DeleteTask.assert_called_once_with(self.task.name, 0)
+
+    def test_failed_read_invalidates_previous_snapshot(self):
+        self.folder.GetTasks.return_value = [self._own_task()]
+        self.task.read()
+        self.folder.GetTasks.side_effect = OSError("read failed")
+        with self.assertRaisesRegex(OSError, "read failed"):
+            self.task.read()
+        with self.assertRaisesRegex(AssertionError, "恢复系统任务前须读取原状态"):
+            self.task.restore()
+        self.folder.RegisterTask.assert_not_called()
+        self.folder.DeleteTask.assert_not_called()
 
     def test_read_task_without_usable_trigger_has_no_time(self):
         for boundary in ("", "not-a-time"):
@@ -411,6 +440,15 @@ class TestWindowsDailyTask(unittest.TestCase):
             ],
             [self.task.name, self.task.name],
         )
+
+    def test_additional_task_passes_its_plan_id_to_legacy_entry(self):
+        task = WindowsDailyTask(os.path.abspath("中文 project"), plan_id="a" * 32)
+        task.sync(DailyPlanOptions(True))
+        action = self.definition.Actions.Create.return_value
+        self.assertEqual(
+            action.Arguments, f"-m gui.launcher --run-daily --plan-id {'a' * 32}"
+        )
+        self.assertNotEqual(task.name, self.task.name)
 
     def test_packaged_executable_uses_direct_entry(self):
         with (
@@ -495,8 +533,61 @@ class TestWindowsDailyTask(unittest.TestCase):
         self.task.read()
         own = self._own_task()
         self.folder.GetTasks.return_value = [own]
-        self.task.restore(DailyPlanOptions())
+        self.task.restore()
         self.folder.DeleteTask.assert_called_once_with(self.task.name, 0)
+        self.folder.RegisterTask.assert_not_called()
+
+    def test_direct_entry_save_failure_restores_disabled_task_xml(self):
+        own = self._own_task(enabled=False)
+        own.Xml = "<Task>custom trigger and settings</Task>"
+        self.folder.GetTasks.return_value = [own]
+        with (
+            patch(
+                "src.service.daily_plan.load_schedule",
+                return_value={"daily_run": {"enabled": True, "target_time": "08:30"}},
+            ),
+            patch(
+                "src.service.daily_plan.save_schedule", side_effect=OSError("disk full")
+            ),
+            self.assertRaisesRegex(OSError, "disk full"),
+        ):
+            apply_daily_plan(DailyPlanOptions(True, "08:30"), task=self.task)
+        self.folder.RegisterTask.assert_called_once_with(
+            self.task.name, own.Xml, 6, "", "", 3
+        )
+        self.assertIs(self.folder.RegisterTask.return_value.Enabled, False)
+
+    def test_direct_entry_save_failure_removes_new_task(self):
+        self.folder.GetTasks.return_value = []
+
+        def register(*args):
+            self.folder.GetTasks.return_value = [self._own_task()]
+
+        self.folder.RegisterTaskDefinition.side_effect = register
+        with (
+            patch(
+                "src.service.daily_plan.load_schedule",
+                return_value={"daily_run": {"enabled": True, "target_time": "08:30"}},
+            ),
+            patch(
+                "src.service.daily_plan.save_schedule", side_effect=OSError("disk full")
+            ),
+            self.assertRaisesRegex(OSError, "disk full"),
+        ):
+            apply_daily_plan(DailyPlanOptions(True, "08:30"), task=self.task)
+        self.folder.DeleteTask.assert_called_once_with(self.task.name, 0)
+        self.folder.RegisterTask.assert_not_called()
+
+    def test_direct_entry_registration_failure_does_not_save(self):
+        self.folder.GetTasks.return_value = []
+        self.folder.RegisterTaskDefinition.side_effect = OSError("denied")
+        with (
+            patch("src.service.daily_plan.load_schedule", return_value={}),
+            patch("src.service.daily_plan.save_schedule") as save,
+            self.assertRaisesRegex(OSError, "denied"),
+        ):
+            apply_daily_plan(DailyPlanOptions(True), task=self.task)
+        save.assert_not_called()
         self.folder.RegisterTask.assert_not_called()
 
     def test_installation_names_are_stable_and_distinct(self):

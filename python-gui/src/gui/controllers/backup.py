@@ -16,6 +16,7 @@ from gui.controllers.daily_plan import DailyPlanController
 from gui.controllers.update import UpdateController
 from gui.run_confirm_dialog import RunConfirmDialog
 from src.service.app_service import AppService
+from src.service.daily_plan import DailyPlanOptions
 from src.utils import get_root_dir
 
 _FILTER = "配置备份 (*.zip)"
@@ -38,7 +39,9 @@ class BackupController(QObject):
         """菜单操作独立打开，启动设置仅点击保存后落盘。"""
         try:
             options = self._app_service.load_startup_options()
-            daily_plan = self._app_service.load_daily_plan()
+            daily_plan = DailyPlanOptions(
+                enabled=self._app_service.settings_view()["daily_enabled"]
+            )
         except (OSError, YAMLError) as exc:
             logger.error("读取启动设置失败：%s: %s", type(exc).__name__, exc)
             self._toast(f"读取启动设置失败：{exc}")
@@ -57,7 +60,9 @@ class BackupController(QObject):
             actions[action]()
             if action == "daily":
                 self.daily_plan.refresh()
-                dialog.set_daily_plan_enabled(self.daily_plan.plan.enabled)
+                dialog.set_daily_plan_enabled(
+                    self._app_service.settings_view()["daily_enabled"]
+                )
 
         def save():
             updated = dialog.startup_options

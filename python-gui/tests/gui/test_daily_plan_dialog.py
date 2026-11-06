@@ -6,12 +6,14 @@ from unittest.mock import Mock, patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from dataclasses import asdict  # noqa: E402
+
 from PySide6.QtCore import Qt, QTime  # noqa: E402
 from PySide6.QtTest import QTest  # noqa: E402
 from PySide6.QtWidgets import QApplication, QPushButton  # noqa: E402
 
 from gui.controllers.daily_plan import DailyPlanController  # noqa: E402
-from gui.daily_plan_dialog import DailyPlanDialog  # noqa: E402
+from gui.daily_plan_dialog import DailyPlanDialog, DailyPlanListDialog  # noqa: E402
 from src.service.daily_plan import DailyPlanOptions, DailyTaskState  # noqa: E402
 from src.service.schedule import RunOptions  # noqa: E402
 
@@ -19,6 +21,26 @@ _APP = QApplication.instance() or QApplication([])
 
 
 class TestDailyPlanDialog(unittest.TestCase):
+    def test_script_selection_preserves_missing_and_all_mode(self):
+        plan = DailyPlanOptions(True, "08:30", RunOptions(), ["a", "removed"])
+        dialog = DailyPlanDialog(
+            plan,
+            DailyTaskState(),
+            scripts=[
+                {"id": "a", "display_name": "甲"},
+                {"id": "b", "display_name": "乙"},
+            ],
+        )
+        self.addCleanup(dialog.deleteLater)
+        self.assertEqual(dialog.daily_plan.selected_scripts, ["a", "removed"])
+        dialog.script_checks["a"].setChecked(False)
+        dialog.script_checks["b"].setChecked(True)
+        self.assertEqual(dialog.daily_plan.selected_scripts, ["b", "removed"])
+        dialog.script_checks["removed"].setChecked(False)
+        self.assertEqual(dialog.daily_plan.selected_scripts, ["b"])
+        dialog.all_scripts_cb.setChecked(True)
+        self.assertIsNone(dialog.daily_plan.selected_scripts)
+
     def setUp(self):
         self.plan = DailyPlanOptions(True, "08:30")
         self.service = Mock()
@@ -30,14 +52,38 @@ class TestDailyPlanDialog(unittest.TestCase):
         self.controller = DailyPlanController(self.service, self.toast)
 
     def _run(self, action):
-        dialog = DailyPlanDialog(
-            self.plan,
-            self.service.read_daily_task_state(),
+        self.service.plans_list.side_effect = lambda: {
+            "plans": [
+                {
+                    "id": "default",
+                    "name": "默认计划",
+                    "plan": asdict(self.service.load_daily_plan()),
+                    "state": asdict(self.service.read_daily_task_state()),
+                    "state_error": None,
+                }
+            ],
+            "supported": True,
+        }
+        self.service.plans_save.side_effect = lambda _id, _name, options: (
+            self.service.apply_daily_plan(options)
         )
+        dialog = DailyPlanDialog(
+            self.plan, self.service.read_daily_task_state(), name="默认计划"
+        )
+        listing = DailyPlanListDialog()
         self.addCleanup(dialog.deleteLater)
         self.addCleanup(dialog.close)
+        self.addCleanup(listing.deleteLater)
         with (
             patch("gui.controllers.daily_plan.DailyPlanDialog", return_value=dialog),
+            patch(
+                "gui.controllers.daily_plan.DailyPlanListDialog", return_value=listing
+            ),
+            patch.object(
+                listing,
+                "exec",
+                side_effect=lambda: listing.editRequested.emit("default"),
+            ),
             patch.object(dialog, "exec", side_effect=lambda: action(dialog)),
         ):
             self.controller.edit()
@@ -105,8 +151,7 @@ class TestDailyPlanDialog(unittest.TestCase):
             button = next(
                 b for b in dialog.findChildren(QPushButton) if b.text() == "保存"
             )
-            with self.assertLogs("gui.controllers.daily_plan", level="ERROR"):
-                button.click()
+            button.click()
             self.assertTrue(dialog.isVisible())
             self.assertIn("denied", dialog.error_label.text())
             self.assertEqual(dialog.daily_plan.target_time, "09:45")

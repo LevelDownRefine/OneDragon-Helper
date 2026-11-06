@@ -8,7 +8,6 @@ from PySide6.QtWidgets import QDialog, QPushButton
 
 from gui.shutdown_dialog import ShutdownConfirmDialog, confirm_shutdown
 from gui.startup_dialog import StartupConfirmDialog, confirm_startup
-from src.service.daily_plan import DailyPlanOptions
 from src.service.schedule import StartupOptions
 from tests.gui.helpers import get_app
 
@@ -112,9 +111,9 @@ class TestAutoLaunchPreference(unittest.TestCase):
                 mock.patch("gui.startup_dialog.confirm_startup") as confirm,
             ):
                 bridge = self._bridge(options)
-                bridge.app_service.load_daily_plan.return_value = DailyPlanOptions(
-                    planned
-                )
+                bridge.app_service.settings_view.return_value = {
+                    "daily_enabled": planned
+                }
                 bridge.game_list.enabled = [enabled]
                 QmlBridge.maybe_auto_launch(bridge)
                 confirm.assert_not_called()
@@ -129,7 +128,7 @@ class TestAutoLaunchPreference(unittest.TestCase):
             toastRequested=mock.Mock(),
         )
         bridge.app_service.load_startup_options.return_value = options
-        bridge.app_service.load_daily_plan.return_value = DailyPlanOptions()
+        bridge.app_service.settings_view.return_value = {"daily_enabled": False}
         return bridge
 
     @mock.patch("gui.startup_dialog.confirm_startup")

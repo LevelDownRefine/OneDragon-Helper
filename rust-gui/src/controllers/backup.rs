@@ -28,7 +28,7 @@ impl App {
                         self.open_update_after_snapshot = true;
                         self.connect();
                     } else if self.backend.is_none()
-                        && matches!(request.method.as_str(), "settings.view" | "plan.view")
+                        && matches!(request.method.as_str(), "settings.view" | "plans.list")
                     {
                         self.open_settings_after_snapshot = true;
                         self.connect();
@@ -115,7 +115,7 @@ impl App {
                         }
                         #[cfg(feature = "capture")]
                         if self.settings.capture.is_some() && self.settings.capture_plan {
-                            self.request("plan.view", json!({}));
+                            self.request("plans.list", json!({}));
                         }
                     }
                     self.write_confirmed = false;

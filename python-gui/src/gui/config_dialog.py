@@ -34,7 +34,7 @@ class ConfigDialog(FormDialogBase):
     saveRequested = Signal()
 
     _ACTIONS = (
-        ("daily", "每日计划", "设置时间、参加的脚本与计划开关"),
+        ("daily", "计划任务", "管理每日运行时间与选项"),
         ("settings", "运行选项", "设置静音、重跑、通知与关机"),
         ("backup", "备份配置", "保存为 ZIP，便于换机迁移"),
         ("restore", "恢复配置", "从备份恢复，保留本机游戏路径"),
