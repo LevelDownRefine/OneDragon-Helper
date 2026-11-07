@@ -401,7 +401,8 @@ class TestBuildPostRunPipeline(unittest.TestCase):
                     mail.assert_not_called()
                 else:
                     mail.assert_called_once_with(
-                        self._result(rerun=rerun), smtp_config=smtp
+                        {**self._result(rerun=rerun), "log_script_names": ["demo"]},
+                        smtp_config=smtp,
                     )
                 if delay is None:
                     shutdown.assert_not_called()
