@@ -352,6 +352,7 @@ def build_post_run_pipeline(
 
     def _analyze() -> None:
         shared["result"] = analyze_logs(enabled_keys)
+        shared["result"]["log_script_names"] = sorted(enabled_keys or ())
 
     steps: list[Callable[[], None]] = [_analyze]
 
