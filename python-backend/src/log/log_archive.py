@@ -25,7 +25,6 @@ def _latest_file(pattern):
 def build_log_archive(scripts, selected_names):
     """返回 ZIP 字节；每个日志至多保留文件末尾 5 MiB。"""
     output = io.BytesIO()
-    notes = ["日志附件：每个文件最多保留末尾 5 MiB；截取时首个字符或行可能不完整。"]
     with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         for index, script in enumerate(scripts, 1):
             name = get_script_name(script)
@@ -37,7 +36,7 @@ def build_log_archive(scripts, selected_names):
                 try:
                     path = _latest_file(resolve_log_path(script, analysis=analysis))
                     if path is None:
-                        notes.append(f"{name} / {kind}：未找到日志")
+                        logger.info("[mail] 未找到日志 %s / %s", name, kind)
                         continue
                     if path in seen:
                         continue
@@ -47,12 +46,7 @@ def build_log_archive(scripts, selected_names):
                         size = log.tell()
                         log.seek(max(0, size - MAX_LOG_BYTES))
                         content = log.read(MAX_LOG_BYTES)
-                    archive.writestr(f"{index:02d}-{label}/{kind}-{path.name}", content)
-                    notes.append(
-                        f"{name} / {kind}：{'已截取末尾 5 MiB' if size > MAX_LOG_BYTES else '完整'}"
-                    )
+                    archive.writestr(f"{index:02d}-{label}/{kind}/{path.name}", content)
                 except (OSError, ValueError) as exc:
                     logger.warning("[mail] 日志打包失败 %s / %s：%s", name, kind, exc)
-                    notes.append(f"{name} / {kind}：读取失败（{type(exc).__name__}）")
-        archive.writestr("说明.txt", "\n".join(notes) + "\n")
     return output.getvalue()

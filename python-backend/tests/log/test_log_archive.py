@@ -10,6 +10,21 @@ from src.log.log_archive import MAX_LOG_BYTES, build_log_archive
 
 
 class LogArchiveTests(unittest.TestCase):
+    def test_same_filenames_are_kept_in_separate_directories(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            paths = [root / "one" / "app.log", root / "two" / "app.log"]
+            for path, content in zip(paths, (b"first", b"second"), strict=True):
+                path.parent.mkdir()
+                path.write_bytes(content)
+            scripts = [{"display_name": "A", "script_path": "a.py"}]
+            with patch("src.log.log_archive.resolve_log_path", side_effect=paths):
+                data = build_log_archive(scripts, {"A"})
+            with zipfile.ZipFile(io.BytesIO(data)) as archive:
+                self.assertEqual(archive.read("01-A/实时/app.log"), b"first")
+                self.assertEqual(archive.read("01-A/分析/app.log"), b"second")
+                self.assertEqual(len(archive.namelist()), 2)
+
     def test_glob_picks_most_recent_file(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -25,7 +40,7 @@ class LogArchiveTests(unittest.TestCase):
             ):
                 data = build_log_archive([script], {"A"})
             with zipfile.ZipFile(io.BytesIO(data)) as archive:
-                self.assertEqual(archive.read("01-A/实时-a.log"), b"new")
+                self.assertEqual(archive.read("01-A/实时/a.log"), b"new")
 
     def test_mail_receives_selected_scripts_even_without_parser_entries(self):
         from src.service.schedule import build_post_run_pipeline
@@ -63,11 +78,9 @@ class LogArchiveTests(unittest.TestCase):
                 data = build_log_archive(scripts, {"A"})
             with zipfile.ZipFile(io.BytesIO(data)) as archive:
                 self.assertEqual(
-                    archive.read("01-A/实时-large.log"), b"x" * MAX_LOG_BYTES
+                    archive.read("01-A/实时/large.log"), b"x" * MAX_LOG_BYTES
                 )
-                self.assertNotIn("02-B/实时-other.log", archive.namelist())
-                self.assertEqual(len(archive.namelist()), 2)
-                self.assertIn("已截取", archive.read("说明.txt").decode("utf-8"))
+                self.assertEqual(archive.namelist(), ["01-A/实时/large.log"])
 
     def test_missing_file_does_not_prevent_other_logs(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -80,5 +93,5 @@ class LogArchiveTests(unittest.TestCase):
             ):
                 data = build_log_archive([script], {"A"})
             with zipfile.ZipFile(io.BytesIO(data)) as archive:
-                self.assertEqual(archive.read("01-A/实时-game.log"), b"ok")
-                self.assertIn("未找到", archive.read("说明.txt").decode("utf-8"))
+                self.assertEqual(archive.read("01-A/实时/game.log"), b"ok")
+                self.assertEqual(len(archive.namelist()), 1)
