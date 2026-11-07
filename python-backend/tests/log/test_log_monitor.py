@@ -424,7 +424,7 @@ class TestParseLogsRerunList(unittest.TestCase):
             self.assertFalse(res["daily_done"])
         finally:
             os.unlink(path)
-        # 领取动作本身不代表日常完成。
+        # 旧版坐标领奖标记保持兼容。
         with tempfile.NamedTemporaryFile(
             "w", suffix=".log", delete=False, encoding="utf-8"
         ) as tf:
@@ -433,7 +433,7 @@ class TestParseLogsRerunList(unittest.TestCase):
         try:
             p.get_log_path = lambda sp="": Path(path)  # type: ignore[method-assign]
             res = p.parse("")
-            self.assertFalse(res["daily_done"])
+            self.assertTrue(res["daily_done"])
         finally:
             os.unlink(path)
         # 命中「current daily progress 180」（每日进度满分）兜底标记 → 当日做完。
@@ -1197,6 +1197,7 @@ class TestLogAnalysisConfigDriven(unittest.TestCase):
         self.assertEqual(
             oww.daily_success_marker,
             (
+                "claim daily reward via  coordinate",
                 "current daily progress 180",
                 "每日任务已完成",
             ),
