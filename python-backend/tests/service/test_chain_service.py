@@ -262,6 +262,7 @@ class TestScheduleRun(unittest.TestCase):
                 return_value={"rerun": [], "notify": [], "report": "", "entries": []},
             ),
             patch("src.service.chain_service._run_chain_once_impl"),
+            patch("src.service.schedule.build_post_run_pipeline", return_value=[]),
             patch("src.service.schedule.shutdown_sys"),
         ):
             chain_service.schedule_run({"demo"}, "now")
