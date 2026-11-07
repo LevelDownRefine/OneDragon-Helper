@@ -12,6 +12,7 @@ MAX_LOG_BYTES = 5 * 1024 * 1024
 
 
 def _latest_file(pattern):
+    """解析单文件或通配符，选择最近修改的日志。"""
     if pattern is None:
         return None
     if not any(char in pattern.name for char in "*?["):

@@ -24,6 +24,8 @@ from email.mime.application import MIMEApplication
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
+from ruamel.yaml.error import YAMLError
+
 try:
     import keyring as _keyring
 except ImportError:  # keyring 缺失时无法取授权码（无明文兜底），send_mail 直接跳过
@@ -136,8 +138,10 @@ def send_mail(result: dict, *, smtp_config: dict | None = None) -> None:
             config = load_config()
             assert "script_list" in config
             attachment = build_log_archive(config["script_list"], set(names))
-        except (OSError, ValueError) as exc:
-            logger.error("[mail] 日志打包失败(%s)：%s", type(exc).__name__, exc)
+        except (OSError, ValueError, AssertionError, YAMLError) as exc:
+            logger.error(
+                "[mail] 日志打包失败(%s)：%s", type(exc).__name__, exc, exc_info=True
+            )
     _send(
         email,
         password,

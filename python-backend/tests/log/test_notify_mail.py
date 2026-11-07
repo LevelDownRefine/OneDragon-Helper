@@ -7,6 +7,8 @@ import unittest
 from email.header import decode_header, make_header
 from unittest import mock
 
+from ruamel.yaml.error import YAMLError
+
 from src.log.notify_mail import send_mail
 from tests.log.helpers import make_result
 
@@ -93,6 +95,30 @@ class TestSendMail(unittest.TestCase):
         self.assertEqual(body.get_content_type(), "multipart/alternative")
         self.assertEqual(attachment.get_filename(), "logs.zip")
         self.assertEqual(attachment.get_payload(decode=True), b"zip-data")
+
+    def test_invalid_log_config_still_sends_body(self):
+        result = make_result()
+        result["log_script_names"] = ["demo"]
+        config = {
+            "enabled": True,
+            "email": "u@example.com",
+            "smtp_host": "smtp.example.com",
+            "smtp_port": 465,
+        }
+        for label, kwargs in (
+            ("invalid yaml", {"side_effect": YAMLError("invalid yaml")}),
+            ("missing script_list", {"return_value": {}}),
+        ):
+            with (
+                self.subTest(error=label),
+                mock.patch("src.utils.utils_config.load_config", **kwargs),
+                self.assertLogs("src.log.notify_mail", level="ERROR"),
+            ):
+                self.smtp_cls.reset_mock()
+                _, smtp = self._sent(result, config, keyring_password="pw")
+                message = smtp.send_message.call_args.args[0]
+                self.assertEqual(message.get_content_type(), "multipart/alternative")
+                self.assertEqual(len(message.get_payload()), 2)
 
     def test_smtp_delivery_preserves_credentials_subject_and_both_body_formats(self):
         for email, host in (
