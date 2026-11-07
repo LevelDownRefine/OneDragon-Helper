@@ -38,6 +38,7 @@ parsers:
       - 'waiting for game to start error'
       - 'capture_by_bitblt invalid params'
     daily_success_marker:
+      - 'claim daily reward via  coordinate'
       - 'current daily progress 180'
       - '每日任务已完成'
 
