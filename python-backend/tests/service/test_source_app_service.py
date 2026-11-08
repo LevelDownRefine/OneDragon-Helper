@@ -127,6 +127,9 @@ class SourceAppServiceTests(unittest.TestCase):
             ),
             patch("requests.get") as request,
             patch(
+                "src.utils.utils_config.load_config", return_value={"script_list": []}
+            ),
+            patch(
                 "src.service.source_app_service.install_source_application",
                 return_value={"ok": True},
             ) as install,
@@ -138,6 +141,33 @@ class SourceAppServiceTests(unittest.TestCase):
             self.assertEqual(install.call_args.args[2], "v2")
             with self.assertRaises(InvalidJob):
                 install_catalog_application("ok-ww", str(Path(directory) / "中文"))
+
+    def test_catalog_rejects_existing_script_before_network(self):
+        definition = {
+            "repository": "https://example.org/repo.git",
+            "release_api": "https://example.org/latest",
+            "python_version": "3.12",
+            "requirements": "requirements.txt",
+        }
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            patch(
+                "src.service.source_app_service.source_catalog",
+                return_value={"ok-ww": definition},
+            ),
+            patch(
+                "src.utils.utils_config.load_config",
+                return_value={
+                    "script_list": [
+                        {"display_name": "鸣潮", "script_path": "ok-ww.exe"}
+                    ]
+                },
+            ),
+            patch("requests.get") as request,
+        ):
+            with self.assertRaisesRegex(InvalidJob, "脚本标识已存在"):
+                install_catalog_application("ok-ww", directory)
+            request.assert_not_called()
 
     def test_existing_identity_requires_explicit_replacement(self):
         with tempfile.TemporaryDirectory() as directory:

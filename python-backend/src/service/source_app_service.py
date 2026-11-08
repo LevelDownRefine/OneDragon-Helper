@@ -96,6 +96,15 @@ def install_catalog_application(
         and not str(Path(directory) / application_id).isascii()
     ):
         raise InvalidJob("此应用的安装目录须使用英文路径")
+    from src.utils import utils_config
+    from src.utils.utils_sub_config import get_script_name
+
+    config = utils_config.load_config()
+    assert "script_list" in config
+    if any(get_script_name(item) == application_id for item in config["script_list"]):
+        raise InvalidJob(
+            f"脚本标识已存在: {application_id}；请先从助手移除已有同标识脚本"
+        )
     if progress is not None:
         progress("正在检查最新版本")
     import requests
