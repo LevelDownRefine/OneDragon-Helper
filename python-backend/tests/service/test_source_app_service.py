@@ -1,5 +1,8 @@
 import json
 import os
+import shlex
+import subprocess
+import sys
 import tempfile
 import unittest
 import zipfile
@@ -263,7 +266,12 @@ class SourceAppServiceTests(unittest.TestCase):
             root = Path(directory)
             script = root / "sub" / "main.py"
             script.parent.mkdir()
-            script.touch()
+            script.write_text(
+                "import json, os, sys\n"
+                "from pathlib import Path\n"
+                "Path('result.json').write_text(json.dumps([os.getcwd(), sys.argv[1:], sys.path[0]]))\n",
+                encoding="utf-8",
+            )
             executable = "Scripts/python.exe" if os.name == "nt" else "bin/python"
             interpreter = root / ".venv" / executable
             interpreter.parent.mkdir(parents=True)
@@ -280,10 +288,22 @@ class SourceAppServiceTests(unittest.TestCase):
             )
             chain = load_data(output, file_format="yaml")
             generated = chain["script_list"][0]
-            self.assertEqual(generated["execution_program"], str(interpreter))
-            self.assertEqual(generated["execution_args"], [str(script), "hello world"])
-            self.assertEqual(generated["execution_cwd"], str(root))
+            self.assertEqual(generated["script_path"], str(interpreter))
+            self.assertTrue(generated["script_arguments"].startswith("-c "))
+            self.assertNotIn("execution_program", generated)
             self.assertFalse(generated["launcher_mode"])
+            subprocess.run(
+                [
+                    getattr(sys, "_base_executable", sys.executable),
+                    *shlex.split(generated["script_arguments"], posix=False),
+                ],
+                cwd=root.parent,
+                check=True,
+            )
+            cwd, arguments, import_path = json.loads((root / "result.json").read_text())
+            self.assertEqual(Path(cwd).resolve(), root.resolve())
+            self.assertEqual(arguments, ["hello world"])
+            self.assertEqual(Path(import_path).resolve(), script.parent.resolve())
 
     def test_install_uses_application_directory(self):
         with tempfile.TemporaryDirectory() as directory:
