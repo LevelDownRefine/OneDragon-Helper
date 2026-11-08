@@ -20,8 +20,11 @@ import logging
 import smtplib
 import ssl
 from email.header import Header
+from email.mime.application import MIMEApplication
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+
+from ruamel.yaml.error import YAMLError
 
 try:
     import keyring as _keyring
@@ -125,7 +128,31 @@ def send_mail(result: dict, *, smtp_config: dict | None = None) -> None:
     diagnostic = format_diagnostic_sections(result.get("entries", []))
     body = _build_body(result, diagnostic)
     html_body = build_html(result)
-    _send(email, password, email, subject, body, html_body, host=host, port=port)
+    attachment = None
+    names = result.get("log_script_names", [])
+    if names:
+        try:
+            from src.log.log_archive import build_log_archive
+            from src.utils.utils_config import load_config
+
+            config = load_config()
+            assert "script_list" in config
+            attachment = build_log_archive(config["script_list"], set(names))
+        except (OSError, ValueError, AssertionError, YAMLError) as exc:
+            logger.error(
+                "[mail] 日志打包失败(%s)：%s", type(exc).__name__, exc, exc_info=True
+            )
+    _send(
+        email,
+        password,
+        email,
+        subject,
+        body,
+        html_body,
+        host=host,
+        port=port,
+        attachment=attachment,
+    )
 
 
 def _build_body(result: dict, diagnostic: str) -> str:
@@ -152,6 +179,7 @@ def _send(
     *,
     host: str,
     port: int,
+    attachment: bytes | None = None,
 ) -> None:
     """经标准库 smtplib 发送邮件（收发同号）；正文为 plain/html 的 alternative。
 
@@ -160,12 +188,18 @@ def _send(
     """
     # alternative 按「越靠后越优先」选取，故 plain 先、html 后：纯文本客户端只读得到
     # 前者，支持 HTML 的客户端展示后者（表格由渲染器排版，不依赖等宽字体）。
-    msg = MIMEMultipart("alternative")
+    body_part = MIMEMultipart("alternative")
+    msg = MIMEMultipart("mixed") if attachment is not None else body_part
     msg["From"] = user
     msg["To"] = to_addr
     msg["Subject"] = Header(subject, "utf-8").encode()
-    msg.attach(MIMEText(body, "plain", "utf-8"))
-    msg.attach(MIMEText(html_body, "html", "utf-8"))
+    body_part.attach(MIMEText(body, "plain", "utf-8"))
+    body_part.attach(MIMEText(html_body, "html", "utf-8"))
+    if attachment is not None:
+        msg.attach(body_part)
+        part = MIMEApplication(attachment, _subtype="zip")
+        part.add_header("Content-Disposition", "attachment", filename="logs.zip")
+        msg.attach(part)
 
     context = ssl.create_default_context()
     with smtplib.SMTP_SSL(

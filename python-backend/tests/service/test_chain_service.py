@@ -262,6 +262,7 @@ class TestScheduleRun(unittest.TestCase):
                 return_value={"rerun": [], "notify": [], "report": "", "entries": []},
             ),
             patch("src.service.chain_service._run_chain_once_impl"),
+            patch("src.service.schedule.build_post_run_pipeline", return_value=[]),
             patch("src.service.schedule.shutdown_sys"),
         ):
             chain_service.schedule_run({"demo"}, "now")
@@ -401,7 +402,8 @@ class TestBuildPostRunPipeline(unittest.TestCase):
                     mail.assert_not_called()
                 else:
                     mail.assert_called_once_with(
-                        self._result(rerun=rerun), smtp_config=smtp
+                        {**self._result(rerun=rerun), "log_script_names": ["demo"]},
+                        smtp_config=smtp,
                     )
                 if delay is None:
                     shutdown.assert_not_called()
