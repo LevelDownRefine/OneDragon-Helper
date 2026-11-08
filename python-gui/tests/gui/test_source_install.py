@@ -32,8 +32,8 @@ class SourceInstallTests(unittest.TestCase):
             "manual_arguments": [],
             "run_arguments": ["--run"],
         }
-        self.service.source_catalog.return_value = {"example": definition}
-        self.service.start_catalog_source_install.return_value = {"id": "job"}
+        self.service.source_apps.catalog.return_value = {"example": definition}
+        self.service.source_apps.start_catalog_install.return_value = {"id": "job"}
         self.service.jobs.poll.return_value = {
             "state": "succeeded",
             "result": {"source": str(Path.cwd())},
@@ -50,10 +50,10 @@ class SourceInstallTests(unittest.TestCase):
         ):
             self.controller.start()
             QTest.qWait(500)
-        self.service.start_catalog_source_install.assert_called_once_with(
+        self.service.source_apps.start_catalog_install.assert_called_once_with(
             "example", str(Path.cwd())
         )
-        self.service.register_source_application.assert_called_once_with(
+        self.service.source_apps.register.assert_called_once_with(
             application_id="example",
             display_name="测试",
             source_root=str(Path.cwd()),
@@ -67,4 +67,4 @@ class SourceInstallTests(unittest.TestCase):
     def test_failed_install_is_reported_without_registration(self):
         self.controller._failure(ValueError("安装失败"))
         self.toast.assert_called_once_with("安装失败")
-        self.service.register_source_application.assert_not_called()
+        self.service.source_apps.register.assert_not_called()

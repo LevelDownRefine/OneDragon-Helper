@@ -7,12 +7,13 @@ import tempfile
 import unittest
 import zipfile
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from src.config.set_config import get_game_path_keys
 from src.service import backup_service
 from src.service.chain_gen import generate_chain_config
 from src.service.source_app_service import (
+    SourceAppService,
     configure_source_application,
     format_arguments,
     install_catalog_application,
@@ -31,6 +32,22 @@ from src.utils.utils_sub_config import (
 
 
 class SourceAppServiceTests(unittest.TestCase):
+    def test_install_job_uses_shared_executor_and_progress(self):
+        jobs = Mock()
+        jobs.start.return_value = {"id": "job"}
+        service = SourceAppService(jobs)
+        with patch(
+            "src.service.source_app_service.install_catalog_application",
+            return_value={"source": "root"},
+        ) as install:
+            self.assertEqual(
+                service.start_catalog_install("app", "root"), {"id": "job"}
+            )
+            kind, operation = jobs.start.call_args.args
+            self.assertEqual(kind, "source_install")
+            self.assertEqual(operation(), {"source": "root"})
+            install.assert_called_once_with("app", "root", progress=jobs.message)
+
     def test_argument_round_trip(self):
         arguments = ["--name", "hello world", "", 'quote"inside', "C:/space path/"]
         self.assertEqual(parse_arguments(format_arguments(arguments)), arguments)

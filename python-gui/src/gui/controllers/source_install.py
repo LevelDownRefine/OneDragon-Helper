@@ -26,7 +26,7 @@ class SourceInstallController(QObject):
             return
         if self.session is None:
             try:
-                self._choose(self.service.source_catalog())
+                self._choose(self.service.source_apps.catalog())
             except (OSError, ValueError) as exc:
                 self.toast(str(exc))
         else:
@@ -63,7 +63,7 @@ class SourceInstallController(QObject):
             )
         else:
             try:
-                job_id = self.service.start_catalog_source_install(
+                job_id = self.service.source_apps.start_catalog_install(
                     application_id, directory
                 )["id"]
             except (OSError, ValueError) as exc:
@@ -109,7 +109,7 @@ class SourceInstallController(QObject):
             )
         else:
             try:
-                self._registered(self.service.register_source_application(**params))
+                self._registered(self.service.source_apps.register(**params))
             except (OSError, ValueError) as exc:
                 self._failure(exc)
 

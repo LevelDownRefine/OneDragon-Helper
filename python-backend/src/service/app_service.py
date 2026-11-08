@@ -12,6 +12,7 @@ peer：
 - 游戏侧 config 适配器（副本/周几起写脚本自身 config）：归 :mod:`src.config.set_config` 模块函数
 - 自定义壁纸表（config/wallpaper.json）：归 :mod:`src.utils.utils_wallpaper` 模块函数
 - 配置备份与恢复（各子脚本 config 打包为 ZIP / 按目录原样回写）：归 :mod:`src.service.backup_service` 模块函数
+- 源码应用管理：归 :class:`src.service.source_app_service.SourceAppService`
 - 助手手动更新（检查 / 下载 / 安装交接）：归 :class:`src.update.UpdateService`
 
 GUI（MainWindow）与 CLI（各子命令）都只实例化本类，控制器经构造注入持有它；
@@ -104,6 +105,7 @@ class AppService:
         """装配各 peer；GUI/CLI 入口选择对应发行版的更新服务。"""
         self._updates = UpdateService(frontend=frontend)
         self.jobs = JobExecutor()
+        self.source_apps = source_app_service.SourceAppService(self.jobs)
         self._update_session = UpdateSession(self._updates, self.jobs)
 
     def close(self) -> None:
@@ -111,66 +113,6 @@ class AppService:
 
     def start_backup(self) -> dict:
         return self.jobs.start("backup", self.create_backup)
-
-    def start_source_install(
-        self,
-        application_id,
-        repository,
-        revision,
-        python_version,
-        requirements,
-        directory,
-    ) -> dict:
-        return self.jobs.start(
-            "source_install",
-            lambda: source_app_service.install_source_application(
-                application_id,
-                repository,
-                revision,
-                python_version,
-                requirements,
-                directory,
-                progress=self.jobs.message,
-            ),
-        )
-
-    def source_catalog(self) -> dict:
-        return source_app_service.source_catalog()
-
-    def start_catalog_source_install(self, application_id, directory) -> dict:
-        return self.jobs.start(
-            "source_install",
-            lambda: source_app_service.install_catalog_application(
-                application_id, directory, progress=self.jobs.message
-            ),
-        )
-
-    def register_source_application(
-        self,
-        application_id,
-        display_name,
-        source_root,
-        script_path,
-        manual_arguments,
-        run_arguments,
-        replace_existing=False,
-    ) -> dict:
-        return source_app_service.register_source_application(
-            application_id,
-            display_name,
-            source_root,
-            script_path,
-            manual_arguments,
-            run_arguments,
-            replace_existing,
-        )
-
-    def configure_source_application(
-        self, script_name, script_path, manual_arguments, run_arguments
-    ) -> dict:
-        return source_app_service.configure_source_application(
-            script_name, script_path, manual_arguments, run_arguments
-        )
 
     def start_restore(self, zip_path: str, confirmed: bool) -> dict:
         if (

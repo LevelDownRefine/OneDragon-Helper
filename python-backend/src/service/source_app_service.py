@@ -294,3 +294,46 @@ def configure_source_application(
     utils_config.save_config(config)
     invalidate_config(script_name)
     return {"script_name": script_name}
+
+
+class SourceAppService:
+    """源码应用入口；安装任务与其他后台任务共用执行器。"""
+
+    def __init__(self, jobs):
+        self._jobs = jobs
+
+    def start_install(
+        self,
+        application_id,
+        repository,
+        revision,
+        python_version,
+        requirements,
+        directory,
+    ) -> dict:
+        return self._jobs.start(
+            "source_install",
+            lambda: install_source_application(
+                application_id,
+                repository,
+                revision,
+                python_version,
+                requirements,
+                directory,
+                progress=self._jobs.message,
+            ),
+        )
+
+    def start_catalog_install(self, application_id, directory) -> dict:
+        return self._jobs.start(
+            "source_install",
+            lambda: install_catalog_application(
+                application_id,
+                directory,
+                progress=self._jobs.message,
+            ),
+        )
+
+    catalog = staticmethod(source_catalog)
+    register = staticmethod(register_source_application)
+    configure = staticmethod(configure_source_application)
