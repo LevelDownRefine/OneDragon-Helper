@@ -10,7 +10,7 @@ from pathlib import Path
 
 from source_app_manager import Application, install, launch_command
 
-from src.utils import get_path_under_root
+from src.utils import get_path_under_root, get_root_dir
 from src.utils.utils_io import load_data
 from src.utils.utils_job import InvalidJob
 
@@ -76,7 +76,6 @@ def source_catalog() -> dict:
 
 def install_catalog_application(
     application_id: str,
-    directory: str,
     *,
     progress: Callable[[str], None] | None = None,
 ) -> dict:
@@ -89,8 +88,7 @@ def install_catalog_application(
     assert isinstance(definition, dict)
     for key in ("repository", "release_api", "python_version", "requirements"):
         assert key in definition and isinstance(definition[key], str)
-    if not isinstance(directory, str) or not Path(directory).is_absolute():
-        raise InvalidJob("源码应用目录必须是绝对路径")
+    directory = str(Path(get_root_dir()) / "third_party")
     if (
         definition.get("ascii_path", False)
         and not str(Path(directory) / application_id).isascii()
@@ -324,12 +322,11 @@ class SourceAppService:
             ),
         )
 
-    def start_catalog_install(self, application_id, directory) -> dict:
+    def start_catalog_install(self, application_id) -> dict:
         return self._jobs.start(
             "source_install",
             lambda: install_catalog_application(
                 application_id,
-                directory,
                 progress=self._jobs.message,
             ),
         )

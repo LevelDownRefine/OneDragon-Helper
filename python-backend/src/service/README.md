@@ -44,7 +44,7 @@ Windows 任务按当前用户和安装目录标识，需管理员权限注册及
 
 ## 源码应用
 
-`AppService.source_apps` 统一提供源码应用目录、安装、登记和配置入口；安装与更新、备份共用后台任务执行器及进度查询。通用源码安装与 Python 环境管理由 `uv-app-manager` 提供。
+`AppService.source_apps` 统一提供源码应用目录、安装、登记和配置入口；安装与更新、备份共用后台任务执行器及进度查询。应用安装在助手根目录的 `third_party/<应用标识>/`，通用源码安装与 Python 环境管理由 `uv-app-manager` 提供。
 
 ## 手动更新
 

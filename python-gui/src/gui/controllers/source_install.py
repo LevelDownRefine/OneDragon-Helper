@@ -3,7 +3,7 @@
 from pathlib import Path
 
 from PySide6.QtCore import QObject, QTimer
-from PySide6.QtWidgets import QFileDialog, QInputDialog
+from PySide6.QtWidgets import QInputDialog
 
 from gui.cli_job import CliJob
 from gui.controllers.cli_backup import JobDialog
@@ -43,9 +43,6 @@ class SourceInstallController(QObject):
         if not accepted:
             return
         application_id = names[labels.index(selected)]
-        directory = QFileDialog.getExistingDirectory(None, "选择安装目录")
-        if not directory:
-            return
         definition = catalog[application_id]
         self.dialog = JobDialog("正在安装源码应用")
         self.dialog.show()
@@ -58,14 +55,14 @@ class SourceInstallController(QObject):
             )
             self.job.start(
                 "source.install_catalog",
-                {"application_id": application_id, "directory": directory},
+                {"application_id": application_id},
                 kind="source_install",
             )
         else:
             try:
-                job_id = self.service.source_apps.start_catalog_install(
-                    application_id, directory
-                )["id"]
+                job_id = self.service.source_apps.start_catalog_install(application_id)[
+                    "id"
+                ]
             except (OSError, ValueError) as exc:
                 self._failure(exc)
                 return

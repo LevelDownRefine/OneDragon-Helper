@@ -40,13 +40,11 @@ class SourceAppServiceTests(unittest.TestCase):
             "src.service.source_app_service.install_catalog_application",
             return_value={"source": "root"},
         ) as install:
-            self.assertEqual(
-                service.start_catalog_install("app", "root"), {"id": "job"}
-            )
+            self.assertEqual(service.start_catalog_install("app"), {"id": "job"})
             kind, operation = jobs.start.call_args.args
             self.assertEqual(kind, "source_install")
             self.assertEqual(operation(), {"source": "root"})
-            install.assert_called_once_with("app", "root", progress=jobs.message)
+            install.assert_called_once_with("app", progress=jobs.message)
 
     def test_argument_round_trip(self):
         arguments = ["--name", "hello world", "", 'quote"inside', "C:/space path/"]
@@ -144,6 +142,9 @@ class SourceAppServiceTests(unittest.TestCase):
             ),
             patch("requests.get") as request,
             patch(
+                "src.service.source_app_service.get_root_dir", return_value=directory
+            ) as root,
+            patch(
                 "src.utils.utils_config.load_config", return_value={"script_list": []}
             ),
             patch(
@@ -152,12 +153,14 @@ class SourceAppServiceTests(unittest.TestCase):
             ) as install,
         ):
             request.return_value.json.return_value = {"tag_name": "v2"}
-            self.assertEqual(
-                install_catalog_application("ok-ww", directory), {"ok": True}
-            )
+            self.assertEqual(install_catalog_application("ok-ww"), {"ok": True})
             self.assertEqual(install.call_args.args[2], "v2")
+            self.assertEqual(
+                install.call_args.args[5], str(Path(directory) / "third_party")
+            )
+            root.return_value = str(Path(directory) / "中文")
             with self.assertRaises(InvalidJob):
-                install_catalog_application("ok-ww", str(Path(directory) / "中文"))
+                install_catalog_application("ok-ww")
 
     def test_catalog_rejects_existing_script_before_network(self):
         definition = {
@@ -168,6 +171,9 @@ class SourceAppServiceTests(unittest.TestCase):
         }
         with (
             tempfile.TemporaryDirectory() as directory,
+            patch(
+                "src.service.source_app_service.get_root_dir", return_value=directory
+            ),
             patch(
                 "src.service.source_app_service.source_catalog",
                 return_value={"ok-ww": definition},
@@ -183,7 +189,7 @@ class SourceAppServiceTests(unittest.TestCase):
             patch("requests.get") as request,
         ):
             with self.assertRaisesRegex(InvalidJob, "脚本标识已存在"):
-                install_catalog_application("ok-ww", directory)
+                install_catalog_application("ok-ww")
             request.assert_not_called()
 
     def test_existing_identity_requires_explicit_replacement(self):

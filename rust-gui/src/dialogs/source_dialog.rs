@@ -25,7 +25,6 @@ pub enum SourceAction {
 pub struct SourceDialog {
     catalog: BTreeMap<String, Application>,
     selected: String,
-    directory: String,
     job: Option<String>,
     awaiting: bool,
     next_poll: Instant,
@@ -39,7 +38,6 @@ impl SourceDialog {
         Self {
             catalog: BTreeMap::new(),
             selected: String::new(),
-            directory: String::new(),
             job: None,
             awaiting: true,
             next_poll: Instant::now(),
@@ -141,30 +139,76 @@ impl SourceDialog {
         }
         Ok(None)
     }
+    fn install_request(&mut self) -> Request {
+        self.error = None;
+        self.awaiting = true;
+        Request {
+            method: "source.install_catalog".into(),
+            params: json!({"application_id": self.selected}),
+        }
+    }
+
     pub fn show(&mut self, ctx: &egui::Context, blocked: bool) -> Option<SourceAction> {
         let active = self.active();
         let mut action = None;
-        let close = common::Dialog::new("source-install", "安装源码应用").description("选择应用和安装目录，首次安装需要下载依赖").show(ctx, !blocked && !active, |ui| {
-            common::dialog_body(ui, |ui| {
-                ui.add_enabled_ui(!blocked && !active && !self.finished, |ui| {
-                    common::form_section(ui, "安装配置", |ui| {
-                        let label = self.catalog.get(&self.selected).map(|app| app.display_name.as_str()).unwrap_or("正在读取应用列表");
-                        egui::ComboBox::from_id_salt("source-app").selected_text(label).show_ui(ui, |ui| { for (id, app) in &self.catalog { ui.selectable_value(&mut self.selected, id.clone(), &app.display_name); } });
-                        ui.label("安装目录（绝对路径，鸣潮须使用英文路径）");
-                        ui.add(common::text_input(&mut self.directory).hint_text("例如 C:/Applications"));
+        let close = common::Dialog::new("source-install", "安装源码应用")
+            .description("选择应用，首次安装需要下载依赖")
+            .show(ctx, !blocked && !active, |ui| {
+                common::dialog_body(ui, |ui| {
+                    ui.add_enabled_ui(!blocked && !active && !self.finished, |ui| {
+                        common::form_section(ui, "安装配置", |ui| {
+                            let label = self
+                                .catalog
+                                .get(&self.selected)
+                                .map(|app| app.display_name.as_str())
+                                .unwrap_or("正在读取应用列表");
+                            egui::ComboBox::from_id_salt("source-app")
+                                .selected_text(label)
+                                .show_ui(ui, |ui| {
+                                    for (id, app) in &self.catalog {
+                                        ui.selectable_value(
+                                            &mut self.selected,
+                                            id.clone(),
+                                            &app.display_name,
+                                        );
+                                    }
+                                });
+                        });
                     });
                 });
+                common::dialog_status(
+                    ui,
+                    self.error.as_deref(),
+                    (!self.message.is_empty()).then_some(self.message.as_str()),
+                );
+                common::dialog_footer(ui, |ui| {
+                    if ui
+                        .add_enabled(
+                            !blocked && !active && !self.finished && !self.selected.is_empty(),
+                            common::primary_button("安装"),
+                        )
+                        .clicked()
+                    {
+                        action = Some(SourceAction::Request(self.install_request()));
+                    }
+                    if ui
+                        .add_enabled(
+                            !blocked && !active,
+                            common::secondary_button(if self.finished {
+                                "完成"
+                            } else {
+                                "关闭"
+                            }),
+                        )
+                        .clicked()
+                    {
+                        action = Some(SourceAction::Close);
+                    }
+                    if active {
+                        ui.spinner();
+                    }
+                });
             });
-            common::dialog_status(ui, self.error.as_deref(), (!self.message.is_empty()).then_some(self.message.as_str()));
-            common::dialog_footer(ui, |ui| {
-                if ui.add_enabled(!blocked && !active && !self.finished && !self.selected.is_empty(), common::primary_button("安装")).clicked() {
-                    if !Path::new(self.directory.trim()).is_absolute() { self.error = Some("请输入绝对安装目录".into()); }
-                    else { self.error = None; self.awaiting = true; action = Some(SourceAction::Request(Request { method: "source.install_catalog".into(), params: json!({"application_id": self.selected, "directory": self.directory.trim()}) })); }
-                }
-                if ui.add_enabled(!blocked && !active, common::secondary_button(if self.finished { "完成" } else { "关闭" })).clicked() { action = Some(SourceAction::Close); }
-                if active { ui.spinner(); }
-            });
-        });
         if close {
             action = Some(SourceAction::Close);
         }
@@ -202,6 +246,15 @@ mod tests {
             .unwrap();
         assert!(dialog.finished);
         assert!(!dialog.active());
+    }
+
+    #[test]
+    fn install_request_uses_managed_directory() {
+        let mut dialog = SourceDialog::new();
+        dialog.selected = "ok-ww".into();
+        let request = dialog.install_request();
+        assert_eq!(request.method, "source.install_catalog");
+        assert_eq!(request.params, json!({"application_id": "ok-ww"}));
     }
 
     #[test]

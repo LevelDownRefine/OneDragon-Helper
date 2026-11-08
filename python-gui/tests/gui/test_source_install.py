@@ -43,15 +43,11 @@ class SourceInstallTests(unittest.TestCase):
                 "gui.controllers.source_install.QInputDialog.getItem",
                 return_value=("测试", True),
             ),
-            patch(
-                "gui.controllers.source_install.QFileDialog.getExistingDirectory",
-                return_value=str(Path.cwd()),
-            ),
         ):
             self.controller.start()
             QTest.qWait(500)
         self.service.source_apps.start_catalog_install.assert_called_once_with(
-            "example", str(Path.cwd())
+            "example"
         )
         self.service.source_apps.register.assert_called_once_with(
             application_id="example",
