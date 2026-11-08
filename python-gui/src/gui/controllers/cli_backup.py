@@ -11,7 +11,9 @@ class JobDialog(FormDialogBase):
         super().__init__()
         self.setWindowTitle(title)
         layout = QVBoxLayout(self)
-        layout.addWidget(QLabel(title + "，请等待完成…", self))
+        self.label = QLabel(title + "，请等待完成…", self)
+        self.label.setWordWrap(True)
+        layout.addWidget(self.label)
         self.set_pending(True)
 
 

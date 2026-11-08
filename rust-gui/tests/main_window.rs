@@ -235,6 +235,7 @@ fn test_app(command: Command, root: &std::path::Path, python: PathBuf) -> App {
         launched: Vec::new(),
         editor: None,
         list_dialog: None,
+        source_dialog: None,
         open_editor_after_snapshot: false,
         run_dialog: None,
         settings_dialog: None,

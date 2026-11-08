@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_RUN_TIMEOUT = 3600
 """脚本运行默认超时秒数。当 weekly.yml 的 weekly_timeouts 段 无条目或不足 7 格时作为 fallback。"""
 
+
 # ============================================================
 # 主配置加载
 # ============================================================
@@ -139,12 +140,37 @@ def get_script_root_dir(script_name: str) -> str | None:
     config_data = _load_config_yml()
     for script in config_data.get("script_list", []):
         if get_script_name(script) == script_name:
+            if "source_root" in script:
+                root = script["source_root"]
+                assert isinstance(root, str) and root
+                return resolve_script_path(root).replace("\\", "/")
             script_path = script.get("script_path", "")
             if not script_path:
                 return None
             # 与 get_script_path 一致：归一化为正斜杠再取父目录，跨平台（Linux CI）
             return os.path.dirname(resolve_script_path(script_path).replace("\\", "/"))
     return None
+
+
+def source_relative_path(script: dict, rel_path: str) -> str:
+    """将源码安装的原生工作目录声明解析到源码根。"""
+    if "source_root" not in script:
+        return rel_path
+    prefix = f"data/apps/{get_script_name(script)}/working/"
+    if rel_path.startswith(prefix):
+        return rel_path[len(prefix) :]
+    return rel_path
+
+
+def declared_relative_path(script_name: str, rel_path: str) -> str:
+    """解析原生配置和资源声明中的相对路径。"""
+    prefix = f"data/apps/{script_name}/working/"
+    if rel_path.startswith(prefix) and os.path.isfile(get_config_yml_path_under_root()):
+        config_data = _load_config_yml()
+        for script in config_data.get("script_list", []):
+            if get_script_name(script) == script_name:
+                return source_relative_path(script, rel_path)
+    return rel_path
 
 
 def get_script_game_path(script_name: str) -> str:
@@ -182,7 +208,7 @@ def get_sub_config_path(script_name: str, rel_path: str) -> str:
     assert root is not None, (
         f"[set_config] 无法解析脚本根目录（config.yml 中无 {script_name} 或 script_path 为空）"
     )
-    return safe_path_join(root, rel_path)
+    return safe_path_join(root, declared_relative_path(script_name, rel_path))
 
 
 # ============================================================
@@ -381,10 +407,13 @@ def resolve_log_path(script: dict, *, analysis: bool = False) -> Path | None:
         assert "script_path" in script
         if not script["script_path"]:
             return None
-        path = (
-            Path(resolve_script_path(script["script_path"]).replace("\\", "/")).parent
-            / raw
-        )
+        if "source_root" in script:
+            root = Path(resolve_script_path(script["source_root"]))
+        else:
+            root = Path(
+                resolve_script_path(script["script_path"]).replace("\\", "/")
+            ).parent
+        path = root / source_relative_path(script, raw)
     if any(char in str(path.parent) for char in "*?") or "**" in path.name:
         raise ValueError(f"{key} 仅允许文件名含通配符")
     return path

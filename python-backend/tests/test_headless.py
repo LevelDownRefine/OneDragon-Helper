@@ -1178,6 +1178,16 @@ class RunRequestTests(unittest.TestCase):
 
 
 class ProtocolValidationTests(unittest.TestCase):
+    def test_source_install_requires_persistent_session(self):
+        service = mock_service()
+        response = dispatch_to_serializable(
+            json.dumps(request("source.install")),
+            methods=rpc_methods(service, persistent=False),
+            deserializer=_parse_json,
+        )
+        self.assertEqual(response["error"]["code"], -32600)
+        service.start_source_install.assert_not_called()
+
     def test_library_binds_positional_and_default_parameters(self):
         service = mock_service()
         service.select_daily.return_value = None

@@ -17,6 +17,7 @@ from src.config.task.weekly import Weekly, build_weeklies
 from src.utils import open_in_explorer, utils_launcher
 from src.utils.utils_dict import get_field
 from src.utils.utils_sub_config import (
+    declared_relative_path,
     get_script_game_path,
     load_game_config,
     resolve_script_path,
@@ -536,7 +537,8 @@ def get_game_path_keys(script_name: str, rel: str) -> tuple[str, ...]:
         return ()
     game = cfg.resources["game"]
     assert "config" in game and "keys" in game
-    if rel.casefold() != game["config"].casefold():
+    config_path = declared_relative_path(script_name, game["config"])
+    if rel.casefold() != config_path.casefold():
         return ()
     return tuple(game["keys"])
 

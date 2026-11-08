@@ -13,6 +13,7 @@ import copy
 import logging
 from datetime import datetime
 
+from src.service.source_app_service import source_launch_command
 from src.utils import (
     get_path_under_root,
     safe_path_join,
@@ -152,6 +153,15 @@ def generate_chain_config(
         script["enabled"] = True
         log_path = resolve_log_path(script)
         script["log_path"] = str(log_path) if log_path is not None else ""
+        if "source_root" in script:
+            arguments = script.get("source_arguments", [])
+            command = source_launch_command(script, arguments)
+            script["script_type"] = "external"
+            script["execution_program"] = command.program
+            script["execution_args"] = list(command.arguments)
+            script["execution_cwd"] = command.working_directory
+            script["launcher_mode"] = False
+            script["script_process_name"] = []
         script.pop("log_analysis_path", None)
         filtered.append(script)
 

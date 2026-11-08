@@ -26,6 +26,7 @@ import src.service.backup_service as backup_service
 import src.service.chain_service as chain_service
 import src.service.daily_plan as daily_plan
 import src.service.script_service as script_service
+import src.service.source_app_service as source_app_service
 import src.service.task_service as task_service
 from src.config.native_task_switch import native_task_switch_of
 from src.config.set_config import (
@@ -110,6 +111,66 @@ class AppService:
 
     def start_backup(self) -> dict:
         return self.jobs.start("backup", self.create_backup)
+
+    def start_source_install(
+        self,
+        application_id,
+        repository,
+        revision,
+        python_version,
+        requirements,
+        directory,
+    ) -> dict:
+        return self.jobs.start(
+            "source_install",
+            lambda: source_app_service.install_source_application(
+                application_id,
+                repository,
+                revision,
+                python_version,
+                requirements,
+                directory,
+                progress=self.jobs.message,
+            ),
+        )
+
+    def source_catalog(self) -> dict:
+        return source_app_service.source_catalog()
+
+    def start_catalog_source_install(self, application_id, directory) -> dict:
+        return self.jobs.start(
+            "source_install",
+            lambda: source_app_service.install_catalog_application(
+                application_id, directory, progress=self.jobs.message
+            ),
+        )
+
+    def register_source_application(
+        self,
+        application_id,
+        display_name,
+        source_root,
+        script_path,
+        manual_arguments,
+        run_arguments,
+        replace_existing=False,
+    ) -> dict:
+        return source_app_service.register_source_application(
+            application_id,
+            display_name,
+            source_root,
+            script_path,
+            manual_arguments,
+            run_arguments,
+            replace_existing,
+        )
+
+    def configure_source_application(
+        self, script_name, script_path, manual_arguments, run_arguments
+    ) -> dict:
+        return source_app_service.configure_source_application(
+            script_name, script_path, manual_arguments, run_arguments
+        )
 
     def start_restore(self, zip_path: str, confirmed: bool) -> dict:
         if (
@@ -226,6 +287,13 @@ class AppService:
         script = self.get_script(script_name)
         if script is None:
             raise InvalidScript("脚本已不存在，请刷新列表")
+        if "source_root" in script:
+            script = {
+                **script,
+                "source_manual_arguments_text": source_app_service.format_arguments(
+                    script["source_manual_arguments"]
+                ),
+            }
         return {
             "script_name": script_name,
             "script": script,
