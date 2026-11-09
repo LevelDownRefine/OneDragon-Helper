@@ -287,10 +287,10 @@ impl View {
                 self.toast("手动选择：点击图标勾选，不影响每日计划");
             }
         }
-        let bubble = rect(92.0, base + 2.0, 156.0, 60.0);
+        let bubble = rect(92.0, base + 2.0, 200.0, 60.0);
         if self.control_mode && self.dragging.is_none() {
             panel(ui, bubble, 16, PANEL);
-            for (index, text) in ["全", "清", "＋"].iter().enumerate() {
+            for (index, text) in ["全", "清", "＋", "源"].iter().enumerate() {
                 let bounds = rect(
                     bubble.left() + 16.0 + 44.0 * index as f32,
                     bubble.top() + 12.0,
@@ -316,6 +316,10 @@ impl View {
                         2 => {
                             self.control_mode = false;
                             actions.push(Action::AddScript);
+                        }
+                        3 => {
+                            self.control_mode = false;
+                            actions.push(Action::InstallSource);
                         }
                         _ => unreachable!(),
                     }
@@ -357,6 +361,7 @@ impl App {
             && self.view.is_some()
             && self.editor.is_none()
             && self.list_dialog.is_none()
+            && self.source_dialog.is_none()
             && self.run_dialog.is_none()
             && self.settings_dialog.is_none()
             && self.backup_dialog.is_none()

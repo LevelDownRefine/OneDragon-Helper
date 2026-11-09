@@ -65,7 +65,11 @@ def resolve_script_target(script_name: str, target: str) -> dict:
             return _unavailable("未找到脚本路径")
         resolved = resolve_script_path(script["script_path"])
         if target == "folder":
-            path = os.path.dirname(resolved)
+            path = (
+                resolve_script_path(script["source_root"])
+                if "source_root" in script
+                else os.path.dirname(resolved)
+            )
         else:
             path = get_log_dir(script)
             if path is None:
@@ -109,6 +113,21 @@ def resolve_launch_target(script_name: str, target: str) -> dict:
     resolved = resolve_script_path(path)
     if not resolved or not os.path.isfile(resolved):
         return _unavailable("启动文件不存在，请检查配置")
+    if "source_root" in script:
+        from src.service.source_app_service import source_launch_command
+
+        try:
+            arguments = script.get("source_manual_arguments", [])
+            command = source_launch_command(script, arguments)
+        except (OSError, ValueError, RuntimeError) as exc:
+            return _unavailable(str(exc))
+        return {
+            "kind": "command",
+            "program": command.program,
+            "args": list(command.arguments),
+            "cwd": command.working_directory,
+            "env": {},
+        }
     script_type = script["script_type"] if "script_type" in script else "external"  # noqa: SIM401
     if script_type != "python":
         return {"kind": "association", "path": os.path.abspath(resolved)}

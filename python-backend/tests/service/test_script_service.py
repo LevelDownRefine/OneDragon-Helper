@@ -90,6 +90,49 @@ class ScriptServiceTestBase(unittest.TestCase):
 
 
 class TestScriptEdit(ScriptServiceTestBase):
+    def test_source_arguments_saved_and_invalid_entry_rejected(self):
+        directory = self.config.parent / "source"
+        directory.mkdir()
+        entry = directory / "main.py"
+        entry.touch()
+        executable = (
+            directory
+            / ".venv"
+            / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+        )
+        executable.parent.mkdir(parents=True)
+        executable.touch()
+        config = utils_config.load_config()
+        item = config["script_list"][0]
+        item.update(
+            script_id="BetterGI",
+            source_root=str(directory),
+            script_path=str(entry),
+            source_manual_arguments=[],
+            source_arguments=[],
+        )
+        utils_config.save_config(config)
+        edit = replace(
+            self.edit(script_path=str(entry), script_arguments='--label "hello world"'),
+            source_manual_arguments_text='--manual "two words"',
+        )
+        self.service.update_script(edit)
+        saved = self.service.get_script("BetterGI")
+        self.assertEqual(saved["source_arguments"], ["--label", "hello world"])
+        self.assertEqual(saved["source_manual_arguments"], ["--manual", "two words"])
+        original = self.config.read_bytes()
+        with self.assertRaises(InvalidScript):
+            self.service.update_script(
+                replace(
+                    edit,
+                    config_patch={
+                        **edit.config_patch,
+                        "script_path": str(directory.parent / "outside.py"),
+                    },
+                )
+            )
+        self.assertEqual(self.config.read_bytes(), original)
+
     def test_no_log_settings_round_trip(self):
         for seconds, retries in ((300, 1), (0, 0)):
             with self.subTest(seconds=seconds, retries=retries):

@@ -1,0 +1,12 @@
+version: 1
+applications:
+  ok-ww:
+    display_name: 鸣潮
+    repository: https://github.com/ok-oldking/ok-wuthering-waves.git
+    release_api: https://api.github.com/repos/ok-oldking/ok-wuthering-waves/releases/latest
+    python_version: '3.12'
+    requirements: requirements.txt
+    entry: main.py
+    manual_arguments: []
+    run_arguments: ['-t', '1', '-e']
+    ascii_path: true

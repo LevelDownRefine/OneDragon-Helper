@@ -15,6 +15,7 @@ from gui.controllers.backup import BackupController
 from gui.controllers.game_list import GameListController
 from gui.controllers.launch import LaunchController
 from gui.controllers.links import LinksController
+from gui.controllers.source_install import SourceInstallController
 from gui.controllers.task_card import TaskCardController
 from gui.controllers.window import WindowController
 from gui.icons import UiIconProvider
@@ -121,6 +122,13 @@ class QmlBridge(QObject):
             self.game_list.loaded.connect(self._cli_games_loaded)
             self.game_list.loadFailed.connect(self._cli_games_failed)
             self._cli_session.recovered.connect(self._reload_games)
+        self.source_install = SourceInstallController(
+            self.app_service,
+            self._cli_session,
+            self.toastRequested.emit,
+            self._reload_games,
+            self,
+        )
         self.window = WindowController()
         # UI 矢量图标提供器（无状态，门面持有）
         self._ui_icon_provider = UiIconProvider()
@@ -244,6 +252,10 @@ class QmlBridge(QObject):
     @Slot()
     def addScript(self):
         self.game_list.addScript()
+
+    @Slot()
+    def installSource(self):
+        self.source_install.start()
 
     @Slot("QVariantList", result=bool)
     def canDropScripts(self, urls):

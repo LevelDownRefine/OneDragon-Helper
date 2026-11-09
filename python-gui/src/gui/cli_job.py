@@ -7,6 +7,7 @@ from gui.cli_client import CliFailure
 
 class CliJob(QObject):
     progress = Signal(object, object)
+    message = Signal(str)
     succeeded = Signal(object)
     failed = Signal(object)
     cancelled = Signal()
@@ -25,7 +26,7 @@ class CliJob(QObject):
         self._timer.setInterval(interval_ms)
         self._timer.timeout.connect(self._poll)
 
-    def start(self, method, params=None):
+    def start(self, method, params=None, *, kind=None):
         """只提交一次；开始响应丢失也不重放任务。"""
         if self.active:
             return
@@ -35,7 +36,7 @@ class CliJob(QObject):
             )
             return
         self.active = True
-        self.kind = method.removesuffix(".start")
+        self.kind = kind if kind is not None else method.removesuffix(".start")
         self.job_id = None
         self._generation += 1
         generation = self._generation
@@ -73,6 +74,8 @@ class CliJob(QObject):
                 self.progress.emit(
                     value["progress"]["received"], value["progress"]["total"]
                 )
+            if "message" in value:
+                self.message.emit(value["message"])
             state = value["state"]
             if state == "running":
                 self._timer.start()
@@ -151,6 +154,8 @@ def validate_job(value, job_id, kind):
             for key in ("received", "total")
         ):
             raise ValueError("后台任务进度无效")
+    if "message" in value and not isinstance(value["message"], str):
+        raise ValueError("后台任务进度信息无效")
     if value["state"] == "succeeded" and "result" not in value:
         raise ValueError("后台任务结果缺失")
     if value["state"] == "failed" and (

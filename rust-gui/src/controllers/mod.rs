@@ -25,6 +25,7 @@ pub enum Action {
     Refresh,
     Diagnostics,
     AddScript,
+    InstallSource,
     RemoveScript(String),
 }
 

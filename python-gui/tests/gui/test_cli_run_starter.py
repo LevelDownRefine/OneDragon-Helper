@@ -59,7 +59,8 @@ class RunStarterTests(TestCase):
 
     def _target(self, code):
         return {
-            "program": sys.executable,
+            # Windows venv 启动器会保留 stdin 句柄，干扰关闭管道的实进程测试。
+            "program": getattr(sys, "_base_executable", sys.executable),
             "args": ["-c", code],
             "cwd": str(self.root),
             "env": {},

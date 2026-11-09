@@ -707,7 +707,13 @@ class SingleScriptConfigDialog(FormDialogBase):
         )
         grid.addWidget(self._make_label("游戏参数:"), 8, 0)
         grid.addWidget(self.game_args_input, 8, 1, 1, 2)
-        timeout_row = 9
+        self.manual_args_label = self._make_label("手动启动参数:")
+        self.manual_args_input = self._make_line_edit(
+            placeholder="可选，手动打开时使用"
+        )
+        grid.addWidget(self.manual_args_label, 9, 0)
+        grid.addWidget(self.manual_args_input, 9, 1, 1, 2)
+        timeout_row = 10
         timeout_grid = QGridLayout()
         timeout_grid.setHorizontalSpacing(4)
         timeout_grid.setVerticalSpacing(2)
@@ -925,6 +931,15 @@ class SingleScriptConfigDialog(FormDialogBase):
         self.type_combo.setCurrentText(script_data.get("script_type", "external"))
         # 启动参数
         self.args_input.setText(script_data.get("script_arguments", ""))
+        is_source = "source_root" in script_data
+        self.manual_args_label.setVisible(is_source)
+        self.manual_args_input.setVisible(is_source)
+        if is_source:
+            from src.service.source_app_service import format_arguments
+
+            self.manual_args_input.setText(
+                format_arguments(script_data["source_manual_arguments"])
+            )
         # 完成检测
         self.check_done_combo.setCurrentText(
             script_data.get("check_done", "script_closed")
@@ -1015,6 +1030,11 @@ class SingleScriptConfigDialog(FormDialogBase):
                 for name, checkbox in self.switch_checks.items()
             },
             task_options=self._collect_task_options(),
+            source_manual_arguments_text=(
+                self.manual_args_input.text()
+                if "source_root" in self._find_script_data()
+                else None
+            ),
         )
         if self._edit_view is not None:
             self.pending_changes = edit

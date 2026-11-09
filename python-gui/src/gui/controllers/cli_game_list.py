@@ -226,7 +226,10 @@ class CliGameListController(GameListController):
                     self._on_reload()
                     self._toast(f"已保存 {edit.display_name} 配置")
 
-                self._session.call("script.edit_save", asdict(edit), saved, rejected)
+                params = asdict(edit)
+                if params["source_manual_arguments_text"] is None:
+                    del params["source_manual_arguments_text"]
+                self._session.call("script.edit_save", params, saved, rejected)
 
             dialog.saveRequested.connect(save)
             dialog.exec()

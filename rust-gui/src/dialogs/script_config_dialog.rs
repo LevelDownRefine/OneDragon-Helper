@@ -26,6 +26,8 @@ pub struct Fields {
     script_type: String,
     #[serde(default)]
     script_arguments: String,
+    #[serde(default)]
+    source_manual_arguments_text: Option<String>,
     #[serde(default = "script_closed")]
     check_done: String,
     #[serde(default = "enabled")]
@@ -366,6 +368,7 @@ impl ScriptEditor {
                 },
                 "weekly_timeouts": timeouts, "switches": switches,
                 "task_options": task_options,
+                "source_manual_arguments_text": fields.source_manual_arguments_text,
             }),
         })
     }
@@ -474,6 +477,11 @@ impl ScriptEditor {
                         .hint_text("可选"),
                 );
                 ui.end_row();
+                if let Some(manual) = &mut fields.source_manual_arguments_text {
+                    ui.label("手动启动参数");
+                    ui.add(crate::dialogs::common::text_input(manual).hint_text("可选"));
+                    ui.end_row();
+                }
             });
         });
         crate::dialogs::common::form_section(ui, "运行行为", |ui| {

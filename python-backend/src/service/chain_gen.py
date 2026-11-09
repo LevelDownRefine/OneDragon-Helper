@@ -9,10 +9,13 @@
 自 ``gui.chain`` 迁出：不依赖 Qt，收编到 service 层便于无头测试与 GUI/CLI 共用。
 """
 
+import base64
 import copy
 import logging
 from datetime import datetime
+from pathlib import Path
 
+from src.service.source_app_service import source_launch_command
 from src.utils import (
     get_path_under_root,
     safe_path_join,
@@ -152,6 +155,27 @@ def generate_chain_config(
         script["enabled"] = True
         log_path = resolve_log_path(script)
         script["log_path"] = str(log_path) if log_path is not None else ""
+        if "source_root" in script:
+            arguments = script.get("source_arguments", [])
+            command = source_launch_command(script, arguments)
+            script["script_type"] = "external"
+            # 旧 runner 以程序路径的父目录启动进程；在解释器内切换目录并
+            # 执行入口；编码为单个参数，避免旧 runner 拆分路径和引号。
+            entry, *args = command.arguments
+            bootstrap = (
+                "import os,runpy,sys\n"
+                f"os.chdir({command.working_directory!r})\n"
+                f"sys.argv={[entry, *args]!r}\n"
+                f"sys.path[0]={str(Path(entry).parent)!r}\n"
+                f"runpy.run_path({entry!r},run_name='__main__')\n"
+            )
+            encoded = base64.b64encode(bootstrap.encode("utf-8")).decode("ascii")
+            script["script_path"] = command.program
+            script["script_arguments"] = (
+                f"-c exec(__import__('base64').b64decode('{encoded}'))"
+            )
+            script["launcher_mode"] = False
+            script["script_process_name"] = []
         script.pop("log_analysis_path", None)
         filtered.append(script)
 

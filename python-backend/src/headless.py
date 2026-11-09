@@ -144,6 +144,7 @@ class HeadlessApi:
         weekly_timeouts,
         switches,
         task_options=None,
+        source_manual_arguments_text=None,
     ):
         from src.service.script_service import ScriptEdit
 
@@ -154,6 +155,7 @@ class HeadlessApi:
             weekly_timeouts,
             switches,
             {} if task_options is None else task_options,
+            source_manual_arguments_text,
         )
         return {"script_name": self.service.update_script(edit)}
 
@@ -301,6 +303,11 @@ def rpc_methods(service, *, persistent=True) -> dict:
     methods = {
         "app.snapshot": service.app_snapshot,
         "backup.start": service.start_backup,
+        "source.install": service.source_apps.start_install,
+        "source.catalog": service.source_apps.catalog,
+        "source.install_catalog": service.source_apps.start_catalog_install,
+        "source.register": service.source_apps.register,
+        "source.configure": service.source_apps.configure,
         "restore.start": service.start_restore,
         "job.poll": service.poll_job,
         "job.cancel": service.cancel_job,
@@ -340,6 +347,7 @@ def rpc_methods(service, *, persistent=True) -> dict:
     }
     readonly = {
         "app.snapshot",
+        "source.catalog",
         "job.poll",
         "update.view",
         "settings.view",
@@ -358,6 +366,8 @@ def rpc_methods(service, *, persistent=True) -> dict:
     }
     session_only = {
         "backup.start",
+        "source.install",
+        "source.install_catalog",
         "restore.start",
         "job.poll",
         "job.cancel",
