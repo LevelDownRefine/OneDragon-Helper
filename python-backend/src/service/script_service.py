@@ -40,7 +40,6 @@ class ScriptEdit:
     weekly_timeouts: list[int | None]  # weekly.yml
     switches: dict[str, bool]  # 脚本自身 config
     task_options: dict[str, bool | str | list[str]] = field(default_factory=dict)
-    source_manual_arguments_text: str | None = None
 
 
 class InvalidScript(ValueError):
@@ -53,10 +52,6 @@ def validate_edit(edit: ScriptEdit, *, scripts: list[dict] | None = None) -> Scr
         raise InvalidScript("脚本标识不能为空")
     if not isinstance(edit.display_name, str) or not edit.display_name.strip():
         raise InvalidScript("脚本名称不能为空")
-    if edit.source_manual_arguments_text is not None and not isinstance(
-        edit.source_manual_arguments_text, str
-    ):
-        raise InvalidScript("手动启动参数必须为文本")
     patch = edit.config_patch
     if not isinstance(patch, dict) or set(patch) != set(
         _TEXT_FIELDS + _BOOL_FIELDS + _INT_FIELDS
@@ -232,29 +227,6 @@ def update(edit: ScriptEdit) -> str:
         pending = options.prepare(edit.task_options) if options is not None else []
     except ValueError as exc:
         raise InvalidScript(str(exc)) from exc
-
-    if "source_root" in target:
-        from src.service.source_app_service import (
-            parse_arguments,
-            source_launch_command,
-        )
-
-        if edit.config_patch["script_type"] != "external":
-            raise InvalidScript("源码应用必须使用 external 类型")
-        try:
-            arguments = parse_arguments(edit.config_patch["script_arguments"])
-            candidate = {**target, **edit.config_patch}
-            source_launch_command(candidate, arguments)
-            manual = (
-                parse_arguments(edit.source_manual_arguments_text)
-                if edit.source_manual_arguments_text is not None
-                else target["source_manual_arguments"]
-            )
-            source_launch_command(candidate, manual)
-        except (OSError, ValueError, RuntimeError) as exc:
-            raise InvalidScript(f"源码应用无效: {exc}") from exc
-        target["source_arguments"] = arguments
-        target["source_manual_arguments"] = manual
 
     target.update(edit.config_patch)
     target["display_name"] = edit.display_name

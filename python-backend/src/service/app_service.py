@@ -12,7 +12,6 @@ peer：
 - 游戏侧 config 适配器（副本/周几起写脚本自身 config）：归 :mod:`src.config.set_config` 模块函数
 - 自定义壁纸表（config/wallpaper.json）：归 :mod:`src.utils.utils_wallpaper` 模块函数
 - 配置备份与恢复（各子脚本 config 打包为 ZIP / 按目录原样回写）：归 :mod:`src.service.backup_service` 模块函数
-- 源码应用管理：归 :class:`src.service.source_app_service.SourceAppService`
 - 助手手动更新（检查 / 下载 / 安装交接）：归 :class:`src.update.UpdateService`
 
 GUI（MainWindow）与 CLI（各子命令）都只实例化本类，控制器经构造注入持有它；
@@ -27,7 +26,6 @@ import src.service.backup_service as backup_service
 import src.service.chain_service as chain_service
 import src.service.daily_plan as daily_plan
 import src.service.script_service as script_service
-import src.service.source_app_service as source_app_service
 import src.service.task_service as task_service
 from src.config.native_task_switch import native_task_switch_of
 from src.config.set_config import (
@@ -105,7 +103,6 @@ class AppService:
         """装配各 peer；GUI/CLI 入口选择对应发行版的更新服务。"""
         self._updates = UpdateService(frontend=frontend)
         self.jobs = JobExecutor()
-        self.source_apps = source_app_service.SourceAppService(self.jobs)
         self._update_session = UpdateSession(self._updates, self.jobs)
 
     def close(self) -> None:
@@ -229,13 +226,6 @@ class AppService:
         script = self.get_script(script_name)
         if script is None:
             raise InvalidScript("脚本已不存在，请刷新列表")
-        if "source_root" in script:
-            script = {
-                **script,
-                "source_manual_arguments_text": source_app_service.format_arguments(
-                    script["source_manual_arguments"]
-                ),
-            }
         return {
             "script_name": script_name,
             "script": script,

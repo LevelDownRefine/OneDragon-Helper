@@ -21,7 +21,6 @@ class JobExecutor:
         self._kind: str | None = None
         self._cancelled: Event | None = None
         self._progress: tuple[int, int] | None = None
-        self._message: str | None = None
         self._lock = Lock()
 
     @property
@@ -42,7 +41,6 @@ class JobExecutor:
         self._cancelled = cancelled
         with self._lock:
             self._progress = None
-            self._message = None
         self._future = self._pool.submit(self._execute, operation)
         return {"id": self._id}
 
@@ -67,15 +65,7 @@ class JobExecutor:
             if self._progress is not None:
                 received, total = self._progress
                 snapshot["progress"] = {"received": received, "total": total}
-            if self._message is not None:
-                snapshot["message"] = self._message
         return snapshot
-
-    def message(self, message: str) -> None:
-        """更新后台任务最近一条进度信息。"""
-        assert isinstance(message, str)
-        with self._lock:
-            self._message = message
 
     def progress(self, received: int, total: int) -> None:
         """工作线程只替换一份进度快照，主线程轮询时读取。"""

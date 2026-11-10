@@ -4,6 +4,3 @@
 [submodule "updater"]
 	path = updater
 	url = https://github.com/LevelDownRefine/updater.git
-[submodule "uv-app-manager"]
-	path = uv-app-manager
-	url = https://github.com/LevelDownRefine/uv-app-manager.git

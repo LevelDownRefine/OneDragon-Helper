@@ -9,7 +9,6 @@ dependencies = [
     "colorama==0.4.6",
     "psutil==6.1.1",
     "leveldown-updater",
-    "source-app-manager",
     "pycaw==20220416",
     "pyinstaller==6.19.0",
     "pywin32==311; sys_platform == 'win32'",
@@ -26,7 +25,6 @@ build-backend = "setuptools.build_meta"
 
 [tool.uv.sources]
 leveldown-updater = { path = "../updater", editable = true }
-source-app-manager = { path = "../uv-app-manager", editable = true }
 
 [tool.setuptools.packages.find]
 where = ["."]
