@@ -275,6 +275,3 @@ config/backups/
 /docs/rust-feasibility/assessment-startup.json
 /docs/rust-feasibility/assessment-size.json
 /startup.json
-
-# 源码应用的运行时安装目录
-/third_party/

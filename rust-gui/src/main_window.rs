@@ -5,7 +5,6 @@ use crate::dialogs::drop_dialog::DropDialog;
 use crate::dialogs::list_dialog::{ListAction, ListDialog};
 use crate::dialogs::run_confirm_dialog::{RunAction, RunDialog, RunView};
 use crate::dialogs::script_config_dialog::{EditAction, EditView, ScriptEditor};
-use crate::dialogs::source_dialog::{SourceAction, SourceDialog};
 use crate::dialogs::startup_dialog::StartupDialog;
 use crate::dialogs::update_dialog::{UpdateAction, UpdateDialog, UpdateView};
 use crate::file_drop::FileDrop;
@@ -87,7 +86,6 @@ pub struct App {
     launched: Vec<std::process::Child>,
     editor: Option<ScriptEditor>,
     list_dialog: Option<ListDialog>,
-    source_dialog: Option<SourceDialog>,
     run_dialog: Option<RunDialog>,
     settings_dialog: Option<SettingsDialog>,
     backup_dialog: Option<BackupDialog>,
@@ -147,7 +145,6 @@ impl App {
             launched: Vec::new(),
             editor: None,
             list_dialog: None,
-            source_dialog: None,
             run_dialog: None,
             settings_dialog: None,
             backup_dialog: None,
@@ -266,9 +263,6 @@ impl App {
         if let Some(dialog) = &mut self.backup_dialog {
             dialog.failure(failure.message.clone());
         }
-        if let Some(dialog) = &mut self.source_dialog {
-            dialog.failure(failure.message.clone());
-        }
         if let Some(dialog) = &mut self.update_dialog {
             dialog.failure(failure.message.clone(), true);
         }
@@ -285,32 +279,6 @@ impl App {
         self.request_pending = false;
         self.pid = reply.pid;
         self.diagnostics = reply.diagnostics;
-        if reply.method.starts_with("source.")
-            || (reply.method == "job.poll" && self.source_dialog.is_some())
-        {
-            match reply.result {
-                Ok(value) => {
-                    let handled = self
-                        .source_dialog
-                        .as_mut()
-                        .ok_or_else(|| "安装窗口已关闭".to_owned())
-                        .and_then(|dialog| dialog.receive(&reply.method, value));
-                    match handled {
-                        Ok(Some(request)) => self.request(&request.method, request.params),
-                        Ok(None) => {}
-                        Err(error) => self.fail(Failure::transport(error)),
-                    }
-                }
-                Err(failure) => {
-                    let message = failure.message.clone();
-                    self.fail(failure);
-                    if let Some(dialog) = &mut self.source_dialog {
-                        dialog.failure(message);
-                    }
-                }
-            }
-            return;
-        }
         if reply.method.starts_with("wallpaper.") {
             self.receive_wallpaper(&reply.method, reply.result);
             return;
@@ -657,13 +625,9 @@ impl App {
     }
 
     fn background_task_active(&self) -> bool {
-        self.source_dialog
+        self.backup_dialog
             .as_ref()
-            .is_some_and(SourceDialog::active)
-            || self
-                .backup_dialog
-                .as_ref()
-                .is_some_and(BackupDialog::active)
+            .is_some_and(BackupDialog::active)
             || self.drop_dialog.as_ref().is_some_and(DropDialog::active)
             || self
                 .update_dialog
@@ -734,11 +698,6 @@ impl eframe::App for App {
         }
         if !self.request_pending
             && let Some(request) = self.drop_dialog.as_mut().and_then(DropDialog::next)
-        {
-            self.request(&request.method, request.params);
-        }
-        if !self.request_pending
-            && let Some(request) = self.source_dialog.as_mut().and_then(SourceDialog::poll)
         {
             self.request(&request.method, request.params);
         }
@@ -849,11 +808,6 @@ impl eframe::App for App {
                     }
                 }
                 Action::Diagnostics => self.ui.diagnostics_open = !self.ui.diagnostics_open,
-                Action::InstallSource => {
-                    self.ui.close_menu();
-                    self.source_dialog = Some(SourceDialog::new());
-                    self.request("source.catalog", json!({}));
-                }
                 Action::AddScript => {
                     self.ui.close_menu();
                     self.list_dialog = Some(ListDialog::add());
@@ -879,22 +833,6 @@ impl eframe::App for App {
         self.show_startup(ui);
         self.show_script_config(ui);
         self.show_script_list(ui);
-        let blocked = self.dialog_blocked();
-        if let Some(action) = self
-            .source_dialog
-            .as_mut()
-            .and_then(|dialog| dialog.show(ui.ctx(), blocked))
-        {
-            match action {
-                SourceAction::Request(request) => self.request(&request.method, request.params),
-                SourceAction::Close => {
-                    self.source_dialog = None;
-                    if self.backend.is_some() {
-                        self.request("app.snapshot", json!({}));
-                    }
-                }
-            }
-        }
         self.show_run_confirm(ui);
         self.show_wallpaper(ui);
         let blocked = self.dialog_blocked();

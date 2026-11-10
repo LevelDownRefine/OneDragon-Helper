@@ -8,29 +8,6 @@ from src.utils.utils_job import InvalidJob, JobExecutor
 
 
 class JobExecutorTests(unittest.TestCase):
-    def test_message_is_visible_and_cleared_for_next_job(self):
-        jobs = JobExecutor()
-        release = Event()
-        entered = Event()
-        self.addCleanup(jobs.close)
-
-        def operation():
-            jobs.message("正在安装依赖")
-            entered.set()
-            if not release.wait(10):
-                raise TimeoutError("测试任务未释放")
-            return {}
-
-        self.addCleanup(release.set)
-        task = jobs.start("source_install", operation)
-        self.assertTrue(entered.wait(5))
-        self.assertEqual(jobs.poll(task["id"])["message"], "正在安装依赖")
-        release.set()
-        jobs._future.result(timeout=5)
-        next_task = jobs.start("next", lambda: {})
-        jobs.close()
-        self.assertNotIn("message", jobs.poll(next_task["id"]))
-
     def test_cooperative_cancellation_retains_cancelled_result(self):
         jobs = JobExecutor()
         self.addCleanup(jobs.close)

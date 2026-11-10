@@ -10,7 +10,6 @@ pub(crate) mod run_confirm_dialog;
 pub(crate) mod run_options_editor;
 pub(crate) mod script_config_dialog;
 pub(crate) mod shutdown_dialog;
-pub(crate) mod source_dialog;
 pub(crate) mod startup_dialog;
 pub(crate) mod update_dialog;
 pub(crate) mod wallpaper_dialog;

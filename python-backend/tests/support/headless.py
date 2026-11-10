@@ -36,7 +36,6 @@ class HeadlessFixture:
             "daily_task_list.yml",
             "weekly_task_list.yml",
             "script_resources.yml",
-            "source_applications.yml",
             "task_switch_list.yml",
             "MAA任务.json",
             "ZZZ一条龙.yml",

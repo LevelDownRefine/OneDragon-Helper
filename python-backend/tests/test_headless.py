@@ -48,19 +48,6 @@ def mock_service():
     for name in dir(AppService):
         if not name.startswith("_") and callable(getattr(AppService, name)):
             service.attach_mock(create_autospec(getattr(instance, name)), name)
-    from src.service.source_app_service import SourceAppService
-
-    source_apps = Mock(spec=SourceAppService)
-    source_instance = object.__new__(SourceAppService)
-    for name in (
-        "start_install",
-        "start_catalog_install",
-        "catalog",
-        "register",
-        "configure",
-    ):
-        source_apps.attach_mock(create_autospec(getattr(source_instance, name)), name)
-    service.source_apps = source_apps
     service.jobs = SimpleNamespace(running=False)
     return service
 
@@ -1191,16 +1178,6 @@ class RunRequestTests(unittest.TestCase):
 
 
 class ProtocolValidationTests(unittest.TestCase):
-    def test_source_install_requires_persistent_session(self):
-        service = mock_service()
-        response = dispatch_to_serializable(
-            json.dumps(request("source.install")),
-            methods=rpc_methods(service, persistent=False),
-            deserializer=_parse_json,
-        )
-        self.assertEqual(response["error"]["code"], -32600)
-        service.source_apps.start_install.assert_not_called()
-
     def test_library_binds_positional_and_default_parameters(self):
         service = mock_service()
         service.select_daily.return_value = None

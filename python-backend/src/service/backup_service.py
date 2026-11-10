@@ -18,7 +18,7 @@ from ruamel.yaml.error import YAMLError
 from src.config.set_config import get_game_path_keys, iter_backup_paths
 from src.utils import get_path_under_root
 from src.utils.utils_io import dump_data_str, load_data, parse_data
-from src.utils.utils_sub_config import declared_relative_path, get_script_root_dir
+from src.utils.utils_sub_config import get_script_root_dir
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +51,6 @@ def create_backup() -> dict:
         if root is None:
             continue
         for rel in paths:
-            rel = declared_relative_path(script_name, rel)
             source = Path(root, rel)
             if source.is_file():
                 files[

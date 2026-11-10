@@ -510,7 +510,7 @@ Window {
             objectName: "controlBubble"
             x: 92
             y: sidebarBottom.y + controlModeButton.y + (controlModeButton.height - height) / 2
-            width: 200; height: 60; radius: 16
+            width: 156; height: 60; radius: 16
             z: 36
             visible: Bridge.controlMode && !gameList.dragActive
             color: Theme.panel
@@ -534,10 +534,6 @@ Window {
                     model: [
                         { name: "selectAllButton", label: "全", act: () => Bridge.selectAll() },
                         { name: "deselectAllButton", label: "清", act: () => Bridge.deselectAll() },
-                        { name: "installSourceButton", label: "源", act: () => {
-                            Bridge.toggleMode()
-                            Bridge.installSource()
-                        } },
                         { name: "addScriptButton", label: "＋", act: () => {
                             Bridge.toggleMode()
                             Bridge.addScript()
@@ -552,7 +548,7 @@ Window {
                             anchors.centerIn: parent
                             text: modelData.label
                             color: Theme.text
-                            font.pixelSize: modelData.name === "addScriptButton" ? 23 : 14
+                            font.pixelSize: index === 2 ? 23 : 14
                         }
                         MouseArea {
                             id: actionMouse

@@ -12,7 +12,6 @@
 | `schedule.py`、`run_actions.py` | 运行选项、调度、前后动作与失败重跑 |
 | `daily_plan.py` | 每日计划、Windows 任务注册与状态回读 |
 | `backup_service.py` | 配置 ZIP 备份与恢复 |
-| `source_app_service.py` | 源码应用安装、登记及启动配置 |
 | `../link.py`、`../utils/utils_wallpaper.py` | 资源/启动目标、壁纸映射与缓存 |
 | `../update.py`、`../utils/utils_job.py` | 更新适配与会话、后台任务执行 |
 
@@ -41,10 +40,6 @@ Windows 任务按当前用户和安装目录标识，需管理员权限注册及
 备份范围来自 [脚本资源声明](../config/script_resources.md)，ZIP 按 `scripts/脚本名/相对路径` 收集。恢复到当前配置的脚本目录；未配置脚本跳过，已有游戏路径（包括空值）保留，缺失时不导入备份中的旧路径。
 
 覆盖前备份目标文件，逐文件原子替换；不承诺整批事务回滚。失败结果保留完成数量和恢复前 ZIP，供用户核对。归档安全检查与路径校验归后端。
-
-## 源码应用
-
-`AppService.source_apps` 统一提供源码应用目录、安装、登记和配置入口；安装与更新、备份共用后台任务执行器及进度查询。应用安装在助手根目录的 `third_party/<应用标识>/`，通用源码安装与 Python 环境管理由 `uv-app-manager` 提供。
 
 ## 手动更新
 
