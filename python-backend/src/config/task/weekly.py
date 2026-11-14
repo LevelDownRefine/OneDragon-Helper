@@ -13,7 +13,7 @@
 
 - ``prepare_start_day``：运行期唯一写入口，按「今天是否到起始日」折算后写开关；
 - ``set_start_day``：编辑期字面落盘，仅需要字面字段 / 额外开关的周常覆写；
-- ``set_task`` / ``read_task``：副本选型（当前无周常声明 ``options``，机制保留待用）。
+- ``set_task`` / ``read_task``：副本选型。
 
 落点形态随周常而异（Additional Tasks 列表增删、布尔字段、``_group.yml`` 的 app 条目、
 TaskQueue 公式），各由子类覆写；基类只兜底 assert。
@@ -29,7 +29,11 @@ from src.config.task.task_declarations import (
 )
 from src.config.task.task_source import TaskSourceMixin
 from src.utils.utils_dict import get_field, safe_update
-from src.utils.utils_sub_config import load_script_config, save_script_config
+from src.utils.utils_sub_config import (
+    load_game_config,
+    load_script_config,
+    save_script_config,
+)
 from src.utils.utils_weekly import DISABLED_START_DAY, is_weekly_start_reached
 
 logger = logging.getLogger(__name__)
@@ -353,6 +357,115 @@ class EchoOfWarWeekly(Weekly):
             )
 
 
+# ---- 异环：异象巡礼 ----
+class NtePilgrimageWeekly(Weekly):
+    """异象巡礼的开关与起始日分存于日常配置的两个文件。"""
+
+    def _targets(self) -> dict[str, str]:
+        source = self._declaration["options"]["source"]
+        data = load_game_config(self.script_name, source["path"])
+        if data is None:
+            return {}
+        assert isinstance(data, dict)
+        targets = {}
+        for physical, translations in data.items():
+            assert isinstance(physical, str) and isinstance(translations, dict)
+            name = get_field(translations, "zh_CN", self.display_name, str)
+            assert name not in targets
+            targets[name] = physical
+        return targets
+
+    def menu(self) -> dict:
+        result = super().menu()
+        result["options"]["values"] = [
+            {"display_name": name, "physical_name": physical}
+            for name, physical in self._targets().items()
+        ]
+        return result
+
+    def set_task(self, task_name: str) -> None:
+        targets = self._targets()
+        assert task_name in targets, (
+            f"[weekly][{self.display_name}] 未知目标: {task_name}"
+        )
+        config = self._load_config()
+        assert config is not None
+        section = self._section(config, create=True)
+        assert section is not None
+        key = self._declaration["options"]["key"]
+        safe_update(
+            section,
+            key,
+            [targets[task_name]],
+            self.display_name,
+            assert_key_exists=False,
+        )
+        self._save_config(config)
+
+    def read_task(self) -> str | None:
+        config = self._load_config(allow_missing=True)
+        if config is None:
+            return None
+        section = self._section(config)
+        key = self._declaration["options"]["key"]
+        if section is None or key not in section:
+            return None
+        selected = get_field(section, key, self.display_name, list)
+        if len(selected) != 1:
+            return None
+        return next(
+            (name for name, value in self._targets().items() if value == selected[0]),
+            None,
+        )
+
+    def _section(self, config: dict, *, create: bool = False) -> dict | None:
+        if self.physical_name not in config:
+            if not create:
+                return None
+            config[self.physical_name] = {}
+        return get_field(config, self.physical_name, self.display_name, dict)
+
+    def prepare_start_day(self, start_day: int) -> None:
+        self.set_start_day(start_day)
+
+    def set_start_day(self, start_day: int) -> None:
+        self._check_start_day(start_day)
+        enabled = start_day != DISABLED_START_DAY
+        config = self._load_config() if enabled else None
+        routine_path = self._declaration["routine"]
+        routine = load_script_config(
+            self.script_name,
+            self.script_display_name,
+            routine_path,
+            allow_missing=False,
+        )
+        assert routine is not None
+        items = get_field(routine, "Routine Items", self.display_name, list)
+        matches = [item for item in items if item["id"] == self.physical_name]
+        assert len(matches) <= 1, f"[weekly][{self.display_name}] 任务重复"
+        if matches:
+            item = matches[0]
+        else:
+            item = {"id": self.physical_name, "enabled": False}
+            items.insert(0, item)
+        if enabled:
+            assert config is not None
+            section = self._section(config, create=True)
+            assert section is not None
+            safe_update(
+                section,
+                self._key,
+                ("周一", "周二", "周三", "周四", "周五", "周六", "周日")[start_day - 1],
+                self.display_name,
+                assert_key_exists=False,
+            )
+            self._save_config(config)
+        safe_update(item, "enabled", enabled, self.display_name)
+        save_script_config(
+            self.script_name, self.script_display_name, routine_path, routine
+        )
+
+
 # ---- 明日方舟 Arknights（粥）：理智药剂 ----
 class ArknightsWeekly(Weekly):
     """粥：周常是「理智药剂临期窗口」，按周几起换算成天数写进所有战斗任务。"""
@@ -483,6 +596,7 @@ WEEKLY_CLASSES: dict[str, type[Weekly]] = {
         ZenlessZoneZeroWeekly,
         SwitchWeekly,
         EchoOfWarWeekly,
+        NtePilgrimageWeekly,
         ArknightsWeekly,
     )
 }

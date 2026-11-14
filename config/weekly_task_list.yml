@@ -36,3 +36,15 @@ MAA:
 - display_name: 理智药剂
   class: ArknightsWeekly
   config: config/gui.new.json
+
+ok-nte:
+- display_name: 异象巡礼
+  physical_name: anomaly_pilgrimage
+  class: NtePilgrimageWeekly
+  config: data/apps/ok-nte/working/configs/DailyRoutineTaskConfigs.json
+  routine: data/apps/ok-nte/working/configs/DailyRoutineTask.json
+  key: 每周开始运行日
+  options:
+    key: 目标
+    source:
+      path: data/apps/ok-nte/working/assets/game/weeklyboss_item/boss_names.json

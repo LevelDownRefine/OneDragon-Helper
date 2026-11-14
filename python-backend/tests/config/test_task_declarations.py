@@ -189,6 +189,121 @@ class TestDeclarationBindings(unittest.TestCase):
         self.assertFalse(config["NativeEnable"])
         self.assertFalse(config["currencywars_enable"])
 
+    def test_nte_weekly_start_and_disable_preserve_other_settings(self):
+        weekly = self.make_weekly(
+            "NtePilgrimageWeekly", "ok-nte", self.weekly["ok-nte"][0]
+        )
+        config = {
+            "anomaly_pilgrimage": {"目标": ["boss", "boss"], "每周开始运行日": "周五"}
+        }
+        routine = {
+            "Routine Items": [
+                {"id": "anomaly_pilgrimage", "enabled": False},
+                {"id": "coffee", "enabled": True},
+            ]
+        }
+        with (
+            patch.object(weekly, "_load_config", return_value=config),
+            patch.object(weekly, "_save_config"),
+            patch.object(weekly_mod, "load_script_config", return_value=routine),
+            patch.object(weekly_mod, "save_script_config"),
+        ):
+            for day, name in enumerate(
+                ("周一", "周二", "周三", "周四", "周五", "周六", "周日"), 1
+            ):
+                weekly.prepare_start_day(day)
+                self.assertEqual(config["anomaly_pilgrimage"]["每周开始运行日"], name)
+                self.assertTrue(routine["Routine Items"][0]["enabled"])
+            weekly.set_start_day(0)
+        self.assertFalse(routine["Routine Items"][0]["enabled"])
+        self.assertTrue(routine["Routine Items"][1]["enabled"])
+        self.assertEqual(config["anomaly_pilgrimage"]["目标"], ["boss", "boss"])
+        self.assertEqual(config["anomaly_pilgrimage"]["每周开始运行日"], "周日")
+
+    def test_nte_weekly_target_selection_and_multiple_targets(self):
+        weekly = self.make_weekly(
+            "NtePilgrimageWeekly", "ok-nte", self.weekly["ok-nte"][0]
+        )
+        targets = {
+            "Dress Sleeves of Vanity": {"zh_CN": "永不谢幕的阿拉克涅"},
+            "Good Boy Stamp": {"zh_CN": "墨菲克斯"},
+        }
+        config = {"anomaly_pilgrimage": {"目标": [], "其他": True}}
+        with (
+            patch.object(weekly_mod, "load_game_config", return_value=targets),
+            patch(
+                "src.config.task.task_source.read_task_source",
+                return_value=list(targets),
+            ),
+            patch.object(weekly, "_load_config", return_value=config),
+            patch.object(weekly, "_save_config") as save,
+        ):
+            self.assertEqual(
+                weekly.menu()["options"]["values"][0]["display_name"],
+                "永不谢幕的阿拉克涅",
+            )
+            self.assertIsNone(weekly.read_task())
+            weekly.set_task("永不谢幕的阿拉克涅")
+            self.assertEqual(
+                config["anomaly_pilgrimage"]["目标"], ["Dress Sleeves of Vanity"]
+            )
+            self.assertEqual(weekly.read_task(), "永不谢幕的阿拉克涅")
+            self.assertTrue(config["anomaly_pilgrimage"]["其他"])
+            save.assert_called_once()
+            config["anomaly_pilgrimage"]["目标"].append("Good Boy Stamp")
+            self.assertIsNone(weekly.read_task())
+            with self.assertRaises(AssertionError):
+                weekly.set_task("不存在")
+
+    def test_nte_weekly_initializes_missing_upgrade_fields(self):
+        weekly = self.make_weekly(
+            "NtePilgrimageWeekly", "ok-nte", self.weekly["ok-nte"][0]
+        )
+        config = {"daily_anomaly": {"keep": 1}}
+        routine = {"Routine Items": [{"id": "coffee", "enabled": True}]}
+        targets = {"Dress Sleeves of Vanity": {"zh_CN": "永不谢幕的阿拉克涅"}}
+        with (
+            patch.object(weekly_mod, "load_game_config", return_value=targets),
+            patch.object(weekly, "_load_config", return_value=config),
+            patch.object(weekly, "_save_config") as save_config,
+            patch.object(weekly_mod, "load_script_config", return_value=routine),
+            patch.object(weekly_mod, "save_script_config") as save_routine,
+        ):
+            self.assertIsNone(weekly.read_task())
+            weekly.set_task("永不谢幕的阿拉克涅")
+            self.assertEqual(weekly.read_task(), "永不谢幕的阿拉克涅")
+            weekly.set_start_day(2)
+            self.assertEqual(
+                config["anomaly_pilgrimage"],
+                {"目标": ["Dress Sleeves of Vanity"], "每周开始运行日": "周二"},
+            )
+            self.assertEqual(config["daily_anomaly"], {"keep": 1})
+            self.assertEqual(
+                routine["Routine Items"],
+                [
+                    {"id": "anomaly_pilgrimage", "enabled": True},
+                    {"id": "coffee", "enabled": True},
+                ],
+            )
+            self.assertEqual(save_config.call_count, 2)
+            save_routine.assert_called_once()
+
+    def test_nte_weekly_disabled_does_not_require_task_config(self):
+        weekly = self.make_weekly(
+            "NtePilgrimageWeekly", "ok-nte", self.weekly["ok-nte"][0]
+        )
+        routine = {"Routine Items": [{"id": "coffee", "enabled": True}]}
+        with (
+            patch.object(weekly, "_load_config") as load_config,
+            patch.object(weekly_mod, "load_script_config", return_value=routine),
+            patch.object(weekly_mod, "save_script_config"),
+        ):
+            weekly.set_start_day(0)
+            load_config.assert_not_called()
+        self.assertEqual(
+            routine["Routine Items"][0], {"id": "anomaly_pilgrimage", "enabled": False}
+        )
+
     def test_weekly_list_membership_uses_declared_field_and_value(self):
         declaration = self.weekly["ok-ww"][0]
         declaration["physical_name"] = "NativeWeekly"
