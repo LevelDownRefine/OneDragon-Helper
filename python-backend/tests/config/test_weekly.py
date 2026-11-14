@@ -60,7 +60,10 @@ class TestWeeklyDeclaration(WeeklyTestCase):
     def test_menu_strips_code_fields(self):
         """物化后的周常菜单不含 class / config（代码耦合字段不入 UI 词汇）。"""
         # 隔离本地资源读取：CI 无 config.yml，不能走到真实脚本根目录解析。
-        with patch("src.config.task.task_source.read_task_source", return_value=[]):
+        with (
+            patch("src.config.task.task_source.read_task_source", return_value=[]),
+            patch("src.config.task.weekly.load_game_config", return_value=None),
+        ):
             for script_name in config_mod.load_weekly_map():
                 for menu in get_weekly_map(script_name):
                     with self.subTest(script=script_name):
