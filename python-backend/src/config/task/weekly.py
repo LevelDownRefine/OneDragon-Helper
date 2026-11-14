@@ -354,6 +354,45 @@ class EchoOfWarWeekly(Weekly):
 
 
 # ---- 明日方舟 Arknights（粥）：理智药剂 ----
+class NtePilgrimageWeekly(Weekly):
+    """异象巡礼的开关与起始日分存于日常配置的两个文件。"""
+
+    def prepare_start_day(self, start_day: int) -> None:
+        self.set_start_day(start_day)
+
+    def set_start_day(self, start_day: int) -> None:
+        self._check_start_day(start_day)
+        config = self._load_config()
+        assert config is not None
+        routine_path = self._declaration["routine"]
+        routine = load_script_config(
+            self.script_name,
+            self.script_display_name,
+            routine_path,
+            allow_missing=False,
+        )
+        assert routine is not None
+        items = get_field(routine, "Routine Items", self.display_name, list)
+        matches = [item for item in items if item["id"] == self.physical_name]
+        assert len(matches) == 1, f"[weekly][{self.display_name}] 任务缺失或重复"
+        item = matches[0]
+        enabled = start_day != DISABLED_START_DAY
+        if enabled:
+            section = get_field(config, self.physical_name, self.display_name, dict)
+            safe_update(
+                section,
+                self._key,
+                ("周一", "周二", "周三", "周四", "周五", "周六", "周日")[start_day - 1],
+                self.display_name,
+                assert_key_exists=False,
+            )
+            self._save_config(config)
+        safe_update(item, "enabled", enabled, self.display_name)
+        save_script_config(
+            self.script_name, self.script_display_name, routine_path, routine
+        )
+
+
 class ArknightsWeekly(Weekly):
     """粥：周常是「理智药剂临期窗口」，按周几起换算成天数写进所有战斗任务。"""
 
@@ -483,6 +522,7 @@ WEEKLY_CLASSES: dict[str, type[Weekly]] = {
         ZenlessZoneZeroWeekly,
         SwitchWeekly,
         EchoOfWarWeekly,
+        NtePilgrimageWeekly,
         ArknightsWeekly,
     )
 }

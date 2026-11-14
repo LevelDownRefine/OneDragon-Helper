@@ -189,6 +189,37 @@ class TestDeclarationBindings(unittest.TestCase):
         self.assertFalse(config["NativeEnable"])
         self.assertFalse(config["currencywars_enable"])
 
+    def test_nte_weekly_start_and_disable_preserve_other_settings(self):
+        weekly = self.make_weekly(
+            "NtePilgrimageWeekly", "ok-nte", self.weekly["ok-nte"][0]
+        )
+        config = {
+            "anomaly_pilgrimage": {"目标": ["boss", "boss"], "每周开始运行日": "周五"}
+        }
+        routine = {
+            "Routine Items": [
+                {"id": "anomaly_pilgrimage", "enabled": False},
+                {"id": "coffee", "enabled": True},
+            ]
+        }
+        with (
+            patch.object(weekly, "_load_config", return_value=config),
+            patch.object(weekly, "_save_config"),
+            patch.object(weekly_mod, "load_script_config", return_value=routine),
+            patch.object(weekly_mod, "save_script_config"),
+        ):
+            for day, name in enumerate(
+                ("周一", "周二", "周三", "周四", "周五", "周六", "周日"), 1
+            ):
+                weekly.prepare_start_day(day)
+                self.assertEqual(config["anomaly_pilgrimage"]["每周开始运行日"], name)
+                self.assertTrue(routine["Routine Items"][0]["enabled"])
+            weekly.set_start_day(0)
+        self.assertFalse(routine["Routine Items"][0]["enabled"])
+        self.assertTrue(routine["Routine Items"][1]["enabled"])
+        self.assertEqual(config["anomaly_pilgrimage"]["目标"], ["boss", "boss"])
+        self.assertEqual(config["anomaly_pilgrimage"]["每周开始运行日"], "周日")
+
     def test_weekly_list_membership_uses_declared_field_and_value(self):
         declaration = self.weekly["ok-ww"][0]
         declaration["physical_name"] = "NativeWeekly"

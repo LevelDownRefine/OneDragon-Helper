@@ -798,8 +798,10 @@ class TestTaskCardWeeklyHiddenForUnsupportedScript(unittest.TestCase):
             from gui.icons import UiIconProvider
             from gui.main_window import QmlBridge
 
+            patch("src.config.task.weekly.load_weekly_map", return_value={}).start()
+            patch("src.config.set_config.load_weekly_map", return_value={}).start()
             app = QApplication([])
-            # 异环 ok-nte：已适配（在 set_config 注册）但 weekly_list.yml 未声明周常
+            # 模拟已适配但没有周常的异环
             scripts = [{
                 "display_name": "异环",
                 "script_path": "scripts/ok-nte/ok-nte.exe",
@@ -810,6 +812,8 @@ class TestTaskCardWeeklyHiddenForUnsupportedScript(unittest.TestCase):
                              return_value={"script_list": scripts}),
                 patch.object(main_window.BackgroundController, "resolve_bg",
                              return_value=None),
+                patch("src.config.task.weekly.load_weekly_map", return_value={}),
+                patch("src.config.set_config.load_weekly_map", return_value={}),
             ):
                 with (
                     patch("src.service.daily_plan.load_schedule", return_value={}),
@@ -861,7 +865,7 @@ class TestTaskCardWeeklyHiddenForUnsupportedScript(unittest.TestCase):
         self.assertEqual(
             visible, "False", f"无周常脚本应隐藏周常区，stdout={proc.stdout}"
         )
-        # 68（分隔线后日常区上沿）+ 行高56*2（异环两个日常各一行）+ 底部留白16 = 196
+        # 68（分隔线后日常区上沿）+ 日常行 + 底部留白
         self.assertEqual(
             height, 196, f"无周常脚本卡片高度应为 196，stdout={proc.stdout}"
         )

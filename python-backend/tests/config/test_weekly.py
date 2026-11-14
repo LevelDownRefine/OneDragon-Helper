@@ -171,13 +171,14 @@ class TestSupportsWeekly(WeeklyTestCase):
             self.assertEqual(weekly_names("ok-ww"), ["幻梦游园"])
             self.assertTrue(config_mod.supports_weekly("ok-ww"))
 
-    def test_supported_are_the_four_weekly_scripts(self):
-        """适配周常的是鸣潮/绝区零/崩铁/粥四个。"""
+    def test_supported_weekly_scripts(self):
+        """适配周常的脚本与声明一致。"""
         expected = {
             "ok-ww",
             "OneDragon-Launcher",
             "March7th-Launcher",
             "MAA",
+            "ok-nte",
         }
         self.assertEqual(set(config_mod.load_weekly_map()), expected)
         for name in expected:
