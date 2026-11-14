@@ -220,6 +220,41 @@ class TestDeclarationBindings(unittest.TestCase):
         self.assertEqual(config["anomaly_pilgrimage"]["目标"], ["boss", "boss"])
         self.assertEqual(config["anomaly_pilgrimage"]["每周开始运行日"], "周日")
 
+    def test_nte_weekly_target_selection_and_multiple_targets(self):
+        weekly = self.make_weekly(
+            "NtePilgrimageWeekly", "ok-nte", self.weekly["ok-nte"][0]
+        )
+        targets = {
+            "Dress Sleeves of Vanity": {"zh_CN": "永不谢幕的阿拉克涅"},
+            "Good Boy Stamp": {"zh_CN": "墨菲克斯"},
+        }
+        config = {"anomaly_pilgrimage": {"目标": [], "其他": True}}
+        with (
+            patch.object(weekly_mod, "load_game_config", return_value=targets),
+            patch(
+                "src.config.task.task_source.read_task_source",
+                return_value=list(targets),
+            ),
+            patch.object(weekly, "_load_config", return_value=config),
+            patch.object(weekly, "_save_config") as save,
+        ):
+            self.assertEqual(
+                weekly.menu()["options"]["values"][0]["display_name"],
+                "永不谢幕的阿拉克涅",
+            )
+            self.assertIsNone(weekly.read_task())
+            weekly.set_task("永不谢幕的阿拉克涅")
+            self.assertEqual(
+                config["anomaly_pilgrimage"]["目标"], ["Dress Sleeves of Vanity"]
+            )
+            self.assertEqual(weekly.read_task(), "永不谢幕的阿拉克涅")
+            self.assertTrue(config["anomaly_pilgrimage"]["其他"])
+            save.assert_called_once()
+            config["anomaly_pilgrimage"]["目标"].append("Good Boy Stamp")
+            self.assertIsNone(weekly.read_task())
+            with self.assertRaises(AssertionError):
+                weekly.set_task("不存在")
+
     def test_weekly_list_membership_uses_declared_field_and_value(self):
         declaration = self.weekly["ok-ww"][0]
         declaration["physical_name"] = "NativeWeekly"
