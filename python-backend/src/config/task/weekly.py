@@ -390,17 +390,26 @@ class NtePilgrimageWeekly(Weekly):
         )
         config = self._load_config()
         assert config is not None
-        section = get_field(config, self.physical_name, self.display_name, dict)
+        section = self._section(config, create=True)
+        assert section is not None
         key = self._declaration["options"]["key"]
-        safe_update(section, key, [targets[task_name]], self.display_name)
+        safe_update(
+            section,
+            key,
+            [targets[task_name]],
+            self.display_name,
+            assert_key_exists=False,
+        )
         self._save_config(config)
 
     def read_task(self) -> str | None:
         config = self._load_config(allow_missing=True)
         if config is None:
             return None
-        section = get_field(config, self.physical_name, self.display_name, dict)
+        section = self._section(config)
         key = self._declaration["options"]["key"]
+        if section is None or key not in section:
+            return None
         selected = get_field(section, key, self.display_name, list)
         if len(selected) != 1:
             return None
@@ -409,13 +418,20 @@ class NtePilgrimageWeekly(Weekly):
             None,
         )
 
+    def _section(self, config: dict, *, create: bool = False) -> dict | None:
+        if self.physical_name not in config:
+            if not create:
+                return None
+            config[self.physical_name] = {}
+        return get_field(config, self.physical_name, self.display_name, dict)
+
     def prepare_start_day(self, start_day: int) -> None:
         self.set_start_day(start_day)
 
     def set_start_day(self, start_day: int) -> None:
         self._check_start_day(start_day)
-        config = self._load_config()
-        assert config is not None
+        enabled = start_day != DISABLED_START_DAY
+        config = self._load_config() if enabled else None
         routine_path = self._declaration["routine"]
         routine = load_script_config(
             self.script_name,
@@ -426,11 +442,16 @@ class NtePilgrimageWeekly(Weekly):
         assert routine is not None
         items = get_field(routine, "Routine Items", self.display_name, list)
         matches = [item for item in items if item["id"] == self.physical_name]
-        assert len(matches) == 1, f"[weekly][{self.display_name}] 任务缺失或重复"
-        item = matches[0]
-        enabled = start_day != DISABLED_START_DAY
+        assert len(matches) <= 1, f"[weekly][{self.display_name}] 任务重复"
+        if matches:
+            item = matches[0]
+        else:
+            item = {"id": self.physical_name, "enabled": False}
+            items.insert(0, item)
         if enabled:
-            section = get_field(config, self.physical_name, self.display_name, dict)
+            assert config is not None
+            section = self._section(config, create=True)
+            assert section is not None
             safe_update(
                 section,
                 self._key,
