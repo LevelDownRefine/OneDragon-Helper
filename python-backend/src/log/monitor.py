@@ -431,6 +431,36 @@ class ZZZLogParser(BaseLogParser):
 
 class BGILogParser(BaseLogParser):
     script_name = "BetterGI"
+    _header = re.compile(
+        r"^\[\d{2}:\d{2}:\d{2}\.\d+\]\s+\[\w+\]"
+        r"(?:\s+\[[^\]]+\])?\s+BetterGenshinImpact(?:\.[\w]+)+\s*$"
+    )
+    _record_start = re.compile(r"^\[\d{2}:\d{2}:\d{2}\.\d+\]\s+\[\w+\]")
+
+    def collect_error_lines(self, content: str, limit: int = 10) -> list[str]:
+        """合并 BetterGI 的双行日志头和正文，其他格式按单行处理。"""
+        if limit <= 0:
+            return []
+        lines = self._error_body(content).splitlines()
+        errors: list[str] = []
+        index = 0
+        while index < len(lines):
+            line = lines[index].strip()
+            index += 1
+            if not any(marker in line for marker in self.error_markers):
+                continue
+            if self._header.fullmatch(line) and index < len(lines):
+                detail = lines[index].strip()
+                if detail and not self._record_start.match(detail):
+                    line = f"{line} {detail}"
+                    index += 1
+            if any(noise in line for noise in self.error_noise):
+                continue
+            if line and line not in errors:
+                errors.append(line)
+                if len(errors) >= limit:
+                    break
+        return errors
 
 
 _PARSERS = [
