@@ -336,7 +336,7 @@ def _is_absolute_path(p: str) -> bool:
     return p.startswith("\\\\") or p.startswith("//")
 
 
-LOG_PATH_FIELDS = ("log_path", "log_analysis_path")
+LOG_PATH_FIELDS = ("log_path", "log_analysis_path", "failure_image_path")
 
 
 def get_log_paths(script_name: str) -> dict:
@@ -353,7 +353,9 @@ def get_log_paths(script_name: str) -> dict:
     return {key: settings[key] for key in LOG_PATH_FIELDS if key in settings}
 
 
-def resolve_log_path(script: dict, *, analysis: bool = False) -> Path | None:
+def resolve_log_path(
+    script: dict, *, analysis: bool = False, failure_image: bool = False
+) -> Path | None:
     """按脚本标识从日志声明解析位置；只允许文件名含通配符，不扫描子目录。
 
     相对路径基于脚本目录，%TEMP% 基于系统临时目录。分析路径省略时
@@ -365,6 +367,8 @@ def resolve_log_path(script: dict, *, analysis: bool = False) -> Path | None:
         if analysis and "log_analysis_path" in settings
         else "log_path"
     )
+    if failure_image:
+        key = "failure_image_path"
     if key not in settings:
         return None
     raw = settings[key]

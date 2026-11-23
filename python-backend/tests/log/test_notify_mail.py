@@ -72,6 +72,7 @@ class TestSendMail(unittest.TestCase):
     def test_log_archive_is_attached_to_both_body_formats(self):
         result = make_result()
         result["log_script_names"] = ["demo"]
+        result["run_started_at"] = 123.0
         config = {
             "enabled": True,
             "email": "u@example.com",
@@ -88,7 +89,7 @@ class TestSendMail(unittest.TestCase):
             ) as build,
         ):
             _, smtp = self._sent(result, config, keyring_password="pw")
-        build.assert_called_once_with([{"display_name": "demo"}], {"demo"})
+        build.assert_called_once_with([{"display_name": "demo"}], {"demo"}, 123.0)
         message = smtp.send_message.call_args.args[0]
         self.assertEqual(message.get_content_type(), "multipart/mixed")
         body, attachment = message.get_payload()
@@ -99,6 +100,7 @@ class TestSendMail(unittest.TestCase):
     def test_invalid_log_config_still_sends_body(self):
         result = make_result()
         result["log_script_names"] = ["demo"]
+        result["run_started_at"] = 123.0
         config = {
             "enabled": True,
             "email": "u@example.com",

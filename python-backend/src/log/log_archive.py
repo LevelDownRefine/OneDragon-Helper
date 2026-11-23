@@ -23,7 +23,7 @@ def _latest_file(pattern):
     )
 
 
-def build_log_archive(scripts, selected_names):
+def build_log_archive(scripts, selected_names, not_before=None):
     """返回 ZIP 字节；每个日志至多保留文件末尾 5 MiB。"""
     output = io.BytesIO()
     with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:
@@ -50,4 +50,36 @@ def build_log_archive(scripts, selected_names):
                     archive.writestr(f"{index:02d}-{label}/{kind}/{path.name}", content)
                 except (OSError, ValueError) as exc:
                     logger.warning("[mail] 日志打包失败 %s / %s：%s", name, kind, exc)
+            if not_before is not None:
+                _add_failure_images(archive, script, f"{index:02d}-{label}", not_before)
     return output.getvalue()
+
+
+def _add_failure_images(archive, script, directory, not_before):
+    """只收集本轮现有截图，最多四张、合计 10 MiB；不截断图片。"""
+    try:
+        pattern = resolve_log_path(script, failure_image=True)
+        if pattern is None:
+            return
+        candidates = []
+        for path in pattern.parent.glob(pattern.name):
+            if path.suffix.lower() not in {".png", ".jpg", ".jpeg", ".webp", ".bmp"}:
+                continue
+            if path.is_symlink() or not path.is_file():
+                continue
+            stat = path.stat()
+            if stat.st_mtime >= not_before and 0 < stat.st_size <= 10 * 1024 * 1024:
+                candidates.append((stat.st_mtime, path))
+        remaining = 10 * 1024 * 1024
+        for _, path in sorted(candidates, reverse=True)[:4]:
+            try:
+                with path.open("rb") as image:
+                    content = image.read(remaining + 1)
+                if not content or len(content) > remaining:
+                    continue
+                archive.writestr(f"{directory}/失败截图/{path.name}", content)
+                remaining -= len(content)
+            except OSError as exc:
+                logger.warning("[mail] 截图读取失败 %s：%s", path, exc)
+    except (OSError, ValueError) as exc:
+        logger.warning("[mail] 截图收集失败 %s：%s", directory, exc)

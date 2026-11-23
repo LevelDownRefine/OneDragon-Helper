@@ -137,7 +137,12 @@ def send_mail(result: dict, *, smtp_config: dict | None = None) -> None:
 
             config = load_config()
             assert "script_list" in config
-            attachment = build_log_archive(config["script_list"], set(names))
+            attachment = build_log_archive(
+                config["script_list"],
+                set(names),
+                # 非调度调用没有本轮开始时间，不收集截图。
+                result.get("run_started_at", None),  # noqa: SIM910
+            )
         except (OSError, ValueError, AssertionError, YAMLError) as exc:
             logger.error(
                 "[mail] 日志打包失败(%s)：%s", type(exc).__name__, exc, exc_info=True

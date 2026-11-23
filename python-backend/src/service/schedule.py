@@ -21,6 +21,7 @@ pre_run / post_run 为可扩展的 step 列表（Callable 序列），由本模�
 
 import logging
 import re
+import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
@@ -348,10 +349,12 @@ def build_post_run_pipeline(
     Returns:
         后置步骤列表（可能仅含关机或为空）。
     """
+    started_at = time.time()
     shared: dict = {}
 
     def _analyze() -> None:
         shared["result"] = analyze_logs(enabled_keys)
+        shared["result"]["run_started_at"] = started_at
         shared["result"]["log_script_names"] = sorted(enabled_keys or ())
 
     steps: list[Callable[[], None]] = [_analyze]

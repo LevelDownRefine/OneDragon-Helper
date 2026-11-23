@@ -1186,7 +1186,8 @@ class TestLogAnalysisConfigDriven(unittest.TestCase):
                 self.assertIn("log_path", parsers[name])
                 if name not in declared:
                     self.assertLessEqual(
-                        set(parsers[name]), {"log_path", "log_analysis_path"}
+                        set(parsers[name]),
+                        {"log_path", "log_analysis_path", "failure_image_path"},
                     )
 
     def test_keywords_loaded_from_config(self):

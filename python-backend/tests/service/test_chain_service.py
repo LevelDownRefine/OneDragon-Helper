@@ -4,7 +4,7 @@ import os
 import subprocess
 import unittest
 from datetime import datetime
-from unittest.mock import patch
+from unittest.mock import ANY, patch
 
 import src.service.chain_service as chain_service
 import src.utils.utils_config as utils_config
@@ -402,7 +402,11 @@ class TestBuildPostRunPipeline(unittest.TestCase):
                     mail.assert_not_called()
                 else:
                     mail.assert_called_once_with(
-                        {**self._result(rerun=rerun), "log_script_names": ["demo"]},
+                        {
+                            **self._result(rerun=rerun),
+                            "log_script_names": ["demo"],
+                            "run_started_at": ANY,
+                        },
                         smtp_config=smtp,
                     )
                 if delay is None:

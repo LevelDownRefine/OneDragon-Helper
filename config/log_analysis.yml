@@ -21,8 +21,10 @@
 parsers:
   ok-ap:
     log_path: 'data/apps/ok-ap/working/logs/ok-script.log'
+    failure_image_path: 'data/apps/ok-ap/working/screenshots/*.png'
   ok-ww:
     log_path: 'data/apps/ok-ww/working/logs/ok-script.log'
+    failure_image_path: 'data/apps/ok-ww/working/screenshots/*.png'
     # 鸣潮体力：TacetTask 反复记「info_set current_stamina <N>」（分隔符空格/冒号均可），
     # 运行结束前以「current stamina: <N> not enough to continue」记真实剩余（无 info_set 前缀、
     # 用空格而非下划线）。`(?:info_set )?current[_ ]stamina` 同捕获两种格式，使末次匹配=结束剩余。
@@ -44,6 +46,7 @@ parsers:
 
   ok-nte:
     log_path: 'data/apps/ok-nte/working/logs/ok-script.log'
+    failure_image_path: 'data/apps/ok-nte/working/screenshots/*.png'
     stamina_pattern: 'info_set 当前体力 (\d+)'
     error_markers:
       - 'ERROR'
@@ -56,6 +59,7 @@ parsers:
 
   ok-ef:
     log_path: 'data/apps/ok-ef/working/logs/ok-script.log'
+    failure_image_path: 'data/apps/ok-ef/working/screenshots/*.png'
     log_analysis_path: '%TEMP%/ok-ef/日常任务/日常任务_*.txt'
     # 终末地「每日做完」=『成功任务』栏含 ⭐日常奖励（OkEfLogParser.parse_daily 限定在该栏内判定）。
     # 整体执行状态（部分失败/异常结束）不代表日常没做；且 ⭐日常奖励 也可能出现在失败任务栏，
@@ -64,6 +68,7 @@ parsers:
       - '⭐日常奖励'
 
   March7th-Launcher:
+    failure_image_path: 'logs/screenshots/error_*.png'
     # 上游按 YYYY-MM-DD.log 命名；仅匹配日期日志，排除启动器等其他 .log。
     log_path: 'logs/[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9].log'
     # March7th 在「停止运行」统一总结块里同时打「开拓力: X/300」（与开局同格式）和显式
@@ -80,6 +85,7 @@ parsers:
       - '停止运行'
 
   OneDragon-Launcher:
+    failure_image_path: '.debug/images/*.png'
     log_path: '.log/log.txt'
     stamina_pattern: '剩余电量 (\d+) 储蓄电量 (\d+) 以太电池 (\d+)'
     error_markers:
@@ -104,6 +110,7 @@ parsers:
   MAA:
     # 正常作战期间也可能长时间不更新，无日志阈值由用户设置。
     log_path: 'debug/gui.log'
+    failure_image_path: 'debug/interface/*.png'
     # daily_done 表示最新一轮所选队列全部完成，不保证每日奖励已拿满。
     daily_success_marker:
       - '任务已全部完成！'
@@ -116,3 +123,4 @@ parsers:
   MaaEnd:
     # MaaFramework 的实时执行日志，位于 MaaEnd.exe 同级 debug 目录。
     log_path: 'debug/maafw.log'
+    failure_image_path: 'debug/on_error/*'
