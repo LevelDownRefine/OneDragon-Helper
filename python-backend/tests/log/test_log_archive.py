@@ -168,3 +168,83 @@ class LogArchiveTests(unittest.TestCase):
                         resolve_log_path(script, failure_image=True),
                         Path(directory) / relative,
                     )
+
+    def test_nested_images_keep_paths_and_ignore_old_files(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for folder, stamp in (("failed", 20), ("log", 20), ("old", 1)):
+                path = root / folder / "same.png"
+                path.parent.mkdir()
+                path.write_bytes(folder.encode())
+                os.utime(path, (stamp, stamp))
+            with patch(
+                "src.log.log_archive.resolve_log_path",
+                side_effect=lambda script, analysis=False, failure_image=False: (
+                    root / "*.png" if failure_image else None
+                ),
+            ):
+                data = build_log_archive(
+                    [{"display_name": "A", "script_path": "a.py"}], {"A"}, 10
+                )
+            with zipfile.ZipFile(io.BytesIO(data)) as archive:
+                self.assertEqual(
+                    set(archive.namelist()),
+                    {"01-A/失败截图/failed/same.png", "01-A/失败截图/log/same.png"},
+                )
+                self.assertEqual(
+                    archive.read("01-A/失败截图/failed/same.png"), b"failed"
+                )
+
+    def test_total_archive_limit_includes_unicode_names_and_directory(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            paths = []
+            for index in range(3):
+                path = root / f"截图{index}.log"
+                path.write_bytes(os.urandom(2048))
+                paths.append(path)
+            scripts = [
+                {"display_name": f"脚本{index}", "script_path": "a.py"}
+                for index in range(3)
+            ]
+            with (
+                patch("src.log.log_archive.MAX_ARCHIVE_BYTES", 5000),
+                patch(
+                    "src.log.log_archive.resolve_log_path",
+                    side_effect=lambda script, analysis=False: paths[
+                        int(script["display_name"][-1])
+                    ],
+                ),
+            ):
+                data = build_log_archive(scripts, {s["display_name"] for s in scripts})
+            self.assertLessEqual(len(data), 5000)
+            with zipfile.ZipFile(io.BytesIO(data)) as archive:
+                self.assertEqual(len(archive.namelist()), 2)
+                self.assertIsNone(archive.testzip())
+
+    def test_logs_take_priority_and_oversized_image_is_omitted_whole(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            log = root / "run.log"
+            image = root / "failure.png"
+            log.write_bytes(os.urandom(2048))
+            image.write_bytes(os.urandom(2048))
+            scripts = [
+                {"display_name": name, "script_path": "a.py"} for name in ("A", "B")
+            ]
+            with (
+                patch("src.log.log_archive.MAX_ARCHIVE_BYTES", 5000),
+                patch(
+                    "src.log.log_archive.resolve_log_path",
+                    side_effect=lambda script, analysis=False, failure_image=False: (
+                        image if failure_image else log
+                    ),
+                ),
+            ):
+                data = build_log_archive(scripts, {"A", "B"}, 0)
+            self.assertLessEqual(len(data), 5000)
+            with zipfile.ZipFile(io.BytesIO(data)) as archive:
+                self.assertEqual(
+                    set(archive.namelist()), {"01-A/实时/run.log", "02-B/实时/run.log"}
+                )
+                self.assertEqual(archive.read("02-B/实时/run.log"), log.read_bytes())
