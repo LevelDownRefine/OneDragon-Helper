@@ -62,8 +62,14 @@ def _add_failure_images(archive, script, directory, not_before):
         if pattern is None:
             return
         candidates = []
-        for path in pattern.parent.glob(pattern.name):
+        for path in pattern.parent.rglob(pattern.name):
             if path.suffix.lower() not in {".png", ".jpg", ".jpeg", ".webp", ".bmp"}:
+                continue
+            if any(
+                parent.is_symlink()
+                for parent in (path, *path.parents)
+                if parent != pattern.parent
+            ):
                 continue
             if path.is_symlink() or not path.is_file():
                 continue
@@ -77,7 +83,10 @@ def _add_failure_images(archive, script, directory, not_before):
                     content = image.read(remaining + 1)
                 if not content or len(content) > remaining:
                     continue
-                archive.writestr(f"{directory}/失败截图/{path.name}", content)
+                archive.writestr(
+                    f"{directory}/失败截图/{path.relative_to(pattern.parent).as_posix()}",
+                    content,
+                )
                 remaining -= len(content)
             except OSError as exc:
                 logger.warning("[mail] 截图读取失败 %s：%s", path, exc)

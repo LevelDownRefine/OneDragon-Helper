@@ -168,3 +168,29 @@ class LogArchiveTests(unittest.TestCase):
                         resolve_log_path(script, failure_image=True),
                         Path(directory) / relative,
                     )
+
+    def test_nested_images_keep_paths_and_ignore_old_files(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for folder, stamp in (("failed", 20), ("log", 20), ("old", 1)):
+                path = root / folder / "same.png"
+                path.parent.mkdir()
+                path.write_bytes(folder.encode())
+                os.utime(path, (stamp, stamp))
+            with patch(
+                "src.log.log_archive.resolve_log_path",
+                side_effect=lambda script, analysis=False, failure_image=False: (
+                    root / "*.png" if failure_image else None
+                ),
+            ):
+                data = build_log_archive(
+                    [{"display_name": "A", "script_path": "a.py"}], {"A"}, 10
+                )
+            with zipfile.ZipFile(io.BytesIO(data)) as archive:
+                self.assertEqual(
+                    set(archive.namelist()),
+                    {"01-A/失败截图/failed/same.png", "01-A/失败截图/log/same.png"},
+                )
+                self.assertEqual(
+                    archive.read("01-A/失败截图/failed/same.png"), b"failed"
+                )
