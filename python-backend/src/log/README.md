@@ -31,3 +31,5 @@ MAA 成败分析按正文时间（凌晨 04:00 切日）选取最新一轮 `Link
 助手按日写入安装根目录的 `logs/`：GUI 为 `onedragon_helper-日期.log`，计划/运行为 `onedragon_helper.plan-日期.log`，保留 14 天；runner 使用独立的 `.log/`。验证入口见 [测试指南](../../../docs/TESTING.md)。
 
 邮件 ZIP 通过 `failure_image_path` 声明收集现有失败截图（路径规则同日志）。目前适配 MAA 的 `debug/interface/*.png`、MaaEnd 的 `debug/on_error/`，以及 ok-ap / ok-ww / ok-nte / ok-ef 的 `data/apps/<脚本>/working/screenshots/*.png`、三月七的 `logs/screenshots/error_*.png`、绝区零一条龙的 `.debug/images/*.png`；仅收集本轮调度开始后修改的图片，最多四张、合计 10 MiB，缺失或读取失败不阻断邮件。不主动截屏。
+
+完整邮件 ZIP 附件最多 50 MiB（包含压缩数据及 ZIP 目录开销）；优先打包日志，再添加截图；超过总上限的成员跳过并记录日志，图片不截断。

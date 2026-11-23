@@ -9,6 +9,24 @@ from src.utils.utils_sub_config import get_script_name, resolve_log_path
 
 logger = logging.getLogger(__name__)
 MAX_LOG_BYTES = 5 * 1024 * 1024
+MAX_ARCHIVE_BYTES = 50 * 1024 * 1024
+
+
+class _LimitedArchive(zipfile.ZipFile):
+    """按压缩后的成员及 ZIP 目录开销限制完整附件大小。"""
+
+    archive_bytes = 22  # 空 ZIP 的结束记录。
+
+    def writestr(self, name, content):
+        candidate = io.BytesIO()
+        with zipfile.ZipFile(candidate, "w", compression=zipfile.ZIP_DEFLATED) as item:
+            item.writestr(name, content)
+        added_bytes = len(candidate.getvalue()) - 22
+        if self.archive_bytes + added_bytes > MAX_ARCHIVE_BYTES:
+            logger.warning("[mail] 附件达到总大小限制，跳过 %s", name)
+            return
+        super().writestr(name, content)
+        self.archive_bytes += added_bytes
 
 
 def _latest_file(pattern):
@@ -26,7 +44,8 @@ def _latest_file(pattern):
 def build_log_archive(scripts, selected_names, not_before=None):
     """返回 ZIP 字节；每个日志至多保留文件末尾 5 MiB。"""
     output = io.BytesIO()
-    with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+    image_sources = []
+    with _LimitedArchive(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         for index, script in enumerate(scripts, 1):
             name = get_script_name(script)
             if name not in selected_names:
@@ -51,8 +70,12 @@ def build_log_archive(scripts, selected_names, not_before=None):
                 except (OSError, ValueError) as exc:
                     logger.warning("[mail] 日志打包失败 %s / %s：%s", name, kind, exc)
             if not_before is not None:
-                _add_failure_images(archive, script, f"{index:02d}-{label}", not_before)
-    return output.getvalue()
+                image_sources.append((script, f"{index:02d}-{label}"))
+        for script, directory in image_sources:
+            _add_failure_images(archive, script, directory, not_before)
+    result = output.getvalue()
+    assert len(result) <= MAX_ARCHIVE_BYTES
+    return result
 
 
 def _add_failure_images(archive, script, directory, not_before):
