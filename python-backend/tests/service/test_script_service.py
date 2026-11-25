@@ -535,12 +535,56 @@ class TestScriptList(ScriptServiceTestBase):
                 elif operation != "remove":
                     self.assertIn(original, saved["script_list"])
 
+    def test_example_preset_keeps_selected_path_and_no_game_path(self):
+        path = self._file("ok-ap.exe")
+        result = self.service.add_script(path)
+        self.assertEqual(result, {"script_name": "ok-ap", "display_name": "蓝色星原"})
+        entry = utils_config.get_script("ok-ap")
+        self.assertEqual(entry["script_path"], path)
+        self.assertEqual(entry["game_path"], "")
+        self.assertEqual(entry["game_process_name"], "AzurPromilia.exe")
+        self.assertEqual(entry["game_arguments"], "-start=azurpromilia_launcher")
+        self.assertEqual(entry["script_arguments"], "-t 1 -e")
+
+    def test_example_does_not_copy_machine_paths_or_identity(self):
+        path = self._file("OK-AP.EXE")
+        template = {
+            "script_list": [
+                {
+                    "display_name": "预设",
+                    "script_path": "D:/else/ok-ap.exe",
+                    "game_path": "D:/else/game.exe",
+                    "script_id": "foreign",
+                    "game_arguments": "--start",
+                }
+            ]
+        }
+        with patch.object(script_service, "load_data", return_value=template):
+            result = self.service.add_script(path)
+        entry = utils_config.get_script(result["script_name"])
+        self.assertEqual(entry["script_path"], path)
+        self.assertEqual(entry["game_path"], "")
+        self.assertNotIn("script_id", entry)
+        self.assertEqual(entry["game_arguments"], "--start")
+
+    def test_example_shortcut_arguments_override_preset(self):
+        target = self._file("ok-ap.exe")
+        shortcut = self._file("preset.lnk")
+        with patch.object(
+            script_service, "read_shortcut", return_value=(target, "--custom", "")
+        ):
+            result = self.service.add_script(shortcut)
+        entry = utils_config.get_script(result["script_name"])
+        self.assertEqual(entry["script_arguments"], "--custom")
+        self.assertEqual(entry["game_process_name"], "AzurPromilia.exe")
+        self.assertEqual(entry["script_path"], target)
+
     def test_duplicate_adapted_exe_is_an_independent_plain_script(self):
         path = self._file("BetterGI.exe")
         original = utils_config.get_script("BetterGI")
         result = self.service.add_script(path)
         self.assertEqual(
-            result, {"script_name": "BetterGI_2", "display_name": "BetterGI_2"}
+            result, {"script_name": "BetterGI_2", "display_name": "原神_2"}
         )
         self.assertEqual(utils_config.get_script("BetterGI"), original)
         view = self.service.script_view("BetterGI_2")

@@ -4,12 +4,14 @@
 """
 
 import os
+from copy import deepcopy
 from dataclasses import dataclass, field, replace
 
 from src.config.native_task_switch import native_task_switch_of
 from src.config.set_config import invalidate_config
 from src.config.task.task_options import task_options_of
-from src.utils import utils_config, utils_weekly
+from src.utils import get_root_dir, safe_path_join, utils_config, utils_weekly
+from src.utils.utils_io import load_data
 from src.utils.utils_shortcut import read_shortcut
 from src.utils.utils_sub_config import (
     default_script_entry,
@@ -135,6 +137,49 @@ def validate_edit(edit: ScriptEdit, *, scripts: list[dict] | None = None) -> Scr
     return replace(edit, display_name=display_name, config_patch=patch)
 
 
+# 仅复制与机器无关的预设，路径和持久化身份始终来自当前选择。
+_EXAMPLE_FIELDS = (
+    "display_name",
+    "game_label",
+    "script_process_name",
+    "game_process_name",
+    "game_arguments",
+    "launcher_mode",
+    "check_done",
+    "kill_script_after_done",
+    "kill_game_after_done",
+    "script_arguments",
+    "notify_start",
+    "notify_done",
+    "notify_log_interval",
+    "attach_direction",
+    "no_log_timeout_seconds",
+    "no_log_max_retries",
+    "block",
+)
+
+
+def _example_preset(file_path: str) -> dict:
+    if not file_path.lower().endswith(".exe"):
+        return {}
+    path = safe_path_join(get_root_dir(), "config", "config.example.yml")
+    data = load_data(path, file_format="yaml", cached=True)
+    assert isinstance(data, dict) and "script_list" in data
+    target = os.path.basename(file_path).casefold()
+    matches = [
+        item
+        for item in data["script_list"]
+        if item["script_path"].replace("\\", "/").rsplit("/", 1)[-1].casefold()
+        == target
+    ]
+    assert len(matches) <= 1, f"示例配置中存在重复脚本: {target}"
+    if not matches:
+        return {}
+    return {
+        key: deepcopy(matches[0][key]) for key in _EXAMPLE_FIELDS if key in matches[0]
+    }
+
+
 def add(file_path: str) -> dict:
     """登记脚本条目、创建每周默认参数并初始化，返回标识与展示名。"""
     if not isinstance(file_path, str) or not file_path.strip():
@@ -149,7 +194,8 @@ def add(file_path: str) -> dict:
     existing = {get_script_name(script) for script in config["script_list"]}
 
     script_arguments = ""
-    if file_path.lower().endswith(".lnk"):
+    is_shortcut = file_path.lower().endswith(".lnk")
+    if is_shortcut:
         try:
             file_path, script_arguments, working_dir = read_shortcut(file_path)
         except (OSError, ValueError) as exc:
@@ -172,12 +218,17 @@ def add(file_path: str) -> dict:
         script_path=file_path,
         script_arguments=script_arguments,
     )
+    preset = _example_preset(file_path)
+    if is_shortcut:
+        preset.pop("script_arguments", None)
+    entry.update(preset)
     base_id = get_script_name(entry)
+    base_display_name = entry["display_name"]
     script_name = base_id
     suffix = 2
     while script_name in existing:
         script_name = f"{base_id}_{suffix}"
-        entry["display_name"] = f"{base_name}_{suffix}"
+        entry["display_name"] = f"{base_display_name}_{suffix}"
         suffix += 1
     if script_name != base_id:
         entry["script_id"] = script_name
