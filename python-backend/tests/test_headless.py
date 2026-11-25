@@ -597,7 +597,7 @@ with patch('src.utils.get_root_dir', return_value=root), patch('src.service.chai
             self.assertNotIn("data", responses[index]["error"])
         self.assertEqual(
             responses[4]["result"],
-            {"script_name": "ok-ww_2", "display_name": "ok-ww_2"},
+            {"script_name": "ok-ww_2", "display_name": "鸣潮_2"},
         )
         self.assertIsNone(responses[5]["result"])
         self.assertIsNone(responses[6]["result"])
