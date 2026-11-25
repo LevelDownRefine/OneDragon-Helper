@@ -1,4 +1,24 @@
 script_list:
+- display_name: 蓝色星原
+  game_label: ''
+  script_type: external
+  script_path: D:\game_helper\ok-ap\ok-ap.exe
+  script_process_name:
+  - pythonw.exe
+  game_process_name: AzurPromilia.exe
+  launcher_mode: true
+  check_done: game_or_script_closed
+  kill_script_after_done: true
+  kill_game_after_done: true
+  game_arguments: '-start=azurpromilia_launcher'
+  script_arguments: '-t 1 -e'
+  notify_start: false
+  notify_done: false
+  notify_log_interval: 0
+  attach_direction: ''
+  no_log_timeout_seconds: 300
+  no_log_max_retries: 2
+  block: true
 - display_name: 鸣潮
   game_label: ''
   script_type: external

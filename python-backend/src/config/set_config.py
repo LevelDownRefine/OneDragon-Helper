@@ -263,11 +263,11 @@ class GenshinConfig(ScriptConfig):
     display_name = "原神"
 
 
-# ---- 蓝色星原：旅谣 ----
+# ---- 蓝色星原 ----
 @register
 class AzurPromiliaConfig(ScriptConfig):
     _script_name = "ok-ap"
-    display_name = "蓝色星原：旅谣"
+    display_name = "蓝色星原"
 
     def _daily_config_rel_path(self) -> str:
         return "data/apps/ok-ap/working/configs/DailyTask.json"
