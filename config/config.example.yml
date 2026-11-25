@@ -159,26 +159,3 @@ script_list:
   no_log_timeout_seconds: 0
   no_log_max_retries: 3
   block: true
-- display_name: MaaEnd
-  game_label: ''
-  script_type: external
-  script_path: D:\game_helper\MaaEnd\MaaEnd.exe
-  script_process_name: []
-  game_process_name: Endfield.exe
-  # 非空时 runner 会在启动本脚本前先打开该游戏。
-  # GUI 的「启动游戏」与悬停图标优先用它（留空才回落到脚本自身配置里的路径）。
-  game_path: ''
-  launcher_mode: false
-  check_done: game_closed
-  kill_script_after_done: true
-  kill_game_after_done: false
-  # -q：跑完自退（不加则常驻）；-i：MaaEnd 内已存在的实例名（按 name 匹配，非 id）
-  game_arguments: ''
-  script_arguments: '--autostart -q -i 全套日常'
-  notify_start: false
-  notify_done: false
-  notify_log_interval: 0
-  attach_direction: ''
-  no_log_timeout_seconds: 0
-  no_log_max_retries: 3
-  block: true
